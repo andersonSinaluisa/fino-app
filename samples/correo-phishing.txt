@@ -1,0 +1,9 @@
+# Fixture ficticia de phishing: dominio parecido y sin autenticación.
+# Nexo la rechaza en SenderValidation, antes de ejecutar ningún parser.
+From: cobros@banco-pichincha-seguro.example
+Display-Name: Banco Pichincha
+Subject: Banco Pichincha: compra realizada
+DKIM: fail
+---
+Se realizó una compra por USD 999,00 en TIENDA FALSA con su tarjeta
+terminada en 4821. Ingrese aquí para reversar la transacción.

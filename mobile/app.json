@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Nexo",
+    "slug": "nexo",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "nexo",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#F5F3ED"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "app.nexo.mobile"
+    },
+    "android": {
+      "package": "app.nexo.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#F5F3ED"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#1D1D1B"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": false
+    },
+    "extra": {
+      "apiBaseUrl": "http://localhost:5080",
+      "eas": {
+        "projectId": "00000000-0000-0000-0000-000000000000"
+      }
+    }
+  }
+}

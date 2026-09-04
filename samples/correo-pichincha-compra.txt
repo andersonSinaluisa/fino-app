@@ -1,0 +1,13 @@
+# Fixture ficticia para el pipeline de correo. Ningún dato es real.
+From: notificaciones@pichincha.com
+Subject: Banco Pichincha: compra realizada
+DKIM: pass
+---
+Estimado cliente,
+
+Se realizó una compra por USD 48,20 en SUPERMAXI ALBORADA con su tarjeta
+terminada en 4821 el 04/03/2026 a las 18:12.
+
+Referencia: TRX-99881
+
+Si no reconoce esta transacción, comuníquese con su banco.

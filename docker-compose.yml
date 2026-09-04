@@ -1,0 +1,46 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: nexo-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-nexo}
+      POSTGRES_USER: ${POSTGRES_USER:-nexo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nexo_local_dev}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - nexo-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nexo} -d ${POSTGRES_DB:-nexo}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nexo-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      ConnectionStrings__Default: "Host=db;Port=5432;Database=${POSTGRES_DB:-nexo};Username=${POSTGRES_USER:-nexo};Password=${POSTGRES_PASSWORD:-nexo_local_dev}"
+      Nexo__Jwt__SigningKey: ${Nexo__Jwt__SigningKey:-development-signing-key-change-me-please}
+      Nexo__Secrets__EncryptionKey: ${Nexo__Secrets__EncryptionKey:-bmV4by1kZXZlbG9wbWVudC1vbmx5LWtleS0zMmJ5dGU=}
+      Nexo__Seed__Demo: ${Nexo__Seed__Demo:-true}
+      Nexo__Push__Enabled: ${Nexo__Push__Enabled:-false}
+    ports:
+      - "5080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+volumes:
+  nexo-db-data:

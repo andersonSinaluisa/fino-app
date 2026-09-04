@@ -1,0 +1,31 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+TestResults/
+coverage*.json
+*.coverage
+.vs/
+
+# Node / Expo
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+.npm-install.log
+
+# Environment
+.env
+.env.local
+*.env
+!.env.example
+
+# Editors
+.idea/
+.vscode/
+.DS_Store
+
+# Scratch
+.scratch/

@@ -1,0 +1,20 @@
+<Project>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <ImplicitUsingsExclude></ImplicitUsingsExclude>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <!-- ICU is required, not optional: TextNormalizer decomposes accents with
+         NormalizationForm.FormD (SUPERMAXI ALBÓRADA must equal ALBORADA for
+         deduplication), and StatementDateInterpreter resolves the IANA zone
+         America/Guayaquil. Invariant globalization silently breaks both. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+</Project>

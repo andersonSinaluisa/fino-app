@@ -1,0 +1,78 @@
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Nexo.Application.Accounts;
+using Nexo.Application.Auth;
+using Nexo.Application.Categories;
+using Nexo.Application.Categorization;
+using Nexo.Application.Deduplication;
+using Nexo.Application.EmailIngestion;
+using Nexo.Application.EmailIngestion.Parsers;
+using Nexo.Application.Imports;
+using Nexo.Application.Imports.Parsing;
+using Nexo.Application.Imports.Parsing.Parsers;
+using Nexo.Application.Insights;
+using Nexo.Application.Notifications;
+using Nexo.Application.Privacy;
+using Nexo.Application.Providers;
+using Nexo.Application.Transactions;
+
+namespace Nexo.Application;
+
+public static class DependencyInjection
+{
+    public static IServiceCollection AddNexoApplication(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.Configure<AuthOptions>(configuration.GetSection(AuthOptions.SectionName));
+        services.Configure<ImportOptions>(configuration.GetSection(ImportOptions.SectionName));
+        services.Configure<DeduplicationOptions>(configuration.GetSection(DeduplicationOptions.SectionName));
+
+        services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IProviderCatalogService, ProviderCatalogService>();
+        services.AddScoped<IAccountService, AccountService>();
+        services.AddScoped<ITransactionService, TransactionService>();
+        services.AddScoped<ICategoryService, CategoryService>();
+        services.AddScoped<ICategorizationEngine, CategorizationEngine>();
+        services.AddScoped<IDeduplicationService, DeduplicationService>();
+        services.AddScoped<IImportService, ImportService>();
+        services.AddScoped<IInsightEngine, InsightEngine>();
+        services.AddScoped<IInsightService, InsightService>();
+        services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<INotificationDispatcher, NotificationDispatcher>();
+        services.AddScoped<IPrivacyService, PrivacyService>();
+        services.AddScoped<IEmailConnectionService, EmailConnectionService>();
+        services.AddScoped<IEmailIngestionPipeline, EmailIngestionPipeline>();
+        services.AddScoped<ISenderValidator, SenderValidator>();
+
+        services.AddStatementParsers();
+        services.AddBankEmailParsers();
+
+        return services;
+    }
+
+    /// <summary>
+    /// Statement parsers are plain DI registrations: adding a bank is one line here
+    /// plus one class. Order does not matter — the resolver sorts by priority.
+    /// </summary>
+    public static IServiceCollection AddStatementParsers(this IServiceCollection services)
+    {
+        services.AddScoped<IStatementParser, PichinchaStatementParser>();
+        services.AddScoped<IStatementParser, GuayaquilStatementParser>();
+        services.AddScoped<IStatementParser, ProdubancoStatementParser>();
+        services.AddScoped<IStatementParser, PacificoStatementParser>();
+        services.AddScoped<IStatementParser, GenericStatementParser>();
+        services.AddScoped<IStatementParserResolver, StatementParserResolver>();
+        return services;
+    }
+
+    public static IServiceCollection AddBankEmailParsers(this IServiceCollection services)
+    {
+        services.AddScoped<IBankEmailParser, PichinchaEmailParser>();
+        services.AddScoped<IBankEmailParser, GuayaquilEmailParser>();
+        services.AddScoped<IBankEmailParser, ProdubancoEmailParser>();
+        services.AddScoped<IBankEmailParser, PacificoEmailParser>();
+        services.AddScoped<IBankEmailParser, DeunaEmailParser>();
+        services.AddScoped<IBankEmailParser, PayPhoneEmailParser>();
+        services.AddScoped<IBankEmailParserResolver, BankEmailParserResolver>();
+        return services;
+    }
+}
