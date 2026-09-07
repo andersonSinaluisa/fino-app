@@ -147,4 +147,84 @@ public class CategorizationRuleTests
         Assert.Equal(newCategory, rule.CategoryId);
         Assert.Equal("FRUTERIA DON PEPE", rule.MerchantPattern);
     }
+
+    /// <summary>
+    /// "Categorización personal": <see cref="CategorizationRule.LearnedFromCorrection"/>
+    /// is now the active flow behind "aplicar también a movimientos similares", keyed
+    /// on the description pattern rather than the merchant guess.
+    /// </summary>
+    [Fact]
+    public void LearnedFromCorrection_creates_a_description_based_personal_rule()
+    {
+        var rule = CategorizationRule.LearnedFromCorrection(User, "UBER", Category, direction: null, Now);
+
+        Assert.Equal(User, rule.UserId);
+        Assert.False(rule.IsSystem);
+        Assert.Equal("UBER", rule.Pattern);
+        Assert.Equal(RuleMatchKind.Contains, rule.MatchKind);
+        Assert.Equal(100, rule.Priority);
+        Assert.True(rule.IsActive);
+    }
+
+    [Fact]
+    public void LearnedFromCorrection_accepts_an_explicit_match_kind()
+    {
+        var rule = CategorizationRule.LearnedFromCorrection(User, "UBER", Category, direction: null, Now, RuleMatchKind.Exact);
+
+        Assert.Equal(RuleMatchKind.Exact, rule.MatchKind);
+    }
+
+    /// <summary>
+    /// Point 18 ("matching seguro"): the safety check is enforced in the domain
+    /// entity itself, not only wherever a caller happens to validate first -- a
+    /// personal rule can never be created with a dangerously generic pattern no
+    /// matter which application-layer path constructs it.
+    /// </summary>
+    [Theory]
+    [InlineData("PAGO")]
+    [InlineData("A")]
+    [InlineData("TRANSFERENCIA")]
+    public void LearnedFromCorrection_rejects_a_pattern_with_too_little_information(string pattern) =>
+        Assert.Throws<DomainException>(() => CategorizationRule.LearnedFromCorrection(User, pattern, Category, direction: null, Now));
+
+    [Fact]
+    public void LearnedFromMerchant_also_rejects_a_too_generic_merchant_pattern() =>
+        Assert.Throws<DomainException>(() =>
+            CategorizationRule.LearnedFromMerchant(User, "PAGO", Category, TransactionDirection.Expense, Now));
+
+    [Fact]
+    public void SystemRule_seeds_are_exempt_from_the_safety_check()
+    {
+        // Nexo's own curated catalog can use a short, deliberate brand code (e.g.
+        // "TIA", "CNT") that a user's own rule would never be allowed to use.
+        var rule = CategorizationRule.SystemRule("TIA", Category, Now);
+
+        Assert.Equal("TIA", rule.Pattern);
+    }
+
+    [Fact]
+    public void RegisterHit_increments_the_counter_and_stamps_when_it_last_matched()
+    {
+        var rule = CategorizationRule.LearnedFromCorrection(User, "UBER", Category, direction: null, Now);
+        var later = Now.AddDays(3);
+
+        rule.RegisterHit(later);
+
+        Assert.Equal(1, rule.TimesApplied);
+        Assert.Equal(later, rule.LastMatchedAt);
+    }
+
+    [Fact]
+    public void Deactivating_and_reactivating_a_rule_never_touches_its_match_count()
+    {
+        var rule = CategorizationRule.LearnedFromCorrection(User, "UBER", Category, direction: null, Now);
+        rule.RegisterHit(Now);
+
+        rule.Deactivate(Now);
+        Assert.False(rule.IsActive);
+
+        rule.Activate(Now);
+        Assert.True(rule.IsActive);
+        Assert.Equal(1, rule.TimesApplied);
+    }
 }

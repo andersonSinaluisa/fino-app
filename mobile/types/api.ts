@@ -97,6 +97,13 @@ export interface TransactionListItem {
   isInternalTransfer: boolean;
 }
 
+/**
+ * "Categorización personal": por qué una transacción tiene la categoría que
+ * tiene, para que la UI lo pueda explicar (punto 11) en vez de dejar que la
+ * persona adivine.
+ */
+export type CategorySource = 'Uncategorized' | 'SystemRule' | 'UserRule' | 'Imported' | 'Manual';
+
 export interface TransactionDetail extends Omit<TransactionListItem, 'brandColor' | 'categoryIcon' | 'categoryColor'> {
   providerName: string;
   accountMask: string | null;
@@ -107,6 +114,10 @@ export interface TransactionDetail extends Omit<TransactionListItem, 'brandColor
    */
   merchantCorrected: string | null;
   categoryManuallySet: boolean;
+  /** "Categorización personal" (punto 11): de dónde salió la categoría actual. */
+  categorySource: CategorySource;
+  /** Presente solo cuando `categorySource` es `UserRule` o `SystemRule`. */
+  categorizationRuleId: string | null;
   externalReference: string | null;
   sourceConfidence: 'Low' | 'Medium' | 'High';
   note: string | null;
@@ -115,6 +126,73 @@ export interface TransactionDetail extends Omit<TransactionListItem, 'brandColor
   createdAt: string;
   /** Entregable 13: the matching movement on the other account, once confirmed. */
   internalTransferLinkId: string | null;
+  /**
+   * "Categorización personal" (punto 7): presente solo en la respuesta de
+   * PUT .../category cuando se pidió aplicar también a movimientos
+   * anteriores -- cuántos OTROS movimientos se recategorizaron. `null` en
+   * cualquier otra lectura de la transacción.
+   */
+  recategorizedCount: number | null;
+}
+
+/**
+ * "Categorización personal": una regla propia del usuario (punto 3/15),
+ * "Reglas de categorización" en Ajustes. Nunca incluye reglas de otro
+ * usuario ni reglas del sistema (esas no tienen pantalla propia todavía).
+ */
+export interface CategorizationRule {
+  id: string;
+  pattern: string;
+  matchType: 'Contains' | 'StartsWith' | 'Exact';
+  categoryId: string;
+  categoryName: string;
+  categoryIcon: string;
+  categoryColor: string;
+  isActive: boolean;
+  priority: number;
+  matchCount: number;
+  createdAt: string;
+  updatedAt: string;
+  lastMatchedAt: string | null;
+}
+
+export interface CreateCategorizationRuleRequest {
+  pattern: string;
+  matchType: 'Contains' | 'StartsWith' | 'Exact';
+  categoryId: string;
+}
+
+export interface UpdateCategorizationRuleRequest {
+  categoryId: string;
+  isActive?: boolean;
+  /** Punto 16: nunca se recategoriza el historial salvo que se pida explícitamente. */
+  applyToExistingMatches?: boolean;
+}
+
+/** Punto 19: "si creo esta regla, ¿qué movimientos coincidirían?", antes de guardar nada. */
+export interface RulePreviewRequest {
+  transactionId: string;
+  categoryId: string;
+}
+
+export interface RulePreviewTransaction {
+  id: string;
+  description: string;
+  signedAmount: number;
+  transactionDate: string;
+}
+
+export interface RulePreview {
+  pattern: string;
+  matchType: 'Contains' | 'StartsWith' | 'Exact';
+  /** Punto 18: el patrón sugerido es demasiado genérico -- Nexo no ofrecerá crear la regla. */
+  isTooGeneric: boolean;
+  matchedCount: number;
+  sample: RulePreviewTransaction[];
+  /** Punto 13: ya existe una regla propia con este mismo patrón, para otra categoría. */
+  conflictingRuleId: string | null;
+  conflictingCategoryId: string | null;
+  conflictingCategoryName: string | null;
 }
 
 /**
@@ -503,4 +581,12 @@ export interface ApiProblem {
   code?: string;
   correlationId?: string;
   errors?: Record<string, string[]>;
+  /**
+   * "Categorización personal" (punto 13): presentes solo cuando `code` es
+   * `rule_conflict` -- la regla existente con la que choca el patrón nuevo,
+   * para ofrecer "Actualizar regla existente" en vez de crear un duplicado.
+   */
+  existingRuleId?: string;
+  existingCategoryId?: string;
+  existingCategoryName?: string;
 }

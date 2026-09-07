@@ -47,6 +47,12 @@ public sealed record TransactionDetailDto(
     Guid? CategoryId,
     string? CategoryName,
     bool CategoryManuallySet,
+    // "Categorización personal": why CategoryId is what it is ("Manual", "UserRule",
+    // "SystemRule", "Imported" or "Uncategorized") plus, when a rule is behind it,
+    // which one -- lets the UI say "asignada automáticamente según una regla creada
+    // por ti" instead of leaving the person to guess (point 11).
+    string CategorySource,
+    Guid? CategorizationRuleId,
     string? ExternalReference,
     string Source,
     string SourceConfidence,
@@ -57,7 +63,11 @@ public sealed record TransactionDetailDto(
     DateTimeOffset CreatedAt,
     // Entregable 13: mirrors Transaction.IsInternalTransfer/InternalTransferLinkId.
     bool IsInternalTransfer,
-    Guid? InternalTransferLinkId);
+    Guid? InternalTransferLinkId,
+    // Set only by UpdateCategoryAsync when ApplyToExistingMatches was requested:
+    // how many OTHER movements were just recategorised by the same rule (point 7).
+    // Null on every other read of a transaction.
+    int? RecategorizedCount = null);
 
 /// <summary>Filters accepted by the movements screen. All optional, all combinable.</summary>
 public sealed record TransactionFilter
@@ -89,7 +99,17 @@ public sealed record TransactionFilter
     public PageRequest Page { get; init; } = new();
 }
 
-public sealed record UpdateCategoryRequest(Guid CategoryId, bool CreateRule = true);
+/// <summary>
+/// "Categorización personal". <paramref name="CreateRule"/> mirrors the mobile
+/// toggle "aplicar también a movimientos similares" -- true learns/updates a
+/// personal rule from this correction so future movements are categorised
+/// automatically ("este y futuros"); false only changes this one movement.
+/// <paramref name="ApplyToExistingMatches"/> is the extra "este, anteriores y
+/// futuros" step: once the rule exists, also recategorise this user's past
+/// movements that match it (never one the user already corrected by hand) in the
+/// same request, after they confirmed the count from the preview endpoint.
+/// </summary>
+public sealed record UpdateCategoryRequest(Guid CategoryId, bool CreateRule = true, bool ApplyToExistingMatches = false);
 
 public sealed record UpdateNoteRequest(string? Note);
 

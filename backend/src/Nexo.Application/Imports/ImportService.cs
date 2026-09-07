@@ -424,7 +424,19 @@ public sealed class ImportService(
                 movement.ProviderCode,
                 movement.Amount,
                 movement.Direction);
-            row.SuggestCategory(suggestion?.CategoryId ?? session.FallbackCategoryId(movement.Direction), now);
+
+            if (suggestion is not null)
+            {
+                row.SuggestCategory(
+                    suggestion.CategoryId,
+                    now,
+                    suggestion.RuleSource == "user_rule" ? CategorySource.UserRule : CategorySource.SystemRule,
+                    suggestion.RuleId);
+            }
+            else
+            {
+                row.SuggestCategory(session.FallbackCategoryId(movement.Direction), now, CategorySource.Imported);
+            }
 
             switch (match.MatchType)
             {
@@ -460,6 +472,10 @@ public sealed class ImportService(
         }
 
         db.ImportRows.AddRange(rows);
+
+        // Point 20 ("performance"): one bulk update for every rule this import
+        // actually matched, not one write per row.
+        await categorization.RecordHitsAsync(session, now, cancellationToken);
 
         import.MarkPreviewReady(
             parsed.ParserCode,
@@ -608,7 +624,9 @@ public sealed class ImportService(
                 categoryId: row.SuggestedCategoryId == Guid.Empty ? null : row.SuggestedCategoryId,
                 accountMask: account.Mask,
                 confidence: SourceConfidence.High,
-                importId: import.Id);
+                importId: import.Id,
+                categorySource: row.SuggestedCategorySource,
+                categorizationRuleId: row.SuggestedCategorizationRuleId);
 
             // A probable duplicate is imported but parked for review: never silently
             // dropped, never silently double-counted.

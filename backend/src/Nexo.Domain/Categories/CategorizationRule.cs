@@ -12,7 +12,7 @@ public enum RuleMatchKind
     StartsWith = 1,
 
     /// <summary>Normalized description equals the pattern exactly.</summary>
-    Equals = 2,
+    Exact = 2,
 }
 
 /// <summary>
@@ -71,6 +71,13 @@ public sealed class CategorizationRule : Entity
     public int TimesApplied { get; private set; }
 
     /// <summary>
+    /// "Categorización personal": when this rule last won a movement, independent of
+    /// <see cref="Entity.UpdatedAt"/> (which also changes on a plain retarget/edit
+    /// that never actually matched anything yet).
+    /// </summary>
+    public DateTimeOffset? LastMatchedAt { get; private set; }
+
+    /// <summary>
     /// How many match dimensions this rule pins down. The tiebreaker within a
     /// priority tier: "UBER EATS" (merchant + description, Specificity 3) beats a
     /// plain "UBER" description rule (Specificity 1) for an Uber Eats movement,
@@ -118,37 +125,49 @@ public sealed class CategorizationRule : Entity
     }
 
     /// <summary>
-    /// Description-text learning, kept for completeness. The correction flow
-    /// (TransactionService.UpdateCategoryAsync) uses <see cref="LearnedFromMerchant"/>
-    /// instead as of Entregable 14, since the spec is "reglas por merchant".
+    /// "Categorización personal" (this feature): a personal rule keyed on the
+    /// NORMALIZED DESCRIPTION rather than the merchant guess -- "UBER *TRIP 829173",
+    /// "UBER TRIP HELP.UBER.COM" and "UBER *TRIP 923821" all suggest the same
+    /// pattern ("UBER") via <see cref="TextNormalizer.SuggestRulePattern"/>, so one
+    /// rule covers all three instead of three near-duplicate rules. This is what
+    /// TransactionService.UpdateCategoryAsync creates when the user accepts
+    /// "aplicar también a movimientos similares"; direct rule management
+    /// (CategorizationRuleService, the "Reglas de categorización" screen) uses it too,
+    /// with a caller-chosen <paramref name="matchKind"/>.
     /// </summary>
     public static CategorizationRule LearnedFromCorrection(
         Guid userId,
         string pattern,
         Guid categoryId,
         TransactionDirection? direction,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        RuleMatchKind matchKind = RuleMatchKind.Contains)
     {
         var rule = new CategorizationRule
         {
             UserId = userId,
             Pattern = TextNormalizer.NormalizeForMatching(pattern),
-            MatchKind = RuleMatchKind.Contains,
+            MatchKind = matchKind,
             CategoryId = categoryId,
             Direction = direction,
             Priority = 100,
             IsSystem = false,
         };
         RequireMatchCriterion(rule);
+        RequireSafePattern(rule);
         rule.Stamp(now);
         return rule;
     }
 
     /// <summary>
-    /// Entregable 14: what a manual category correction actually learns -- a
+    /// Entregable 14: what a manual category correction used to always learn -- a
     /// personal rule scoped to this merchant (Nexo's automatic guess, not the
     /// person's own display correction), so the next movement from the same
-    /// merchant is categorised correctly without asking again.
+    /// merchant is categorised correctly without asking again. Still available for
+    /// callers that specifically want a merchant-scoped rule; the description-based
+    /// <see cref="LearnedFromCorrection"/> is now the default for "categorización
+    /// personal" since it is what the normalizer's per-token pattern (e.g. "UBER")
+    /// is built to key on.
     /// </summary>
     public static CategorizationRule LearnedFromMerchant(
         Guid userId,
@@ -169,6 +188,7 @@ public sealed class CategorizationRule : Entity
             IsSystem = false,
         };
         RequireMatchCriterion(rule);
+        RequireSafePattern(rule);
         rule.Stamp(now);
         return rule;
     }
@@ -223,7 +243,7 @@ public sealed class CategorizationRule : Entity
         {
             var matchesPattern = MatchKind switch
             {
-                RuleMatchKind.Equals => string.Equals(normalizedDescription, Pattern, StringComparison.Ordinal),
+                RuleMatchKind.Exact => string.Equals(normalizedDescription, Pattern, StringComparison.Ordinal),
                 RuleMatchKind.StartsWith => normalizedDescription.StartsWith(Pattern, StringComparison.Ordinal),
                 _ => normalizedDescription.Contains(Pattern, StringComparison.Ordinal),
             };
@@ -237,9 +257,11 @@ public sealed class CategorizationRule : Entity
         return true;
     }
 
+    /// <summary>Called once per movement this rule wins, so review screens can show "aplicada N veces".</summary>
     public void RegisterHit(DateTimeOffset now)
     {
         TimesApplied++;
+        LastMatchedAt = now;
         Stamp(now);
     }
 
@@ -252,6 +274,13 @@ public sealed class CategorizationRule : Entity
     public void Deactivate(DateTimeOffset now)
     {
         IsActive = false;
+        Stamp(now);
+    }
+
+    /// <summary>Point 15/17: deactivating never touches history, so re-activating is always safe.</summary>
+    public void Activate(DateTimeOffset now)
+    {
+        IsActive = true;
         Stamp(now);
     }
 
@@ -268,6 +297,30 @@ public sealed class CategorizationRule : Entity
         DomainException.Require(
             rule.Pattern.Length > 0 || rule.MerchantPattern is { Length: > 0 },
             "A categorisation rule needs a description pattern or a merchant to match on.");
+
+    /// <summary>
+    /// Point 18 ("matching seguro"): only enforced for personal rules -- Nexo's own
+    /// seeded <see cref="SystemRule"/> catalog is curated by hand and can use a short,
+    /// deliberate brand code (e.g. "TIA", "CNT") that would otherwise look thin. A
+    /// user's own rule gets no such benefit of the doubt: the backend is the only
+    /// place this is enforced, since mobile-side validation alone is not trustworthy.
+    /// </summary>
+    private static void RequireSafePattern(CategorizationRule rule)
+    {
+        if (rule.Pattern.Length > 0)
+        {
+            DomainException.Require(
+                !TextNormalizer.IsTooGenericRulePattern(rule.Pattern),
+                $"\"{rule.Pattern}\" es un patrón demasiado genérico para una regla. Usa algo más específico del comercio.");
+        }
+
+        if (rule.MerchantPattern is { Length: > 0 })
+        {
+            DomainException.Require(
+                !TextNormalizer.IsTooGenericRulePattern(rule.MerchantPattern),
+                $"\"{rule.MerchantPattern}\" es un patrón demasiado genérico para una regla. Usa algo más específico del comercio.");
+        }
+    }
 
     private static void RequireValidAmountRange(CategorizationRule rule)
     {

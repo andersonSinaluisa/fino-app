@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing, typography } from '../../theme';
@@ -8,12 +8,28 @@ import {
   useCategories,
   useClearInternalTransfer,
   useResolveDuplicate,
+  useRulePreview,
   useSetCategory,
   useSetMerchant,
   useSetNote,
   useTransaction,
 } from '../../hooks/queries';
 import { formatCurrency, formatFullDateTime, maskLabel } from '../../utils/format';
+import type { Category, RulePreview } from '../../types/api';
+
+/**
+ * "Categorización personal" (punto 11): por qué el movimiento tiene la
+ * categoría que tiene. "Manual" ya se ve arriba como el badge "Ajustada por
+ * ti", así que aquí no repite nada; "Imported"/"Uncategorized" (el resultado
+ * sin interés de caer en la categoría genérica) tampoco aportan nada nuevo.
+ */
+const categorySourceLabel: Record<string, string | null> = {
+  Manual: null,
+  UserRule: 'Automática, según una regla creada por ti',
+  SystemRule: 'Automática, según las reglas de Fino',
+  Imported: null,
+  Uncategorized: null,
+};
 
 const sourceLabel: Record<string, string> = {
   Import: 'Importado desde estado de cuenta',
@@ -37,6 +53,7 @@ export default function TransactionDetailScreen() {
   const { data: categories } = useCategories();
 
   const setCategory = useSetCategory(id ?? '');
+  const rulePreview = useRulePreview();
   const setNote = useSetNote(id ?? '');
   const setMerchant = useSetMerchant(id ?? '');
   const clearTransfer = useClearInternalTransfer();
@@ -89,6 +106,78 @@ export default function TransactionDetailScreen() {
   }
 
   const income = data.direction === 'Income';
+
+  /**
+   * "Categorización personal" (puntos 5/6/7): antes de aplicar la categoría
+   * elegida, se pregunta al backend qué patrón usaría y cuántos movimientos
+   * ya guardados coincidirían -- nunca se recategoriza nada sin que la
+   * persona vea el conteo y confirme explícitamente (punto 7, "nunca
+   * ejecutar una actualización masiva sin confirmación explícita").
+   */
+  const chooseCategory = (category: Category) => {
+    if (category.id === data.categoryId) {
+      setEditingCategory(false);
+      return;
+    }
+
+    rulePreview.mutate(
+      { transactionId: data.id, categoryId: category.id },
+      { onSuccess: (preview) => presentScopeChoice(category, preview) },
+    );
+  };
+
+  const applyCategory = (categoryId: string, createRule: boolean, applyToExistingMatches: boolean) => {
+    setCategory.mutate(
+      { categoryId, createRule, applyToExistingMatches },
+      {
+        onSuccess: (detail) => {
+          setEditingCategory(false);
+          if (applyToExistingMatches && detail.recategorizedCount) {
+            Alert.alert(
+              'Movimientos actualizados',
+              `Se actualizaron ${detail.recategorizedCount} movimiento${detail.recategorizedCount === 1 ? '' : 's'} anterior${detail.recategorizedCount === 1 ? '' : 'es'} a "${detail.categoryName ?? ''}".`,
+            );
+          }
+        },
+      },
+    );
+  };
+
+  const presentScopeChoice = (category: Category, preview: RulePreview) => {
+    // Punto 18: un patrón demasiado genérico nunca se ofrece como regla --
+    // solo se cambia este movimiento, sin preguntar nada más.
+    if (preview.isTooGeneric) {
+      applyCategory(category.id, false, false);
+      return;
+    }
+
+    const conflictNote = preview.conflictingRuleId
+      ? ` Ya tienes una regla que categoriza "${preview.pattern}" como ${preview.conflictingCategoryName}; se actualizará para usar ${category.name}.`
+      : '';
+
+    const message =
+      (preview.matchedCount > 0
+        ? `Encontramos ${preview.matchedCount} movimiento${preview.matchedCount === 1 ? '' : 's'} similar${preview.matchedCount === 1 ? '' : 'es'}.`
+        : '¿Cómo quieres aplicar este cambio?') + conflictNote;
+
+    const buttons: { text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }[] = [
+      { text: 'Solo este movimiento', onPress: () => applyCategory(category.id, false, false) },
+      { text: 'Este y futuros movimientos', onPress: () => applyCategory(category.id, true, false) },
+    ];
+
+    if (preview.matchedCount > 0) {
+      buttons.push({
+        text: `Este, anteriores y futuros (${preview.matchedCount})`,
+        onPress: () => applyCategory(category.id, true, true),
+      });
+    }
+
+    buttons.push({ text: 'Cancelar', style: 'cancel' });
+
+    Alert.alert(`Aplicar automáticamente: "${preview.pattern}" → ${category.name}`, message, buttons);
+  };
+
+  const categorySourceHint = categorySourceLabel[data.categorySource];
 
   return (
     <Screen>
@@ -184,15 +273,24 @@ export default function TransactionDetailScreen() {
               <Typo variant="body">{data.categoryName ?? 'Sin categoría'}</Typo>
               {data.categoryManuallySet ? <Badge label="Ajustada por ti" tone="accent" /> : null}
             </View>
+            {/* "Categorización personal" (punto 11): explica de dónde salió la
+               categoría cuando eso aporta algo -- nunca para una corrección
+               manual (ya lo dice el badge de arriba) ni para el resultado sin
+               interés de un fallback sin regla. */}
+            {categorySourceHint ? (
+              <Typo variant="caption" color={colors.textSecondary} style={styles.categorySourceHint}>
+                {categorySourceHint}
+              </Typo>
+            ) : null}
           </Card>
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryList}>
+            {rulePreview.isPending ? <ActivityIndicator color={colors.textSecondary} style={styles.categoryLoading} /> : null}
             {(categories ?? []).map((category) => (
               <Pressable
                 key={category.id}
-                onPress={() => {
-                  setCategory.mutate(category.id, { onSuccess: () => setEditingCategory(false) });
-                }}
+                disabled={rulePreview.isPending || setCategory.isPending}
+                onPress={() => chooseCategory(category)}
                 style={[
                   styles.categoryChip,
                   data.categoryId === category.id ? styles.categoryChipSelected : null,
@@ -352,9 +450,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: spacing.md,
   },
+  categorySourceHint: {
+    marginTop: spacing.xs,
+  },
   categoryList: {
     gap: spacing.sm,
     paddingRight: spacing.lg,
+    alignItems: 'center',
+  },
+  categoryLoading: {
+    marginRight: spacing.sm,
   },
   categoryChip: {
     paddingHorizontal: spacing.lg,

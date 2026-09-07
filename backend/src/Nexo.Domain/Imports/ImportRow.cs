@@ -62,6 +62,16 @@ public sealed class ImportRow : Entity, IUserOwned
 
     public Guid? SuggestedCategoryId { get; private set; }
 
+    /// <summary>
+    /// "Categorización personal": carries why <see cref="SuggestedCategoryId"/> is
+    /// what it is from the preview stage through to confirm, so the resulting
+    /// Transaction is created with the right traceability the first time -- never
+    /// recomputed at confirm time, which could pick up rules created in between.
+    /// </summary>
+    public CategorySource SuggestedCategorySource { get; private set; } = CategorySource.Uncategorized;
+
+    public Guid? SuggestedCategorizationRuleId { get; private set; }
+
     public Guid? CreatedTransactionId { get; private set; }
 
     public string? Error { get; private set; }
@@ -140,9 +150,15 @@ public sealed class ImportRow : Entity, IUserOwned
         Stamp(now);
     }
 
-    public void SuggestCategory(Guid? categoryId, DateTimeOffset now)
+    public void SuggestCategory(
+        Guid? categoryId,
+        DateTimeOffset now,
+        CategorySource source = CategorySource.Uncategorized,
+        Guid? categorizationRuleId = null)
     {
         SuggestedCategoryId = categoryId;
+        SuggestedCategorySource = categoryId is null ? CategorySource.Uncategorized : source;
+        SuggestedCategorizationRuleId = categoryId is null ? null : categorizationRuleId;
         Stamp(now);
     }
 

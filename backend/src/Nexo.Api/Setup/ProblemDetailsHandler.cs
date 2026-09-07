@@ -62,6 +62,13 @@ public sealed class ProblemDetailsHandler(
             problem.Extensions["errors"] = validation.Errors;
         }
 
+        if (exception is RuleConflictException ruleConflict)
+        {
+            problem.Extensions["existingRuleId"] = ruleConflict.ExistingRuleId;
+            problem.Extensions["existingCategoryId"] = ruleConflict.ExistingCategoryId;
+            problem.Extensions["existingCategoryName"] = ruleConflict.ExistingCategoryName;
+        }
+
         return await problemDetails.TryWriteAsync(new ProblemDetailsContext
         {
             HttpContext = httpContext,

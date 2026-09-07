@@ -1,6 +1,11 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type TransactionQuery } from '../services/endpoints';
-import type { AnalyticsPeriodCode, NotificationPreferences } from '../types/api';
+import type {
+  AnalyticsPeriodCode,
+  CreateCategorizationRuleRequest,
+  NotificationPreferences,
+  UpdateCategorizationRuleRequest,
+} from '../types/api';
 
 export const queryKeys = {
   summary: ['summary'] as const,
@@ -19,6 +24,9 @@ export const queryKeys = {
   notifications: ['notifications'] as const,
   sessions: ['auth', 'sessions'] as const,
   activity: ['auth', 'activity'] as const,
+  // "Categorización personal": las reglas propias del usuario ("Reglas de
+  // categorización", punto 15).
+  categorizationRules: ['categorization-rules'] as const,
 };
 
 export function useSummary() {
@@ -73,16 +81,84 @@ export function useTransaction(id: string) {
   return useQuery({ queryKey: queryKeys.transaction(id), queryFn: () => api.transactions.get(id), enabled: !!id });
 }
 
+/**
+ * "Categorización personal" (punto 5/7): `createRule` es el toggle "Aplicar
+ * también a movimientos similares" (true por defecto, como pedía el flujo
+ * anterior) y `applyToExistingMatches` es el paso extra "este, anteriores y
+ * futuros" -- solo se activa cuando la persona lo confirma explícitamente
+ * después de ver el conteo de la vista previa (useRulePreview).
+ */
 export function useSetCategory(transactionId: string) {
   const client = useQueryClient();
 
   return useMutation({
-    mutationFn: (categoryId: string) => api.transactions.setCategory(transactionId, categoryId, true),
+    mutationFn: ({
+      categoryId,
+      createRule = true,
+      applyToExistingMatches = false,
+    }: {
+      categoryId: string;
+      createRule?: boolean;
+      applyToExistingMatches?: boolean;
+    }) => api.transactions.setCategory(transactionId, categoryId, createRule, applyToExistingMatches),
     onSuccess: () => {
-      // A recategorisation changes the breakdown and the insights too.
+      // A recategorisation changes the breakdown and the insights too; when
+      // history was also recategorized, other movements' cards changed too.
       void client.invalidateQueries({ queryKey: queryKeys.transaction(transactionId) });
       void client.invalidateQueries({ queryKey: ['transactions'] });
       void client.invalidateQueries({ queryKey: queryKeys.summary });
+      void client.invalidateQueries({ queryKey: queryKeys.categorizationRules });
+    },
+  });
+}
+
+/** Punto 6/19: "si creo esta regla, ¿qué movimientos coincidirían?", antes de guardar nada. */
+export function useRulePreview() {
+  return useMutation({
+    mutationFn: (request: { transactionId: string; categoryId: string }) => api.categorizationRules.preview(request),
+  });
+}
+
+/** Punto 15: "Reglas de categorización", accesible desde Ajustes. */
+export function useCategorizationRules() {
+  return useQuery({ queryKey: queryKeys.categorizationRules, queryFn: api.categorizationRules.list });
+}
+
+/** Punto 14: crear una regla directamente (fuera del flujo de corrección de un movimiento). */
+export function useCreateCategorizationRule() {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: CreateCategorizationRuleRequest) => api.categorizationRules.create(request),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.categorizationRules });
+    },
+  });
+}
+
+/** Punto 15/16: activar/desactivar, cambiar categoría, y opcionalmente recategorizar el historial. */
+export function useUpdateCategorizationRule() {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, ...request }: { id: string } & UpdateCategorizationRuleRequest) =>
+      api.categorizationRules.update(id, request),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.categorizationRules });
+      void client.invalidateQueries({ queryKey: ['transactions'] });
+      void client.invalidateQueries({ queryKey: queryKeys.summary });
+    },
+  });
+}
+
+/** Punto 17: borrar una regla nunca toca el historial ya categorizado -- solo deja de aplicarse a futuro. */
+export function useDeleteCategorizationRule() {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => api.categorizationRules.remove(id),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.categorizationRules });
     },
   });
 }

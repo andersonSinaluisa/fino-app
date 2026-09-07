@@ -39,6 +39,7 @@ public static class DependencyInjection
         services.AddScoped<IInternalTransferService, InternalTransferService>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ICategorizationEngine, CategorizationEngine>();
+        services.AddScoped<ICategorizationRuleService, CategorizationRuleService>();
         services.AddScoped<IDeduplicationService, DeduplicationService>();
         services.AddScoped<IImportService, ImportService>();
         services.AddScoped<IInsightEngine, InsightEngine>();

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Nexo.Application.Abstractions;
 using Nexo.Application.Accounts;
+using Nexo.Application.Categorization;
 using Nexo.Application.Common;
 using Nexo.Application.Imports.Parsing.Tabular;
 using Nexo.Application.Insights;
@@ -51,7 +52,8 @@ public sealed class TransactionService(
     INexoDbContext db,
     IClock clock,
     IAccountService accounts,
-    IInsightEngine insights) : ITransactionService
+    IInsightEngine insights,
+    ICategorizationRuleService categorizationRules) : ITransactionService
 {
     public async Task<PagedResult<TransactionListItemDto>> QueryAsync(
         Guid userId,
@@ -127,39 +129,68 @@ public sealed class TransactionService(
             transaction.NormalizedDescription,
             now));
 
-        // Learn the correction so the next movement from the same merchant is right
-        // without asking again (Entregable 14: "Correcciones del usuario crean
-        // reglas personales"). Scoped to Nexo's own automatic merchant guess
-        // (transaction.Merchant), never the person's display correction, so the
-        // rule keeps matching the raw signal every future import/email actually
-        // carries. One rule per (user, merchant pattern, direction).
+        // "Categorización personal" (this feature): learn the correction as a
+        // description-pattern rule so the next similar movement is right without
+        // asking again -- mirrors the mobile "aplicar también a movimientos
+        // similares" toggle. Keyed on the NORMALIZED DESCRIPTION's first token
+        // (TextNormalizer.SuggestRulePattern), never the raw bank text, so "UBER
+        // *TRIP 829173", "UBER TRIP HELP.UBER.COM" and "UBER *TRIP 923821" all
+        // become the same rule instead of three near-duplicates (point 1).
+        //
+        // Was merchant-pattern based (LearnedFromMerchant) through Entregable 14;
+        // that path is kept for other callers but this correction flow now uses
+        // the description pattern, since that is the key the spec's preview,
+        // conflict-detection and bulk-recategorize endpoints are all built around.
+        CategorizationRule? rule = null;
+
         if (request.CreateRule)
         {
-            var merchantPattern = TextNormalizer.NormalizeForMatching(transaction.Merchant ?? string.Empty);
-            if (merchantPattern.Length > 0)
-            {
-                var existing = await db.CategorizationRules.FirstOrDefaultAsync(
-                    r => r.UserId == userId && r.MerchantPattern == merchantPattern && r.Direction == transaction.Direction,
-                    cancellationToken);
+            // Point 12: may escalate from "UBER" to "UBER EATS" when the single
+            // token already belongs to a different category's rule for this user
+            // -- see CategorizationRuleService.ResolveRulePatternAsync. Never
+            // touches another user's rules (UserId-scoped throughout).
+            var (pattern, existing) = await categorizationRules.ResolveRulePatternAsync(
+                userId, category.Id, transaction.Description, cancellationToken);
 
+            if (pattern.Length > 0)
+            {
                 if (existing is null)
                 {
-                    db.CategorizationRules.Add(CategorizationRule.LearnedFromMerchant(
-                        userId,
-                        merchantPattern,
-                        category.Id,
-                        transaction.Direction,
-                        now));
+                    rule = CategorizationRule.LearnedFromCorrection(userId, pattern, category.Id, direction: null, now);
+                    db.CategorizationRules.Add(rule);
+                }
+                else if (existing.CategoryId == category.Id)
+                {
+                    rule = existing;
                 }
                 else
                 {
+                    // Escalation could not find a safe, non-conflicting pattern
+                    // (e.g. the two-token pattern is itself too generic, or is
+                    // already taken by yet another category). Retarget rather than
+                    // fail the correction outright -- the person's explicit choice
+                    // for THIS movement always outranks a rule inferred earlier.
                     existing.Retarget(category.Id, now);
+                    rule = existing;
                 }
             }
         }
 
         await db.SaveChangesAsync(cancellationToken);
-        return await MapDetailAsync(userId, transaction, cancellationToken);
+
+        // Point 7 ("recategorizar movimientos anteriores"): only meaningful once a
+        // rule actually exists to apply -- CreateRule=false or a too-generic
+        // pattern silently skips this rather than failing the whole request, since
+        // the person's own category correction above already succeeded regardless.
+        int? recategorizedCount = null;
+        if (request.ApplyToExistingMatches && rule is not null)
+        {
+            recategorizedCount = await categorizationRules.ApplyToExistingTransactionsAsync(
+                userId, rule, excludeTransactionId: transaction.Id, cancellationToken);
+        }
+
+        var detail = await MapDetailAsync(userId, transaction, cancellationToken);
+        return detail with { RecategorizedCount = recategorizedCount };
     }
 
     public async Task<TransactionDetailDto> UpdateNoteAsync(
@@ -577,6 +608,8 @@ public sealed class TransactionService(
             transaction.CategoryId,
             categoryName,
             transaction.CategoryManuallySet,
+            transaction.CategorySource.ToString(),
+            transaction.CategorizationRuleId,
             transaction.ExternalReference,
             transaction.Source.ToString(),
             transaction.SourceConfidence.ToString(),

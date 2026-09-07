@@ -83,6 +83,13 @@ public sealed class TransactionConfiguration : IEntityTypeConfiguration<Transact
         builder.Property(t => t.Fingerprint).HasMaxLength(64).IsRequired();
         builder.Property(t => t.Note).HasMaxLength(500);
 
+        // "Categorización personal": why CategoryId is what it is. No FK on
+        // CategorizationRuleId, same reasoning as PossibleDuplicateOfId/
+        // InternalTransferLinkId below -- deleting a rule must never cascade into
+        // (or be blocked by) historical movements (point 17, "eliminar una regla no
+        // debe modificar transacciones históricas").
+        builder.Property(t => t.CategorySource).HasConversion<string>().HasMaxLength(16).IsRequired();
+
         builder.Ignore(t => t.SignedAmount);
         builder.Ignore(t => t.CountsTowardsBalance);
         builder.Ignore(t => t.EffectiveMerchant);
@@ -105,6 +112,13 @@ public sealed class TransactionConfiguration : IEntityTypeConfiguration<Transact
         builder.HasIndex(t => new { t.UserId, t.CategoryId });
         builder.HasIndex(t => t.ProviderCode);
         builder.HasIndex(t => t.ImportId);
+
+        // "Categorización personal", point 20 ("performance"): the impact-preview
+        // and recategorize-historical-matches queries always start from `UserId`
+        // (never scan other users' movements) and then filter on the normalized
+        // description -- this index keeps that first step an index range scan
+        // instead of a sequential scan over the whole table.
+        builder.HasIndex(t => new { t.UserId, t.NormalizedDescription });
 
         builder.HasOne<User>()
             .WithMany()

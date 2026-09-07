@@ -6,6 +6,8 @@ import type {
   AppNotification,
   AuthResult,
   Category,
+  CategorizationRule,
+  CreateCategorizationRuleRequest,
   EmailConnection,
   HomeSummary,
   ImportPreview,
@@ -17,10 +19,13 @@ import type {
   NotificationPreferences,
   Paged,
   Provider,
+  RulePreview,
+  RulePreviewRequest,
   SecurityEvent,
   Session,
   TransactionDetail,
   TransactionListItem,
+  UpdateCategorizationRuleRequest,
 } from '../types/api';
 
 export interface TransactionQuery {
@@ -130,10 +135,14 @@ export const api = {
 
     get: (id: string) => request<TransactionDetail>(`/api/v1/transactions/${id}`),
 
-    setCategory: (id: string, categoryId: string, createRule = true) =>
+    // "Categorización personal": createRule refleja el toggle "Aplicar
+    // también a movimientos similares" (punto 5); applyToExistingMatches es
+    // el paso extra "este, anteriores y futuros" (punto 7) -- nunca se activa
+    // sin que la persona lo pida explícitamente.
+    setCategory: (id: string, categoryId: string, createRule = true, applyToExistingMatches = false) =>
       request<TransactionDetail>(`/api/v1/transactions/${id}/category`, {
         method: 'PUT',
-        body: { categoryId, createRule },
+        body: { categoryId, createRule, applyToExistingMatches },
       }),
 
     setNote: (id: string, note: string | null) =>
@@ -175,6 +184,25 @@ export const api = {
   },
 
   categories: () => request<Category[]>('/api/v1/categories'),
+
+  // "Categorización personal": administración directa de las reglas propias
+  // del usuario (pantalla "Reglas de categorización", punto 15) y la
+  // vista previa de impacto que usa tanto esa pantalla como el flujo de
+  // "aplicar también a movimientos similares" (punto 6/19).
+  categorizationRules: {
+    list: () => request<CategorizationRule[]>('/api/v1/categorization-rules'),
+
+    create: (body: CreateCategorizationRuleRequest) =>
+      request<CategorizationRule>('/api/v1/categorization-rules', { method: 'POST', body }),
+
+    update: (id: string, body: UpdateCategorizationRuleRequest) =>
+      request<CategorizationRule>(`/api/v1/categorization-rules/${id}`, { method: 'PUT', body }),
+
+    remove: (id: string) => request<void>(`/api/v1/categorization-rules/${id}`, { method: 'DELETE' }),
+
+    preview: (body: RulePreviewRequest) =>
+      request<RulePreview>('/api/v1/categorization-rules/preview', { method: 'POST', body }),
+  },
 
   analytics: {
     dashboard: (query: { period?: AnalyticsPeriodCode; from?: string; to?: string; accountId?: string } = {}) =>

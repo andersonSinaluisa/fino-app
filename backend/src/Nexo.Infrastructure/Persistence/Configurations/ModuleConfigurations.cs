@@ -58,6 +58,11 @@ public sealed class CategorizationRuleConfiguration : IEntityTypeConfiguration<C
         builder.HasIndex(r => new { r.UserId, r.IsActive, r.Priority });
         builder.HasIndex(r => new { r.UserId, r.MerchantPattern });
 
+        // "Categorización personal": lets CategorizationRuleService look up "does
+        // this user already have a rule for this exact pattern" (point 13, conflict
+        // detection) without a table scan.
+        builder.HasIndex(r => new { r.UserId, r.Pattern });
+
         builder.HasOne<Category>()
             .WithMany()
             .HasForeignKey(r => r.CategoryId)
@@ -126,6 +131,7 @@ public sealed class ImportRowConfiguration : IEntityTypeConfiguration<ImportRow>
         builder.Property(r => r.Status).HasConversion<string>().HasMaxLength(24).IsRequired();
         builder.Property(r => r.MatchType).HasConversion<string>().HasMaxLength(24).IsRequired();
         builder.Property(r => r.Direction).HasConversion<string>().HasMaxLength(16);
+        builder.Property(r => r.SuggestedCategorySource).HasConversion<string>().HasMaxLength(16).IsRequired();
         builder.Property(r => r.Amount).HasPrecision(18, 2);
         builder.Property(r => r.Description).HasMaxLength(400);
         builder.Property(r => r.ExternalReference).HasMaxLength(64);

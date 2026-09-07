@@ -75,6 +75,7 @@ export default function RootLayout() {
           <Stack.Screen name="sesiones/index" options={{ presentation: 'card' }} />
           <Stack.Screen name="actividad/index" options={{ presentation: 'card' }} />
           <Stack.Screen name="compartir" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="reglas-categorizacion/index" options={{ presentation: 'modal' }} />
         </Stack>
       </QueryClientProvider>
     </SafeAreaProvider>

@@ -53,6 +53,16 @@ public sealed class Transaction : Entity, IUserOwned
     /// <summary>True once the user has corrected the category by hand; rules must not overwrite it.</summary>
     public bool CategoryManuallySet { get; private set; }
 
+    /// <summary>
+    /// "Categorización personal": traceability for why <see cref="CategoryId"/> is
+    /// what it is -- a manual choice, a personal rule, a system rule, the generic
+    /// fallback bucket, or nothing at all yet.
+    /// </summary>
+    public CategorySource CategorySource { get; private set; } = CategorySource.Uncategorized;
+
+    /// <summary>Set only when <see cref="CategorySource"/> is <see cref="Transactions.CategorySource.UserRule"/> or <see cref="Transactions.CategorySource.SystemRule"/>.</summary>
+    public Guid? CategorizationRuleId { get; private set; }
+
     public string? AccountMask { get; private set; }
 
     public TransactionSource Source { get; private set; }
@@ -108,7 +118,9 @@ public sealed class Transaction : Entity, IUserOwned
         SourceConfidence confidence = SourceConfidence.High,
         TransactionStatus status = TransactionStatus.Posted,
         Guid? importId = null,
-        Guid? emailConnectionId = null)
+        Guid? emailConnectionId = null,
+        CategorySource categorySource = CategorySource.Uncategorized,
+        Guid? categorizationRuleId = null)
     {
         var magnitude = MoneyMath.Abs(amount);
         if (magnitude == 0m)
@@ -131,6 +143,8 @@ public sealed class Transaction : Entity, IUserOwned
             NormalizedDescription = TextNormalizer.NormalizeForMatching(cleanDescription),
             Merchant = merchant ?? TextNormalizer.ExtractMerchant(cleanDescription),
             CategoryId = categoryId,
+            CategorySource = categoryId is null ? CategorySource.Uncategorized : categorySource,
+            CategorizationRuleId = categoryId is null ? null : categorizationRuleId,
             AccountMask = accountMask,
             Source = source,
             SourceConfidence = confidence,
@@ -166,7 +180,11 @@ public sealed class Transaction : Entity, IUserOwned
     }
 
     /// <summary>Applied by the rules engine. Never overrides a manual choice.</summary>
-    public bool ApplyAutomaticCategory(Guid categoryId, DateTimeOffset now)
+    public bool ApplyAutomaticCategory(
+        Guid categoryId,
+        DateTimeOffset now,
+        CategorySource source = CategorySource.Imported,
+        Guid? categorizationRuleId = null)
     {
         if (CategoryManuallySet)
         {
@@ -174,6 +192,8 @@ public sealed class Transaction : Entity, IUserOwned
         }
 
         CategoryId = categoryId;
+        CategorySource = source;
+        CategorizationRuleId = categorizationRuleId;
         Stamp(now);
         return true;
     }
@@ -182,6 +202,8 @@ public sealed class Transaction : Entity, IUserOwned
     {
         CategoryId = categoryId;
         CategoryManuallySet = true;
+        CategorySource = CategorySource.Manual;
+        CategorizationRuleId = null;
         Stamp(now);
     }
 

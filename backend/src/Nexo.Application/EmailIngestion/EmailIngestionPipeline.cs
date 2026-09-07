@@ -169,6 +169,9 @@ public sealed class EmailIngestionPipeline(
             movement.Amount,
             movement.Direction);
         var categoryId = suggestion?.CategoryId ?? session.FallbackCategoryId(movement.Direction);
+        var categorySource = suggestion is null
+            ? CategorySource.Imported
+            : suggestion.RuleSource == "user_rule" ? CategorySource.UserRule : CategorySource.SystemRule;
 
         var transaction = Transaction.Create(
             userId,
@@ -188,7 +191,9 @@ public sealed class EmailIngestionPipeline(
             parsed.Confidence,
             // Email tells us something happened; the statement confirms it later.
             TransactionStatus.Pending,
-            emailConnectionId: emailConnectionId);
+            emailConnectionId: emailConnectionId,
+            categorySource: categorySource,
+            categorizationRuleId: suggestion?.RuleId);
 
         if (duplicate.IsProbable && duplicate.Match is not null)
         {
@@ -196,6 +201,10 @@ public sealed class EmailIngestionPipeline(
         }
 
         db.Transactions.Add(transaction);
+
+        // Point 20 ("performance"): one bulk update for the (at most one) rule this
+        // single-movement session matched.
+        await categorization.RecordHitsAsync(session, now, cancellationToken);
 
         // NeedsReview rows are excluded from the balance everywhere else, so adding
         // them here would double-count until the next recalculation.

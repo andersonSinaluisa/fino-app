@@ -55,3 +55,28 @@ public enum DuplicateMatchType
     ProbableMatch = 1,
     ExactMatch = 2,
 }
+
+/// <summary>
+/// "Categorización personal": why a movement ended up with the category it has,
+/// so the UI can explain it ("Asignada automáticamente según una regla creada por
+/// ti") instead of leaving the person to guess. Independent of <see cref="TransactionSource"/>
+/// -- a movement's channel (import/email/api/webhook) and why it has its category
+/// are two different questions.
+/// </summary>
+public enum CategorySource
+{
+    /// <summary>Nobody has categorised this movement yet (no rule matched and no fallback applied).</summary>
+    Uncategorized = 0,
+
+    /// <summary>The category came from a rule that has no owner -- Nexo's own seeded catalog.</summary>
+    SystemRule = 1,
+
+    /// <summary>The category came from a rule this same user created (directly or learned from a correction).</summary>
+    UserRule = 2,
+
+    /// <summary>No rule matched; the generic fallback bucket (Otros/Ingresos) was used.</summary>
+    Imported = 3,
+
+    /// <summary>The person picked the category by hand. Rules never overwrite this.</summary>
+    Manual = 4,
+}

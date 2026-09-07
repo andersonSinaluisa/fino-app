@@ -38,6 +38,24 @@ public sealed class ConflictException(string message)
     public override int StatusCode => 409;
 }
 
+/// <summary>
+/// "Categorización personal", point 13 ("reglas contradictorias"): creating a rule
+/// whose pattern already belongs to a different category for this user is never a
+/// silent second rule -- the client gets back exactly what already exists so it can
+/// offer "Actualizar regla existente" or "Cancelar" instead of guessing.
+/// </summary>
+public sealed class RuleConflictException(string message, Guid existingRuleId, Guid existingCategoryId, string existingCategoryName)
+    : AppException("rule_conflict", message)
+{
+    public override int StatusCode => 409;
+
+    public Guid ExistingRuleId { get; } = existingRuleId;
+
+    public Guid ExistingCategoryId { get; } = existingCategoryId;
+
+    public string ExistingCategoryName { get; } = existingCategoryName;
+}
+
 public sealed class UnauthorizedException(string message = "Invalid credentials.")
     : AppException("unauthorized", message)
 {

@@ -263,6 +263,7 @@ app.MapTransactionEndpoints();
 app.MapAnalyticsEndpoints();
 app.MapInternalTransferEndpoints();
 app.MapImportEndpoints();
+app.MapCategorizationRuleEndpoints();
 app.MapProfileEndpoints();
 app.MapEmailIngestionEndpoints();
 
