@@ -6,9 +6,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing, typography } from '../../theme';
 import { Chip, EmptyState, SkeletonCard, Typo } from '../../components/ui';
 import { DayGroupSection } from '../../components/transactions/DayGroup';
+import { TransferSuggestionCard } from '../../components/transactions/TransferSuggestionCard';
 import { useAccounts, useCategories, useTransactions } from '../../hooks/queries';
 import { usePreferencesStore } from '../../store/preferencesStore';
-import { groupByDay } from '../../utils/format';
+import { groupByDay, parseAmountFilter } from '../../utils/format';
 import type { TransactionDirection } from '../../types/api';
 
 type DirectionFilter = 'all' | TransactionDirection;
@@ -22,9 +23,29 @@ export default function TransactionsScreen() {
   const [direction, setDirection] = useState<DirectionFilter>('all');
   const [accountId, setAccountId] = useState<string | undefined>();
   const [categoryId, setCategoryId] = useState<string | undefined>();
+  const [providerCode, setProviderCode] = useState<string | undefined>();
+  const [amountFilterOpen, setAmountFilterOpen] = useState(false);
+  const [minAmountText, setMinAmountText] = useState('');
+  const [maxAmountText, setMaxAmountText] = useState('');
 
   const { data: accounts } = useAccounts();
   const { data: categories } = useCategories();
+
+  // Entregable 12: chips de institución, solo cuando la persona tiene cuentas
+  // en más de un banco -- para un solo banco el filtro no aporta nada.
+  const providers = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const account of accounts ?? []) {
+      if (!seen.has(account.providerCode)) {
+        seen.set(account.providerCode, account.providerName);
+      }
+    }
+    return Array.from(seen, ([code, name]) => ({ code, name }));
+  }, [accounts]);
+
+  const minAmount = useMemo(() => parseAmountFilter(minAmountText), [minAmountText]);
+  const maxAmount = useMemo(() => parseAmountFilter(maxAmountText), [maxAmountText]);
+  const amountFilterActive = minAmount !== undefined || maxAmount !== undefined;
 
   const query = useMemo(
     () => ({
@@ -32,8 +53,11 @@ export default function TransactionsScreen() {
       direction: direction === 'all' ? undefined : direction,
       accountId,
       categoryId,
+      providerCode,
+      minAmount,
+      maxAmount,
     }),
-    [search, direction, accountId, categoryId],
+    [search, direction, accountId, categoryId, providerCode, minAmount, maxAmount],
   );
 
   const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage, refetch, isRefetching } =
@@ -51,6 +75,8 @@ export default function TransactionsScreen() {
           {total === 1 ? '1 movimiento' : `${total} movimientos`}
         </Typo>
       </View>
+
+      <TransferSuggestionCard />
 
       <View style={styles.searchRow}>
         <Ionicons name="search" size={17} color={colors.textSecondary} />
@@ -74,11 +100,19 @@ export default function TransactionsScreen() {
         contentContainerStyle={styles.filters}
         style={styles.filtersRow}
       >
-        <Chip label="Todos" selected={direction === 'all' && !accountId && !categoryId} onPress={() => {
-          setDirection('all');
-          setAccountId(undefined);
-          setCategoryId(undefined);
-        }} />
+        <Chip
+          label="Todos"
+          selected={direction === 'all' && !accountId && !categoryId && !providerCode && !amountFilterActive}
+          onPress={() => {
+            setDirection('all');
+            setAccountId(undefined);
+            setCategoryId(undefined);
+            setProviderCode(undefined);
+            setMinAmountText('');
+            setMaxAmountText('');
+            setAmountFilterOpen(false);
+          }}
+        />
         <Chip label="Ingresos" selected={direction === 'Income'} onPress={() => setDirection(direction === 'Income' ? 'all' : 'Income')} />
         <Chip label="Gastos" selected={direction === 'Expense'} onPress={() => setDirection(direction === 'Expense' ? 'all' : 'Expense')} />
 
@@ -99,7 +133,48 @@ export default function TransactionsScreen() {
             onPress={() => setCategoryId(categoryId === category.id ? undefined : category.id)}
           />
         ))}
+
+        {providers.length > 1
+          ? providers.map((provider) => (
+              <Chip
+                key={provider.code}
+                label={provider.name}
+                selected={providerCode === provider.code}
+                onPress={() => setProviderCode(providerCode === provider.code ? undefined : provider.code)}
+              />
+            ))
+          : null}
+
+        <Chip
+          label={amountFilterActive ? 'Monto •' : 'Monto'}
+          selected={amountFilterOpen || amountFilterActive}
+          onPress={() => setAmountFilterOpen((open) => !open)}
+        />
       </ScrollView>
+
+      {amountFilterOpen ? (
+        <View style={styles.amountRow}>
+          <TextInput
+            value={minAmountText}
+            onChangeText={setMinAmountText}
+            placeholder="Mínimo"
+            placeholderTextColor={colors.textSecondary}
+            keyboardType="decimal-pad"
+            style={styles.amountInput}
+          />
+          <Typo variant="caption" color={colors.textSecondary}>
+            a
+          </Typo>
+          <TextInput
+            value={maxAmountText}
+            onChangeText={setMaxAmountText}
+            placeholder="Máximo"
+            placeholderTextColor={colors.textSecondary}
+            keyboardType="decimal-pad"
+            style={styles.amountInput}
+          />
+        </View>
+      ) : null}
 
       {isLoading ? (
         <View style={styles.loading}>
@@ -180,6 +255,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     gap: spacing.sm,
     alignItems: 'center',
+  },
+  amountRow: {
+    marginTop: spacing.sm,
+    marginHorizontal: spacing.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  amountInput: {
+    flex: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    color: colors.text,
+    fontSize: typography.body.fontSize,
+    fontWeight: '500',
   },
   list: {
     paddingHorizontal: spacing.xl,

@@ -1,27 +1,39 @@
 {
   "expo": {
-    "name": "Nexo",
-    "slug": "nexo",
+    "name": "Fino",
+    "slug": "fino",
     "version": "0.1.0",
     "orientation": "portrait",
-    "scheme": "nexo",
+    "scheme": "fino",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
+    "icon": "./assets/icon.png",
     "splash": {
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#F5F3ED"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "app.nexo.mobile"
+      "bundleIdentifier": "app.fino.mobile",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
-      "package": "app.nexo.mobile",
+      "package": "app.fino.mobile",
       "adaptiveIcon": {
-        "backgroundColor": "#F5F3ED"
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router",
@@ -38,8 +50,9 @@
     },
     "extra": {
       "apiBaseUrl": "http://localhost:5080",
+      "router": {},
       "eas": {
-        "projectId": "00000000-0000-0000-0000-000000000000"
+        "projectId": "50de163e-d814-4e8f-8105-8463c2c26cda"
       }
     }
   }

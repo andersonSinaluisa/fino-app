@@ -30,6 +30,15 @@ public sealed class RefreshToken : Entity, IUserOwned
 
     public string? CreatedFromIpHash { get; private set; }
 
+    /// <summary>
+    /// Entregable 19 ("Sesiones y dispositivos"): stored alongside DeviceLabel so
+    /// the session list has something to show even for a login made before the
+    /// client sent X-Device-Label, or from a client that never will (a browser
+    /// hitting the API directly). Already flowed into the audit log before this;
+    /// this is the first place it is kept on the row itself.
+    /// </summary>
+    public string? UserAgent { get; private set; }
+
     public bool IsActive(DateTimeOffset now) => RevokedAt is null && ExpiresAt > now;
 
     public static RefreshToken Issue(
@@ -38,7 +47,8 @@ public sealed class RefreshToken : Entity, IUserOwned
         DateTimeOffset expiresAt,
         DateTimeOffset now,
         string? deviceLabel = null,
-        string? createdFromIpHash = null)
+        string? createdFromIpHash = null,
+        string? userAgent = null)
     {
         var token = new RefreshToken
         {
@@ -47,6 +57,7 @@ public sealed class RefreshToken : Entity, IUserOwned
             ExpiresAt = expiresAt,
             DeviceLabel = deviceLabel,
             CreatedFromIpHash = createdFromIpHash,
+            UserAgent = userAgent,
         };
         token.Stamp(now);
         return token;

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Nexo.Application.Abstractions;
@@ -21,12 +22,20 @@ public sealed record RegisterDeviceRequest(
     string? DeviceName,
     string? AppVersion);
 
+/// <summary>
+/// Entregable 17: one toggle per spec category (Movimientos, Ingresos, Insights,
+/// Seguridad, Recordatorios), plus the two device-level switches that predate
+/// this entregable and are not part of any category (PushEnabled turns push off
+/// entirely; ShowAmountsInPreview is Entregable 18's "ocultar montos en previews").
+/// </summary>
 public sealed record NotificationPreferencesDto(
     bool PushEnabled,
     bool ShowAmountsInPreview,
-    bool NotifyOnNewTransaction,
-    bool NotifyOnImportFinished,
-    bool NotifyOnWeeklySummary);
+    bool NotifyOnMovements,
+    bool NotifyOnIncome,
+    bool NotifyOnInsights,
+    bool NotifyOnSecurity,
+    bool NotifyOnReminders);
 
 public interface INotificationService
 {
@@ -37,6 +46,14 @@ public interface INotificationService
     Task<NotificationPreferencesDto> RegisterDeviceAsync(Guid userId, RegisterDeviceRequest request, CancellationToken cancellationToken);
 
     Task<NotificationPreferencesDto> UpdatePreferencesAsync(Guid userId, string expoPushToken, NotificationPreferencesDto preferences, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Entregable 18: called on logout so a shared device stops receiving a
+    /// former session's push after the person signs out of it. Idempotent by
+    /// design at the call site (best-effort, errors swallowed) but still 404s
+    /// here like every other per-user lookup, for the same reason the others do.
+    /// </summary>
+    Task UnregisterDeviceAsync(Guid userId, string expoPushToken, CancellationToken cancellationToken);
 }
 
 public sealed class NotificationService(INexoDbContext db, IClock clock) : INotificationService
@@ -107,21 +124,35 @@ public sealed class NotificationService(INexoDbContext db, IClock clock) : INoti
         device.UpdatePreferences(
             preferences.PushEnabled,
             preferences.ShowAmountsInPreview,
-            preferences.NotifyOnNewTransaction,
-            preferences.NotifyOnImportFinished,
-            preferences.NotifyOnWeeklySummary,
+            preferences.NotifyOnMovements,
+            preferences.NotifyOnIncome,
+            preferences.NotifyOnInsights,
+            preferences.NotifyOnSecurity,
+            preferences.NotifyOnReminders,
             clock.UtcNow);
 
         await db.SaveChangesAsync(cancellationToken);
         return Map(device);
     }
 
+    public async Task UnregisterDeviceAsync(Guid userId, string expoPushToken, CancellationToken cancellationToken)
+    {
+        var device = await db.Devices
+            .FirstOrDefaultAsync(d => d.UserId == userId && d.ExpoPushToken == expoPushToken, cancellationToken)
+            ?? throw new NotFoundException("Device", expoPushToken);
+
+        db.Devices.Remove(device);
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     private static NotificationPreferencesDto Map(Device device) => new(
         device.PushEnabled,
         device.ShowAmountsInPreview,
-        device.NotifyOnNewTransaction,
-        device.NotifyOnImportFinished,
-        device.NotifyOnWeeklySummary);
+        device.NotifyOnMovements,
+        device.NotifyOnIncome,
+        device.NotifyOnInsights,
+        device.NotifyOnSecurity,
+        device.NotifyOnReminders);
 }
 
 /// <summary>
@@ -157,11 +188,7 @@ public sealed class NotificationDispatcher(
                 ? notification.Body
                 : "Abre Nexo para ver el detalle.";
 
-            messages.Add(new PushMessage(
-                device.ExpoPushToken,
-                notification.Title,
-                body,
-                new Dictionary<string, string> { ["notificationId"] = notification.Id.ToString() }));
+            messages.Add(new PushMessage(device.ExpoPushToken, notification.Title, body, BuildPushData(notification)));
         }
 
         if (messages.Count == 0)
@@ -171,10 +198,31 @@ public sealed class NotificationDispatcher(
 
         try
         {
-            var sent = await push.SendAsync(messages, cancellationToken);
-            if (sent > 0)
+            var result = await push.SendAsync(messages, cancellationToken);
+            var changed = false;
+
+            if (result.SentCount > 0)
             {
                 notification.MarkPushed(clock.UtcNow);
+                changed = true;
+            }
+
+            // Entregable 18: a token Expo reports as DeviceNotRegistered will
+            // never succeed again -- keeping the row would mean paying for a
+            // doomed push on every future notification for the life of the user.
+            if (result.InvalidTokens.Count > 0)
+            {
+                var stale = devices.Where(d => result.InvalidTokens.Contains(d.ExpoPushToken)).Select(d => d.Id).ToHashSet();
+                if (stale.Count > 0)
+                {
+                    var tracked = await db.Devices.Where(d => stale.Contains(d.Id)).ToListAsync(cancellationToken);
+                    db.Devices.RemoveRange(tracked);
+                    changed = true;
+                }
+            }
+
+            if (changed)
+            {
                 await db.SaveChangesAsync(cancellationToken);
             }
         }
@@ -185,11 +233,57 @@ public sealed class NotificationDispatcher(
         }
     }
 
+    /// <summary>
+    /// Entregable 18: `notificationId` always rides along so the app can mark it
+    /// read on tap; when the notification also carries a small payload (today
+    /// only `{"transactionId": "..."}`, set by EmailIngestionPipeline) its keys
+    /// come along too, so the app can deep-link straight to that movement
+    /// instead of just opening the notification list. A payload that fails to
+    /// parse is dropped silently -- a broken deep link is not worth losing the
+    /// push over.
+    /// </summary>
+    private static IReadOnlyDictionary<string, string> BuildPushData(Notification notification)
+    {
+        var data = new Dictionary<string, string> { ["notificationId"] = notification.Id.ToString() };
+
+        if (string.IsNullOrWhiteSpace(notification.Payload))
+        {
+            return data;
+        }
+
+        try
+        {
+            var parsed = JsonSerializer.Deserialize<Dictionary<string, string>>(notification.Payload);
+            if (parsed is not null)
+            {
+                foreach (var (key, value) in parsed)
+                {
+                    data[key] = value;
+                }
+            }
+        }
+        catch (JsonException)
+        {
+            // Malformed payload: keep the push, drop the deep-link data.
+        }
+
+        return data;
+    }
+
+    /// <summary>
+    /// Entregable 17: every case is listed explicitly and the compiler warns
+    /// (CS8509) if a future <see cref="NotificationType"/> value is added without
+    /// updating this map -- a silent "always push" default (the old behaviour)
+    /// is exactly how SecurityAlert went ungated for so long.
+    /// </summary>
     private static bool ShouldNotify(Device device, NotificationType type) => type switch
     {
-        NotificationType.TransactionDetected => device.NotifyOnNewTransaction,
-        NotificationType.ImportCompleted => device.NotifyOnImportFinished,
-        NotificationType.WeeklySummary => device.NotifyOnWeeklySummary,
-        _ => true,
+        NotificationType.ExpenseDetected => device.NotifyOnMovements,
+        NotificationType.ImportCompleted => device.NotifyOnMovements,
+        NotificationType.IncomeDetected => device.NotifyOnIncome,
+        NotificationType.InsightReady => device.NotifyOnInsights,
+        NotificationType.SecurityAlert => device.NotifyOnSecurity,
+        NotificationType.WeeklySummary => device.NotifyOnReminders,
+        NotificationType.AccountNeedsUpdate => device.NotifyOnReminders,
     };
 }

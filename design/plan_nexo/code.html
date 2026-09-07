@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+
+<html lang="es"><head><meta charset="utf-8"/><meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/><link href="https://fonts.googleapis.com" rel="preconnect"/><link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Plus+Jakarta+Sans:wght@500;600;700&amp;display=swap" rel="stylesheet"/><link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/><script src="https://cdn.tailwindcss.com"></script><script id="tailwind-config">tailwind.config = { darkMode: "class", theme: { extend: { "colors": { "on-primary-container": "#868582", "on-tertiary-fixed-variant": "#005139", "on-surface-variant": "#464741", "tertiary-container": "#002216", "on-error-container": "#93000a", "outline-variant": "#c7c7bf", "surface-variant": "#e4e2dd", "on-primary": "#ffffff", "secondary-container": "#c6f26a", "inverse-surface": "#30312d", "tertiary-fixed-dim": "#8ad6b3", "secondary-fixed": "#c6f26a", "tertiary-fixed": "#a6f2ce", "on-secondary-container": "#506e00", "surface-container-low": "#f5f3ed", "on-secondary": "#ffffff", "secondary-fixed-dim": "#abd551", "outline": "#777771", "surface-dim": "#dcdad4", "on-tertiary-fixed": "#002115", "on-background": "#1b1c18", "surface-container-highest": "#e4e2dd", "primary-fixed": "#e5e2de", "surface": "#fbf9f3", "on-error": "#ffffff", "surface-container-high": "#eae8e2", "on-surface": "#1b1c18", "error-container": "#ffdad6", "primary-container": "#1d1d1b", "on-primary-fixed-variant": "#474744", "on-tertiary-container": "#489273", "inverse-on-surface": "#f3f1eb", "primary-fixed-dim": "#c8c6c3", "surface-container": "#f0eee8", "on-tertiary": "#ffffff", "surface-bright": "#fbf9f3", "background": "#fbf9f3", "secondary": "#4b6700", "primary": "#020302", "on-secondary-fixed": "#141f00", "surface-container-lowest": "#ffffff", "on-secondary-fixed-variant": "#374e00", "surface-tint": "#5f5e5c", "error": "#ba1a1a", "inverse-primary": "#c8c6c3", "on-primary-fixed": "#1c1c1a", "tertiary": "#000301" }, "borderRadius": { "DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px" }, "spacing": { "gutter-mobile": "1rem", "space-xl": "1.5rem", "max-width-mobile": "24.375rem", "space-md": "1rem", "space-xs": "0.5rem", "space-2xs": "0.25rem", "space-lg": "1.25rem", "space-sm": "0.75rem", "margin-mobile": "1.25rem", "space-3xl": "2.5rem", "space-2xl": "2rem" }, "fontFamily": { "label-md": ["Plus Jakarta Sans"], "body-sm": ["Inter"], "body-lg": ["Inter"], "body-md": ["Inter"], "currency-display": ["Plus Jakarta Sans"], "headline-md": ["Plus Jakarta Sans"], "headline-lg": ["Plus Jakarta Sans"], "title-md": ["Plus Jakarta Sans"], "headline-sm": ["Plus Jakarta Sans"], "display": ["Plus Jakarta Sans"], "label-lg": ["Plus Jakarta Sans"] }, "fontSize": { "label-md": ["12px", { "lineHeight": "16px", "letterSpacing": "0.02em", "fontWeight": "600" }], "body-sm": ["12px", { "lineHeight": "16px", "letterSpacing": "0em", "fontWeight": "400" }], "body-lg": ["16px", { "lineHeight": "24px", "letterSpacing": "-0.011em", "fontWeight": "400" }], "body-md": ["14px", { "lineHeight": "20px", "letterSpacing": "-0.006em", "fontWeight": "400" }], "currency-display": ["36px", { "lineHeight": "42px", "letterSpacing": "-0.03em", "fontWeight": "700" }], "headline-md": ["24px", { "lineHeight": "30px", "letterSpacing": "-0.02em", "fontWeight": "600" }], "headline-lg": ["32px", { "lineHeight": "38px", "letterSpacing": "-0.025em", "fontWeight": "700" }], "title-md": ["17px", { "lineHeight": "22px", "letterSpacing": "-0.01em", "fontWeight": "600" }], "headline-sm": ["20px", { "lineHeight": "26px", "letterSpacing": "-0.015em", "fontWeight": "600" }], "display": ["40px", { "lineHeight": "48px", "letterSpacing": "-0.03em", "fontWeight": "700" }], "label-lg": ["14px", { "lineHeight": "18px", "letterSpacing": "0.01em", "fontWeight": "600" }] } } } }</script><style>@layer base{html,body{width:100%;margin:0;padding:0;}body{overscroll-behavior-y:none;-webkit-tap-highlight-color:transparent;}.pb-safe{padding-bottom:env(safe-area-inset-bottom,0px);}.pt-safe{padding-top:env(safe-area-inset-top,0px);}main>:first-child{margin-top:0!important;}main>:last-child{margin-bottom:0!important;}}::-webkit-scrollbar{display:none;}</style></head><body class="bg-surface-container-low text-on-surface min-h-screen flex flex-col font-body-md"><header class="fixed top-0 inset-x-0 z-50 bg-surface-container-low/85 backdrop-blur-xl pt-safe shadow-[0_1px_8px_rgba(0,0,0,0.03)]"><div class="h-14 px-margin-mobile flex items-center justify-between"><div class="flex items-center gap-space-xs"><img alt="Nexo Logo" class="h-8 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1UloyYZhhYnPme7McdxZUBXmP6ar80QTtcEGEn47pRaKsFmsZYknHmhDNeD75LRtbRw5oTsqnLRzUaTcTbYGhZbDvTBGWiY6EpF6gBOeDO086tdCb74_Sm9LNWyjQkvZou_HPQFQDapIBFXY1CkOKg9Br1H3KlzVPu9OUDTELOfOkptDDsFNikmKVdKO6X9cozrW82riCaUyGChH94o1IW6stXVxH7TJDqZtpMtgAdLnH4Xbt_cSowxR1Id"/><span class="font-title-md text-title-md text-on-surface font-semibold tracking-tight">Nexo</span></div><div class="flex items-center gap-space-xs"><span class="font-label-md text-label-md text-on-surface-variant hidden sm:inline-block">Cuentas</span><button aria-label="Perfil de usuario" class="w-11 h-11 flex items-center justify-center rounded-full hover:bg-surface-container-high transition-colors" type="button"><img alt="Profile" class="w-8 h-8 rounded-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD7td6YtIPcmzQkr8278xvFDhu-E3KcE0XfkFQqJktsx4Uq8jKmSrsLEg_4lI7_D44KAxdBoeV9jqp6mD6a1hxQRORnTeE_jOzt2gEdA5MOPZ0IowIOTCBI_5r_SPottMT-qXMXXErtu8jYtEEqCw_SiIEsYLQzQlFD8ZMeRT6V4zRvM3Q9W4aS8b0Mw3qxljQwEs8HN2thf07BmYES0Ve22A4PXmBiMmSTu1nNu4Fm3evxZGbvyrYd-Q"/></button></div></div></header><main class="flex-1 flex flex-col relative w-full pt-14 pb-28 bg-surface-container-low"><div class="flex flex-col w-full">
+<div class="px-margin-mobile flex flex-col gap-space-xl max-w-max-width-mobile mx-auto w-full pt-space-md">
+<!-- 1. Cabecera y Contexto Temporal -->
+<header class="flex flex-col gap-space-xs">
+<div class="inline-flex items-center gap-1.5 self-start px-space-sm py-1 rounded-full bg-surface-container text-on-surface-variant font-label-md text-label-md">
+<span class="material-symbols-outlined text-secondary text-[16px]">psychology</span>
+<span>Estimación inteligente de Nexo</span>
+</div>
+<div class="flex flex-col mt-space-2xs">
+<h1 class="font-headline-lg text-headline-lg text-on-surface tracking-tight">Tu Plan</h1>
+<p class="font-body-md text-body-md text-on-surface-variant mt-1 leading-snug">
+          Finanzas calculadas al 31 de marzo · Faltan 14 días para tu próximo ingreso
+        </p>
+</div>
+<!-- Selector de ciclo amigable -->
+<div class="mt-space-2xs flex items-center justify-between p-space-xs pl-space-md bg-surface-container rounded-full shadow-sm">
+<div class="flex items-center gap-space-xs">
+<span class="material-symbols-outlined text-on-surface-variant text-[18px]">calendar_today</span>
+<span class="font-label-md text-label-md text-on-surface">Ciclo actual: 1 — 31 Mar</span>
+</div>
+<button class="w-8 h-8 rounded-full bg-surface-container-lowest flex items-center justify-center text-on-surface shadow-sm hover:bg-surface-container-high transition-transform active:scale-95" type="button">
+<span class="material-symbols-outlined text-[18px]">tune</span>
+</button>
+</div>
+</header>
+<!-- 2. Tarjeta Héroe Protagonista: Disponible para gastar sin culpa -->
+<section class="relative bg-surface-container-lowest rounded-lg p-space-xl shadow-md overflow-hidden">
+<!-- Glow ambiental decorativo verde lima -->
+<div class="absolute -top-16 -right-16 w-44 h-44 rounded-full bg-secondary-container/20 blur-3xl pointer-events-none"></div>
+<div class="relative flex flex-col gap-space-lg">
+<div class="flex items-center justify-between">
+<span class="font-label-md text-label-md tracking-wider uppercase text-on-surface-variant">
+            Disponible real hasta fin de mes
+          </span>
+<span class="inline-flex items-center gap-1 px-space-xs py-0.5 rounded-full bg-secondary-container/30 text-on-secondary-container font-label-md text-label-md">
+<span class="material-symbols-outlined text-[14px]">verified</span>
+            Libre de culpas
+          </span>
+</div>
+<div class="flex flex-col gap-1">
+<div class="flex items-baseline gap-1">
+<span class="font-display text-display text-primary tracking-tight">$642</span>
+<span class="font-headline-md text-headline-md text-on-surface-variant">.80</span>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant">
+            Fondos calculados después de cubrir todos tus compromisos del mes.
+          </span>
+</div>
+<!-- Barra de ritmo visual -->
+<div class="flex flex-col gap-2 p-space-sm rounded-DEFAULT bg-surface-container-low">
+<div class="flex items-center justify-between font-label-md text-label-md">
+<span class="text-on-surface flex items-center gap-1">
+<span class="w-2 h-2 rounded-full bg-secondary-fixed"></span>
+              Vas a buen ritmo
+            </span>
+<span class="text-on-surface-variant font-semibold">$45.90 / día recomendado</span>
+</div>
+<div class="w-full h-2.5 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-secondary-fixed rounded-full" style="width: 58%;"></div>
+</div>
+</div>
+<!-- Desglose conceptual -->
+<div class="flex flex-col gap-space-xs pt-space-xs border-t-0">
+<button class="flex items-center justify-between text-left py-1 text-on-surface-variant hover:text-on-surface transition-colors" id="toggle-breakdown" type="button">
+<span class="font-label-md text-label-md flex items-center gap-1.5">
+<span class="material-symbols-outlined text-[16px]">calculate</span>
+              Ver desglose del cálculo
+            </span>
+<span class="material-symbols-outlined text-[20px] transition-transform duration-200" id="breakdown-chevron">expand_more</span>
+</button>
+<div class="flex flex-col gap-2.5 pt-2" id="breakdown-details">
+<div class="flex items-center justify-between font-body-sm text-body-sm">
+<span class="text-on-surface-variant flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-on-surface">account_balance_wallet</span>
+                Saldo total en cuentas
+              </span>
+<span class="font-label-md text-label-md text-on-surface">$2,846.20</span>
+</div>
+<div class="flex items-center justify-between font-body-sm text-body-sm">
+<span class="text-on-surface-variant flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-error">event_upcoming</span>
+                (−) Compromisos pendientes
+              </span>
+<span class="font-label-md text-label-md text-error">−$1,453.40</span>
+</div>
+<div class="flex items-center justify-between font-body-sm text-body-sm">
+<span class="text-on-surface-variant flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-secondary">savings</span>
+                (−) Reservado para metas
+              </span>
+<span class="font-label-md text-label-md text-on-surface">−$750.00</span>
+</div>
+<div class="flex items-center justify-between font-label-md text-label-md pt-2 mt-1 border-t-0 bg-surface-container/50 px-space-sm py-2 rounded-DEFAULT">
+<span class="text-on-surface font-bold">(=) Disponible real estimado</span>
+<span class="text-primary font-bold">$642.80</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- 3. Accesos Rápidos a Herramientas de Planificación -->
+<section class="flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<h2 class="font-title-md text-title-md text-on-surface">Herramientas activas</h2>
+<span class="font-label-md text-label-md text-on-surface-variant">5 módulos</span>
+</div>
+<div class="grid grid-cols-2 gap-space-sm">
+<!-- Presupuestos -->
+<div class="bg-surface-container-lowest p-space-md rounded-DEFAULT shadow-sm flex flex-col justify-between gap-space-sm hover:shadow-md transition-shadow cursor-pointer">
+<div class="flex items-center justify-between">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[20px]">pie_chart</span>
+</div>
+<span class="font-label-md text-label-md text-secondary-container bg-primary px-2 py-0.5 rounded-full">68%</span>
+</div>
+<div>
+<h3 class="font-title-md text-title-md text-on-surface">Presupuestos</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">$840 de $1,250 usados</p>
+</div>
+<div class="w-full h-1.5 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-primary rounded-full" style="width: 68%;"></div>
+</div>
+</div>
+<!-- Metas de ahorro -->
+<div class="bg-surface-container-lowest p-space-md rounded-DEFAULT shadow-sm flex flex-col justify-between gap-space-sm hover:shadow-md transition-shadow cursor-pointer">
+<div class="flex items-center justify-between">
+<div class="w-10 h-10 rounded-full bg-secondary-container/30 flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-[20px]">flag</span>
+</div>
+<span class="font-label-md text-label-md text-on-surface-variant">3 activas</span>
+</div>
+<div>
+<h3 class="font-title-md text-title-md text-on-surface">Metas de ahorro</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">$750 reservados</p>
+</div>
+<div class="w-full h-1.5 bg-surface-container-highest rounded-full overflow-hidden">
+<div class="h-full bg-secondary-fixed-dim rounded-full" style="width: 82%;"></div>
+</div>
+</div>
+<!-- Calendario financiero -->
+<div class="bg-surface-container-lowest p-space-md rounded-DEFAULT shadow-sm flex flex-col justify-between gap-space-sm hover:shadow-md transition-shadow cursor-pointer">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[20px]">date_range</span>
+</div>
+<div>
+<h3 class="font-title-md text-title-md text-on-surface">Calendario</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Fechas de corte y cobro</p>
+</div>
+<span class="font-label-md text-label-md text-secondary font-medium">Ver 8 eventos</span>
+</div>
+<!-- Proyección de fin de mes -->
+<div class="bg-surface-container-lowest p-space-md rounded-DEFAULT shadow-sm flex flex-col justify-between gap-space-sm hover:shadow-md transition-shadow cursor-pointer">
+<div class="w-10 h-10 rounded-full bg-tertiary-fixed/30 flex items-center justify-center text-on-tertiary-container">
+<span class="material-symbols-outlined text-[20px]">trending_up</span>
+</div>
+<div>
+<h3 class="font-title-md text-title-md text-on-surface">Proyección</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant mt-0.5">Saldo seguro de cierre</p>
+</div>
+<span class="font-label-md text-label-md text-primary font-medium">+$380.50 remanente</span>
+</div>
+<!-- Pagos recurrentes (full width strip dentro del bloque) -->
+<div class="col-span-2 bg-surface-container-lowest p-space-md rounded-DEFAULT shadow-sm flex items-center justify-between hover:shadow-md transition-shadow cursor-pointer">
+<div class="flex items-center gap-space-sm">
+<div class="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[20px]">autorenew</span>
+</div>
+<div>
+<h3 class="font-title-md text-title-md text-on-surface">Pagos recurrentes y débitos</h3>
+<p class="font-body-sm text-body-sm text-on-surface-variant">6 suscripciones sincronizadas</p>
+</div>
+</div>
+<div class="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center text-on-surface">
+<span class="material-symbols-outlined text-[18px]">chevron_right</span>
+</div>
+</div>
+</div>
+</section>
+<!-- 4. Próximos compromisos financieros -->
+<section class="flex flex-col gap-space-sm">
+<div class="flex items-center justify-between">
+<h2 class="font-title-md text-title-md text-on-surface">Próximos 3 compromisos</h2>
+<button class="font-label-md text-label-md text-secondary hover:underline flex items-center gap-0.5" type="button">
+          Ver calendario completo
+          <span class="material-symbols-outlined text-[16px]">chevron_right</span>
+</button>
+</div>
+<div class="flex flex-col gap-space-xs">
+<!-- Compromiso 1: Alquiler -->
+<div class="bg-surface-container-lowest p-space-md rounded-DEFAULT shadow-sm flex items-center justify-between gap-space-sm active:scale-[0.99] transition-transform cursor-pointer">
+<div class="flex items-center gap-space-sm min-w-0">
+<div class="w-11 h-11 rounded-2xl bg-surface-container flex items-center justify-center text-primary shrink-0">
+<span class="material-symbols-outlined text-[22px]">home_work</span>
+</div>
+<div class="flex flex-col min-w-0">
+<div class="flex items-center gap-2">
+<h4 class="font-title-md text-title-md text-on-surface truncate">Alquiler departamento</h4>
+</div>
+<span class="font-body-sm text-body-sm text-on-surface-variant">20 de marzo (en 3 días)</span>
+<div class="flex items-center gap-2 mt-1">
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-error-container/60 text-on-error-container font-label-md text-[11px]">
+<span class="material-symbols-outlined text-[12px]">priority_high</span>
+                  Pago obligatorio
+                </span>
+<span class="font-body-sm text-[11px] text-on-surface-variant">· Programado</span>
+</div>
+</div>
+</div>
+<div class="flex flex-col items-end shrink-0">
+<span class="font-title-md text-title-md text-on-surface font-semibold">−$650.00</span>
+<span class="material-symbols-outlined text-on-surface-variant text-[18px] mt-1">chevron_right</span>
+</div>
+</div>
+<!-- Compromiso 2: Suscripciones digitales -->
+<div class="bg-surface-container-lowest p-space-md rounded-DEFAULT shadow-sm flex items-center justify-between gap-space-sm active:scale-[0.99] transition-transform cursor-pointer">
+<div class="flex items-center gap-space-sm min-w-0">
+<div class="w-11 h-11 rounded-2xl bg-surface-container flex items-center justify-center text-primary shrink-0">
+<span class="material-symbols-outlined text-[22px]">subscriptions</span>
+</div>
+<div class="flex flex-col min-w-0">
+<h4 class="font-title-md text-title-md text-on-surface truncate">Spotify + Netflix</h4>
+<span class="font-body-sm text-body-sm text-on-surface-variant">22 de marzo</span>
+<div class="flex items-center gap-2 mt-1">
+<span class="inline-flex items-center px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-md text-[11px]">
+                  Suscripción
+                </span>
+<span class="font-body-sm text-[11px] text-on-surface-variant">· Débito automático</span>
+</div>
+</div>
+</div>
+<div class="flex flex-col items-end shrink-0">
+<span class="font-title-md text-title-md text-on-surface font-semibold">−$24.99</span>
+<span class="material-symbols-outlined text-on-surface-variant text-[18px] mt-1">chevron_right</span>
+</div>
+</div>
+<!-- Compromiso 3: Ingreso Freelance -->
+<div class="bg-surface-container-lowest p-space-md rounded-DEFAULT shadow-sm flex items-center justify-between gap-space-sm active:scale-[0.99] transition-transform cursor-pointer">
+<div class="flex items-center gap-space-sm min-w-0">
+<div class="w-11 h-11 rounded-2xl bg-tertiary-fixed/40 flex items-center justify-center text-on-tertiary-container shrink-0">
+<span class="material-symbols-outlined text-[22px]">payments</span>
+</div>
+<div class="flex flex-col min-w-0">
+<h4 class="font-title-md text-title-md text-on-surface truncate">Cobro Freelance / Bono</h4>
+<span class="font-body-sm text-body-sm text-on-surface-variant">25 de marzo</span>
+<div class="flex items-center gap-2 mt-1">
+<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-tertiary-fixed text-on-tertiary-fixed font-label-md text-[11px]">
+<span class="material-symbols-outlined text-[12px]">arrow_downward</span>
+                  Ingreso estimado
+                </span>
+<span class="font-body-sm text-[11px] text-on-surface-variant">· Por confirmar</span>
+</div>
+</div>
+</div>
+<div class="flex flex-col items-end shrink-0">
+<span class="font-title-md text-title-md text-secondary font-semibold">+$420.00</span>
+<span class="material-symbols-outlined text-on-surface-variant text-[18px] mt-1">chevron_right</span>
+</div>
+</div>
+</div>
+</section>
+<!-- 5. Tarjeta de Proyección '¿Cómo cierra tu mes?' -->
+<section class="bg-surface-container-lowest rounded-lg p-space-lg shadow-sm flex flex-col gap-space-md">
+<div class="flex items-center gap-space-xs">
+<div class="w-8 h-8 rounded-full bg-secondary-container/40 flex items-center justify-center text-secondary">
+<span class="material-symbols-outlined text-[18px]">insights</span>
+</div>
+<h3 class="font-title-md text-title-md text-on-surface">¿Cómo cierra tu mes?</h3>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+        Si mantienes este ritmo diario, cerrarás marzo con un colchón de
+        <span class="font-semibold text-on-surface">$380.50</span> y habrás cumplido el
+        <span class="font-semibold text-secondary">100% de tu meta de ahorro</span>.
+      </p>
+<!-- Mini gráfico de tendencia visual -->
+<div class="flex flex-col gap-2 p-space-sm bg-surface-container rounded-DEFAULT">
+<div class="flex items-center justify-between font-label-md text-label-md text-on-surface-variant">
+<span>Proyección segura</span>
+<span class="text-secondary font-semibold">+13.3% sobre febrero</span>
+</div>
+<div class="relative w-full h-12 flex items-end gap-1.5 pt-2">
+<!-- Spark bars -->
+<div class="flex-1 bg-surface-container-highest rounded-t-sm h-[40%]"></div>
+<div class="flex-1 bg-surface-container-highest rounded-t-sm h-[55%]"></div>
+<div class="flex-1 bg-surface-container-highest rounded-t-sm h-[50%]"></div>
+<div class="flex-1 bg-surface-container-highest rounded-t-sm h-[70%]"></div>
+<div class="flex-1 bg-surface-container-highest rounded-t-sm h-[65%]"></div>
+<div class="flex-1 bg-surface-container-highest rounded-t-sm h-[80%]"></div>
+<!-- Proyección destacada -->
+<div class="flex-1 bg-secondary-fixed rounded-t-sm h-[92%] relative">
+<span class="absolute -top-4 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-secondary"></span>
+</div>
+</div>
+<div class="flex justify-between font-body-sm text-[10px] text-on-surface-variant px-1">
+<span>Sem 1</span>
+<span>Sem 2</span>
+<span>Sem 3</span>
+<span class="text-on-surface font-semibold">Cierre (Est.)</span>
+</div>
+</div>
+<!-- Botón de acción con estilo identitario Nexo (Botón oscuro con flecha circular lima) -->
+<button class="w-full h-[52px] rounded-full bg-primary text-on-primary font-label-lg text-label-lg flex items-center justify-between px-space-lg shadow-sm active:scale-[0.98] transition-transform" type="button">
+<span>Ajustar parámetros del plan</span>
+<div class="w-8 h-8 rounded-full bg-secondary-fixed flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-[20px]">arrow_forward</span>
+</div>
+</button>
+</section>
+<!-- Espacio visual inferior para respiro -->
+<div class="h-4"></div>
+</div>
+</div>
+<script>
+  (function() {
+    const toggleBtn = document.getElementById('toggle-breakdown');
+    const details = document.getElementById('breakdown-details');
+    const chevron = document.getElementById('breakdown-chevron');
+
+    if (toggleBtn && details && chevron) {
+      let isOpen = true;
+      toggleBtn.addEventListener('click', function() {
+        isOpen = !isOpen;
+        if (isOpen) {
+          details.style.display = 'flex';
+          chevron.style.transform = 'rotate(0deg)';
+        } else {
+          details.style.display = 'none';
+          chevron.style.transform = 'rotate(180deg)';
+        }
+      });
+    }
+  })();
+</script></main><nav class="fixed bottom-0 inset-x-0 z-50 pb-safe pointer-events-none" data-active-classes="text-primary font-semibold [&amp;_span.nav-indicator]:bg-secondary-fixed [&amp;_span.nav-indicator]:opacity-100"><div class="px-margin-mobile pb-space-xs pt-1 pointer-events-auto"><div class="bg-surface-container-lowest/90 backdrop-blur-xl rounded-full shadow-[0_8px_24px_rgba(29,29,27,0.06)] px-space-xs py-space-2xs flex items-center justify-around max-w-max-width-mobile mx-auto"><a class="flex flex-col items-center justify-center w-14 h-12 rounded-full text-on-surface-variant hover:text-on-surface transition-all gap-0.5 relative group" data-path="inicio" href="#"><span class="material-symbols-outlined text-[22px]">home</span><span class="font-label-md text-[10px] tracking-tight leading-none">Inicio</span><span class="nav-indicator w-1 h-1 rounded-full bg-secondary-fixed opacity-0 transition-opacity mt-0.5"></span></a><a class="flex flex-col items-center justify-center w-14 h-12 rounded-full text-on-surface-variant hover:text-on-surface transition-all gap-0.5 relative group" data-path="movimientos" href="#"><span class="material-symbols-outlined text-[22px]">receipt_long</span><span class="font-label-md text-[10px] tracking-tight leading-none">Movimientos</span><span class="nav-indicator w-1 h-1 rounded-full bg-secondary-fixed opacity-0 transition-opacity mt-0.5"></span></a><a aria-current="page" class="flex flex-col items-center justify-center w-14 h-12 rounded-full transition-all gap-0.5 relative group text-primary font-semibold [&amp;_span.nav-indicator]:bg-secondary-fixed [&amp;_span.nav-indicator]:opacity-100" data-path="cuentas" href="#"><span class="material-symbols-outlined text-[22px]">account_balance_wallet</span><span class="font-label-md text-[10px] tracking-tight leading-none">Cuentas</span><span class="nav-indicator w-1 h-1 rounded-full bg-secondary-fixed opacity-0 transition-opacity mt-0.5"></span></a><a class="flex flex-col items-center justify-center w-14 h-12 rounded-full text-on-surface-variant hover:text-on-surface transition-all gap-0.5 relative group" data-path="perfil" href="#"><span class="material-symbols-outlined text-[22px]">person</span><span class="font-label-md text-[10px] tracking-tight leading-none">Perfil</span><span class="nav-indicator w-1 h-1 rounded-full bg-secondary-fixed opacity-0 transition-opacity mt-0.5"></span></a></div></div></nav></body></html>

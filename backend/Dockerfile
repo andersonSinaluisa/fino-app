@@ -21,9 +21,9 @@ RUN dotnet publish src/Nexo.Api/Nexo.Api.csproj -c Release -o /app --no-restore
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 
-# Never run the API as root.
-RUN adduser --disabled-password --gecos "" --uid 10001 nexo
-USER 10001
+# Never run the API as root. The aspnet image already ships a non-root 'app'
+# user and exposes its uid as APP_UID, so there is nothing to create.
+USER $APP_UID
 
 COPY --from=build /app .
 EXPOSE 8080

@@ -8,9 +8,18 @@ public sealed record PushMessage(
     string Body,
     IReadOnlyDictionary<string, string>? Data = null);
 
+/// <summary>
+/// Entregable 18 ("Push end-to-end"): a batch send can partially fail per
+/// token -- an app uninstall or a stale token makes Expo answer that specific
+/// ticket with "DeviceNotRegistered" even though the HTTP call itself was a
+/// 200. Surfacing those tokens is what lets NotificationDispatcher retire the
+/// Device row instead of paying for a doomed push forever.
+/// </summary>
+public sealed record PushSendResult(int SentCount, IReadOnlyList<string> InvalidTokens);
+
 public interface IPushSender
 {
-    Task<int> SendAsync(IReadOnlyList<PushMessage> messages, CancellationToken cancellationToken);
+    Task<PushSendResult> SendAsync(IReadOnlyList<PushMessage> messages, CancellationToken cancellationToken);
 }
 
 /// <summary>Real-time fan-out to connected clients (SignalR in the API host).</summary>

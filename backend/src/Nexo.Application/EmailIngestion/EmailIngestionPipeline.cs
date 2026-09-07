@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Nexo.Application.Abstractions;
 using Nexo.Application.Categorization;
+using Nexo.Application.Common;
 using Nexo.Application.Deduplication;
 using Nexo.Domain.Accounts;
 using Nexo.Domain.Common;
@@ -39,6 +40,36 @@ public sealed class EmailIngestionPipeline(
     ILogger<EmailIngestionPipeline> logger) : IEmailIngestionPipeline
 {
     public async Task<EmailIngestionResult> ProcessAsync(
+        Guid userId,
+        Guid? emailConnectionId,
+        EmailMessage message,
+        CancellationToken cancellationToken)
+    {
+        // Entregable 28 ("Observabilidad"): a thin wrapper around the real method
+        // (renamed to ProcessCoreAsync below) so every one of its several return
+        // points -- rejected, not a movement, no matching account, duplicate,
+        // created -- is captured at a single place instead of repeating the same
+        // Activity/metric code six times, which is how that kind of instrumentation
+        // silently rots when a seventh return point gets added later and nobody
+        // remembers to tag it.
+        using var activity = NexoTelemetry.ActivitySource.StartActivity("EmailIngestion.Process");
+
+        var result = await ProcessCoreAsync(userId, emailConnectionId, message, cancellationToken);
+
+        activity?.SetTag("nexo.outcome", result.Outcome.ToString());
+        if (result.ProviderCode is not null)
+        {
+            activity?.SetTag("nexo.provider_code", result.ProviderCode);
+        }
+
+        NexoTelemetry.EmailsIngested.Add(
+            1,
+            new KeyValuePair<string, object?>("outcome", result.Outcome.ToString()));
+
+        return result;
+    }
+
+    private async Task<EmailIngestionResult> ProcessCoreAsync(
         Guid userId,
         Guid? emailConnectionId,
         EmailMessage message,
@@ -126,7 +157,17 @@ public sealed class EmailIngestionPipeline(
         }
 
         var session = await categorization.StartSessionAsync(userId, cancellationToken);
-        var suggestion = session.Suggest(movement.NormalizedDescription, movement.Direction);
+        // Same merchant the resulting Transaction will actually store below (the
+        // email parser's own guess, falling back to the generic extractor) so a
+        // merchant rule matches exactly what the person will later see and correct.
+        var normalizedMerchant = TextNormalizer.NormalizeForMatching(
+            parsed.Merchant ?? TextNormalizer.ExtractMerchant(movement.Description));
+        var suggestion = session.Suggest(
+            movement.NormalizedDescription,
+            normalizedMerchant,
+            account.ProviderCode,
+            movement.Amount,
+            movement.Direction);
         var categoryId = suggestion?.CategoryId ?? session.FallbackCategoryId(movement.Direction);
 
         var transaction = Transaction.Create(
@@ -177,7 +218,11 @@ public sealed class EmailIngestionPipeline(
         await notifications.DispatchAsync(
             Notification.Create(
                 userId,
-                NotificationType.TransactionDetected,
+                // Entregable 17: Movimientos e Ingresos son categorías de
+                // preferencia independientes, así que ya no comparten un solo tipo.
+                parsed.Direction == TransactionDirection.Income
+                    ? NotificationType.IncomeDetected
+                    : NotificationType.ExpenseDetected,
                 parsed.Direction == TransactionDirection.Income ? "Ingreso detectado" : "Compra detectada",
                 parsed.Direction == TransactionDirection.Income
                     ? $"Recibiste ${parsed.Amount:N2} en {account.Alias}."

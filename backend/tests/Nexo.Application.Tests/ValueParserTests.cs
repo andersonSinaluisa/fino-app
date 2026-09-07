@@ -41,6 +41,10 @@ public class DateParserTests
     [InlineData("04/03/26", 2026, 3, 4)]
     [InlineData("4 de marzo 2026", 2026, 3, 4)]
     [InlineData("04 ENE 2026", 2026, 1, 4)]
+    // Entregable 26 ("Parsers de correo"): the same single-digit-month/day, dash
+    // separated shape DateTimeFormats' own comment attributes to Pichincha's real
+    // web export ("2026-8-31, 12:51 PM"), here without the time-of-day part.
+    [InlineData("2026-8-31", 2026, 8, 31)]
     public void Parses_the_date_formats_Ecuadorian_statements_use(string input, int year, int month, int day)
     {
         Assert.True(DateParser.TryParseDate(input, out var value));

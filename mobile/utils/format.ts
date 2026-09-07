@@ -76,6 +76,22 @@ export function formatDayHeading(value: string | Date, today = new Date()): stri
   return `${date.getDate()} DE ${(MONTHS[date.getMonth()] ?? '').toUpperCase()} ${date.getFullYear()}`;
 }
 
+/**
+ * "Septiembre" (or "Septiembre 2025" if it isn't the current year) -- names the
+ * calendar month the home screen's "Ingresaste"/"Gastaste"/"Balance del mes"
+ * tiles are actually scoped to. Those figures reset to zero on the 1st of
+ * every month regardless of transaction history, which reads as broken right
+ * after a bulk import of older statements (all the income lands in a past
+ * month, so "Ingresaste" legitimately shows $0 until new income is dated in
+ * the current month) unless the tile says which month it means.
+ */
+export function currentMonthLabel(now = new Date()): string {
+  const name = MONTHS[now.getMonth()] ?? '';
+  const capitalized = name.charAt(0).toUpperCase() + name.slice(1);
+  const currentYear = new Date().getFullYear();
+  return now.getFullYear() === currentYear ? capitalized : `${capitalized} ${now.getFullYear()}`;
+}
+
 /** "4 de marzo de 2026, 18:12" for the movement detail. */
 export function formatFullDateTime(value: string | Date): string {
   const date = typeof value === 'string' ? parseDate(value) : value;
@@ -83,6 +99,38 @@ export function formatFullDateTime(value: string | Date): string {
   const minutes = String(date.getMinutes()).padStart(2, '0');
 
   return `${date.getDate()} de ${MONTHS[date.getMonth()]} de ${date.getFullYear()}, ${hours}:${minutes}`;
+}
+
+/** "04/03/2026" -- the format the "actualizar saldo" date field reads and writes. */
+export function formatDateInput(date: Date): string {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${day}/${month}/${date.getFullYear()}`;
+}
+
+/**
+ * Parses a DD/MM/YYYY typed date, the same shape the app already reads from
+ * bank exports. Returns null for anything that isn't a real calendar date
+ * (rejects "31/02/2026" rather than silently rolling it into March) or that
+ * falls after `now` -- a person cannot have seen tomorrow's balance yet.
+ */
+export function parseDateInput(value: string, now = new Date()): Date | null {
+  const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(value.trim());
+  if (!match) {
+    return null;
+  }
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const year = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+
+  const isRealDate = date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+  if (!isRealDate) {
+    return null;
+  }
+
+  return date.getTime() > now.getTime() ? null : date;
 }
 
 /** "hace 5 min", "hace 2 h", "hace 3 días", "nunca". */
@@ -151,6 +199,116 @@ export function maskLabel(mask: string | null | undefined): string {
 
 export function balanceTypeLabel(balanceType: 'Verified' | 'Estimated'): string {
   return balanceType === 'Verified' ? 'Saldo verificado' : 'Saldo estimado';
+}
+
+export type AccountBalanceStatus = 'Verified' | 'Estimated' | 'NeedsUpdate';
+
+/**
+ * Entregable 11: a third status alongside "verificado"/"estimado" for an
+ * account that has never had a real verified balance -- its whole estimate
+ * comes from imported movements alone, with no anchor the person actually
+ * saw at their bank. That is a stronger form of uncertainty than "verified
+ * once, drifted since", so it earns its own label and its own call to
+ * action instead of being folded into "Estimado".
+ */
+export function accountBalanceStatus(account: {
+  balanceType: 'Verified' | 'Estimated';
+  lastVerifiedAt: string | null;
+}): AccountBalanceStatus {
+  if (account.balanceType === 'Verified') {
+    return 'Verified';
+  }
+
+  return account.lastVerifiedAt === null ? 'NeedsUpdate' : 'Estimated';
+}
+
+export function balanceStatusLabel(status: AccountBalanceStatus): string {
+  switch (status) {
+    case 'Verified':
+      return 'Saldo verificado';
+    case 'Estimated':
+      return 'Saldo estimado';
+    case 'NeedsUpdate':
+      return 'Necesita actualización';
+    default:
+      return status satisfies never;
+  }
+}
+
+export function balanceStatusTone(status: AccountBalanceStatus): 'positive' | 'neutral' | 'attention' {
+  switch (status) {
+    case 'Verified':
+      return 'positive';
+    case 'Estimated':
+      return 'neutral';
+    case 'NeedsUpdate':
+      return 'attention';
+    default:
+      return status satisfies never;
+  }
+}
+
+/**
+ * Entregable 12: parses a "monto mínimo/máximo" filter typed on the movements
+ * screen. Same convention as the balance field in actualizar-saldo.tsx -- a
+ * comma is treated as the decimal separator. Empty or non-numeric text ->
+ * undefined (the filter is simply omitted); negative amounts are rejected
+ * because a movement's magnitude is never negative -- the sign lives in
+ * Direction, not in the amount filter.
+ */
+export function parseAmountFilter(text: string): number | undefined {
+  const trimmed = text.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+
+  const value = Number(trimmed.replace(',', '.'));
+  return Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+/**
+ * Entregable 15 ("Dashboard final MVP"): "12% más" / "8% menos" for the
+ * month-over-month expense comparison. `null` means there is nothing from the
+ * previous month to compare against (division by zero would be meaningless),
+ * so the caller should omit the line entirely rather than show a fake 0%.
+ */
+export function formatMonthComparison(percentChange: number | null): { label: string; up: boolean } | null {
+  if (percentChange === null || !Number.isFinite(percentChange)) {
+    return null;
+  }
+
+  const rounded = Math.round(Math.abs(percentChange));
+  return {
+    label: `${rounded}% ${percentChange >= 0 ? 'más' : 'menos'} que el mes pasado`,
+    up: percentChange >= 0,
+  };
+}
+
+/**
+ * Dashboard de estadísticas: igual que `formatMonthComparison`, pero para
+ * cualquier periodo (no solo "el mes pasado") -- el dashboard compara contra
+ * una ventana anterior de la misma duración, sea "este mes", "últimos 3
+ * meses" o un rango personalizado, así que el texto no puede fijar "mes".
+ */
+export function formatPeriodChange(
+  percentChange: number | null,
+  referenceLabel = 'el periodo anterior',
+): { label: string; up: boolean } | null {
+  if (percentChange === null || !Number.isFinite(percentChange)) {
+    return null;
+  }
+
+  const rounded = Math.round(Math.abs(percentChange));
+  return {
+    label: `${rounded}% ${percentChange >= 0 ? 'más' : 'menos'} que ${referenceLabel}`,
+    up: percentChange >= 0,
+  };
+}
+
+/** "6 sep" -- fecha corta absoluta, usada en rankings donde una etiqueta relativa (HOY/AYER) no tendría sentido. */
+export function formatShortDate(value: string | Date): string {
+  const date = typeof value === 'string' ? parseDate(value) : value;
+  return `${date.getDate()} ${(MONTHS[date.getMonth()] ?? '').slice(0, 3)}`;
 }
 
 export function initialsOf(value: string): string {

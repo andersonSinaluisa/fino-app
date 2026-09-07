@@ -43,7 +43,12 @@ public sealed class StatementParserResolver(
 
             if (claims)
             {
-                logger.LogInformation("Statement parser {ParserCode} selected for {FileName}.", parser.ParserCode, context.FileName);
+                // Entregable 28 ("Observabilidad"): the file name is whatever the
+                // user typed on their own computer -- it has shown up carrying a
+                // name, a cédula, an account number. It never belongs in a log line
+                // (docs/security.md's "no logueamos..." rule), and the parser code
+                // alone is everything this line is for.
+                logger.LogInformation("Statement parser {ParserCode} selected.", parser.ParserCode);
                 return parser;
             }
         }

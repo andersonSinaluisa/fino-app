@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Nexo.Application.Abstractions;
 using Nexo.Application.Imports.Parsing.Tabular;
+using Nexo.Domain.Accounts;
 using Nexo.Domain.Common;
 using Nexo.Domain.Insights;
 using Nexo.Domain.Providers;
@@ -23,7 +24,6 @@ public interface IInsightEngine
 public sealed class InsightEngine(INexoDbContext db, IClock clock) : IInsightEngine
 {
     private const int LookbackDays = 120;
-    private const int StaleAccountDays = 7;
 
     private sealed record Movement(
         DateTimeOffset Date,
@@ -47,10 +47,21 @@ public sealed class InsightEngine(INexoDbContext db, IClock clock) : IInsightEng
         var previousMonthStart = dates.StartOfPreviousMonth(now);
         var since = now.AddDays(-LookbackDays);
 
+        // Entregable 16 ("Insights v1"): every insight this pass produces is
+        // "about this month" in some sense, so none of them should keep showing
+        // once the month rolls over -- whether or not the next scheduled
+        // recompute (InsightRefreshWorker, every few hours) has run yet.
+        var validUntil = dates.StartOfNextMonth(now);
+
+        // Entregable 13: a confirmed transfer between the person's own accounts is
+        // excluded the same way GetHomeSummaryAsync excludes it -- every insight
+        // below (gasto del mes, ingreso vs. gasto, categoría principal, etc.) would
+        // otherwise be distorted by money that never left the household.
         var movements = await db.Transactions
             .AsNoTracking()
             .Where(t => t.UserId == userId
                         && t.TransactionDate >= since
+                        && !t.IsInternalTransfer
                         && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending))
             .Select(t => new Movement(
                 t.TransactionDate,
@@ -97,6 +108,7 @@ public sealed class InsightEngine(INexoDbContext db, IClock clock) : IInsightEng
                 "Gasto de este mes",
                 $"Llevas {Money(currentTotal)} gastados este mes en {currentExpenses.Count} movimientos.",
                 now,
+                validUntil,
                 value: currentTotal,
                 displayOrder: order++));
         }
@@ -117,6 +129,7 @@ public sealed class InsightEngine(INexoDbContext db, IClock clock) : IInsightEng
                     ? $"Gastaste {Money(Math.Abs(delta))} menos que el mes pasado."
                     : $"Gastaste {Money(Math.Abs(delta))} más que el mes pasado.",
                 now,
+                validUntil,
                 value: currentTotal,
                 comparisonValue: previousTotal,
                 percentChange: percent,
@@ -142,6 +155,7 @@ public sealed class InsightEngine(INexoDbContext db, IClock clock) : IInsightEng
                 $"Tu mayor gasto: {topName}",
                 $"{topName} representa el {share:0}% de lo que gastaste este mes ({Money(topCategory.Total)}).",
                 now,
+                validUntil,
                 value: topCategory.Total,
                 referenceId: topCategory.CategoryId.ToString(),
                 displayOrder: order++));
@@ -161,6 +175,7 @@ public sealed class InsightEngine(INexoDbContext db, IClock clock) : IInsightEng
                     up ? $"Más gasto en {topName}" : $"Menos gasto en {topName}",
                     $"Gastaste {Math.Abs(categoryPercent.Value):0}% {(up ? "más" : "menos")} en {topName} este mes.",
                     now,
+                    validUntil,
                     value: topCategory.Total,
                     comparisonValue: previousCategoryTotal,
                     percentChange: categoryPercent,
@@ -181,6 +196,7 @@ public sealed class InsightEngine(INexoDbContext db, IClock clock) : IInsightEng
                 "Pago recurrente detectado",
                 $"{subscription.Label} se repite cada mes por alrededor de {Money(subscription.TypicalAmount)}.",
                 now,
+                validUntil,
                 value: subscription.TypicalAmount,
                 displayOrder: order++));
         }
@@ -203,6 +219,7 @@ public sealed class InsightEngine(INexoDbContext db, IClock clock) : IInsightEng
                 $"Compras frecuentes en {frequent.Merchant}",
                 $"Fuiste {frequent.Count} veces este mes y llevas {Money(frequent.Total)} ahí.",
                 now,
+                validUntil,
                 value: frequent.Total,
                 displayOrder: order++));
         }
@@ -223,6 +240,7 @@ public sealed class InsightEngine(INexoDbContext db, IClock clock) : IInsightEng
                 "Tu día de mayor gasto",
                 $"El {highestDay.Day:dd/MM} gastaste {Money(highestDay.Total)}.",
                 now,
+                validUntil,
                 value: highestDay.Total,
                 displayOrder: order++));
         }
@@ -240,13 +258,14 @@ public sealed class InsightEngine(INexoDbContext db, IClock clock) : IInsightEng
                     ? $"Recibiste {Money(incomeTotal)} y gastaste {Money(currentTotal)}: te quedan {Money(net)}."
                     : $"Gastaste {Money(Math.Abs(net))} más de lo que recibiste este mes.",
                 now,
+                validUntil,
                 value: incomeTotal,
                 comparisonValue: currentTotal,
                 severity: net >= 0 ? InsightSeverity.Positive : InsightSeverity.Attention,
                 displayOrder: order++));
         }
 
-        var staleThreshold = now.AddDays(-StaleAccountDays);
+        var staleThreshold = now.AddDays(-AccountStaleness.ThresholdDays);
         var staleAccounts = await db.FinancialAccounts
             .AsNoTracking()
             .Where(a => a.UserId == userId
@@ -268,6 +287,7 @@ public sealed class InsightEngine(INexoDbContext db, IClock clock) : IInsightEng
                     ? $"{staleAccounts[0]} no se actualiza hace más de una semana."
                     : $"{staleAccounts.Count} cuentas no se actualizan hace más de una semana.",
                 now,
+                validUntil,
                 severity: InsightSeverity.Attention,
                 displayOrder: order++));
         }

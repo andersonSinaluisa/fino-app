@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { api } from '../services/endpoints';
 import { configureAuth, ApiError, type AuthTokens } from '../services/apiClient';
 import { clearSession, readSession, saveSession } from '../services/secureStorage';
+import { useDeviceStore } from './deviceStore';
 import type { AuthenticatedUser } from '../types/api';
 
 interface AuthState {
@@ -10,9 +11,16 @@ interface AuthState {
   tokens: AuthTokens | null;
   error: string | null;
   restore: () => Promise<void>;
-  login: (email: string, password: string) => Promise<void>;
+  /**
+   * Entregable 22 ("Privacidad completa"): resolves to true when this login
+   * undid a pending "eliminar mi cuenta" request still inside its grace
+   * period, so the screen can tell the person their account is active again.
+   */
+  login: (email: string, password: string) => Promise<boolean>;
   register: (email: string, password: string, displayName: string) => Promise<void>;
   logout: () => Promise<void>;
+  /** Entregable 19: same local cleanup as logout(), plus revokes every other device too. */
+  logoutAllDevices: () => Promise<void>;
   clearError: () => void;
 }
 
@@ -53,6 +61,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const result = await api.auth.login(email.trim(), password);
       await persist(result, set);
+      return result.accountDeletionCancelled;
     } catch (error) {
       set({ error: messageOf(error) });
       throw error;
@@ -77,12 +86,38 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       await api.auth.logout(tokens.refreshToken).catch(() => undefined);
     }
 
-    await clearSession();
-    set({ status: 'anonymous', user: null, tokens: null, error: null });
+    await finishLocalLogout(set);
+  },
+
+  logoutAllDevices: async () => {
+    // Best effort, same reasoning as logout(): the person is leaving either way.
+    await api.auth.logoutAll().catch(() => undefined);
+    await finishLocalLogout(set);
   },
 
   clearError: () => set({ error: null }),
 }));
+
+/**
+ * The part of signing out that has nothing to do with which backend call got
+ * there first: stop this device's push, forget the cached push preferences,
+ * wipe SecureStore, and flip to anonymous. Shared by logout() (revokes one
+ * session) and logoutAllDevices() (revokes every session, including this
+ * one -- by the time this runs the server side is already done).
+ */
+async function finishLocalLogout(set: Setter): Promise<void> {
+  // Entregable 18: on a shared device, a former session must stop receiving
+  // push. Also best effort -- the token may already be gone server-side, or
+  // there may be no token yet if push registration never finished.
+  const expoPushToken = useDeviceStore.getState().expoPushToken;
+  if (expoPushToken) {
+    await api.notifications.unregisterDevice(expoPushToken).catch(() => undefined);
+  }
+  useDeviceStore.getState().reset();
+
+  await clearSession();
+  set({ status: 'anonymous', user: null, tokens: null, error: null });
+}
 
 type Setter = (partial: Partial<AuthState>) => void;
 

@@ -10,4 +10,8 @@ public sealed record InsightDto(
     string Severity,
     string? ReferenceId,
     DateTimeOffset PeriodStart,
-    DateTimeOffset PeriodEnd);
+    DateTimeOffset PeriodEnd,
+    // Entregable 16 ("Insights v1"): when this observation stops being relevant.
+    // Both readers already filter it out server-side once past this instant --
+    // it rides along mainly so a client that cached a response can tell too.
+    DateTimeOffset ValidUntil);

@@ -96,6 +96,24 @@ public sealed class EmailConnection : Entity, IUserOwned
         Stamp(now);
     }
 
+    /// <summary>
+    /// Entregable 23 ("Preparar email ingestion"): Forwarding has no consent screen
+    /// and no per-connection secret to store -- its security comes from the shared
+    /// webhook secret plus the trusted-sender allow-list, not from an OAuth grant --
+    /// so there is nothing to wait for. Before this existed, EmailConnectionService's
+    /// StartAsync created every connection, Forwarding included, and left it in
+    /// <see cref="EmailConnectionStatus.PendingAuthorization"/> forever, since
+    /// <see cref="Authorize"/> requires a non-empty secret. This is the
+    /// Forwarding-only equivalent of Authorize.
+    /// </summary>
+    public void ConnectForwarding(DateTimeOffset now)
+    {
+        Status = EmailConnectionStatus.Connected;
+        ConnectedAt = now;
+        RevokedAt = null;
+        Stamp(now);
+    }
+
     public void RequireReauthorization(DateTimeOffset now)
     {
         Status = EmailConnectionStatus.NeedsReauthorization;

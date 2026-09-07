@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+
+<html lang="es"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" name="viewport"/>
+<title>Onboarding Paso 2 — Nexo</title>
+<!-- Google Fonts: Plus Jakarta Sans -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS v3 with Plugins -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Tailwind Configuration -->
+<script data-purpose="tailwind-config">
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            nexo: {
+              bg: '#F5F3ED',
+              card: '#FFFFFF',
+              surface: '#ECE9E1',
+              primary: '#1D1D1B',
+              accent: '#C7F36B',
+              mint: '#8DD9B6',
+              text: '#191A18',
+              muted: '#74766F',
+              border: '#E5E2D9'
+            }
+          },
+          fontFamily: {
+            sans: ['"Plus Jakarta Sans"', 'sans-serif']
+          },
+          boxShadow: {
+            'soft': '0 4px 20px -2px rgba(29, 29, 27, 0.04), 0 2px 6px -1px rgba(29, 29, 27, 0.02)',
+            'hover': '0 8px 24px -4px rgba(29, 29, 27, 0.07), 0 4px 10px -2px rgba(29, 29, 27, 0.03)',
+            'sticky': '0 -8px 25px rgba(245, 243, 237, 0.85)'
+          }
+        }
+      }
+    }
+  </script>
+<!-- Custom Styles for Mobile Device Preview & Utilities -->
+<style data-purpose="global-layout">
+    body {
+      background-color: #ECE9E1;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+      color: #191A18;
+    }
+    
+    /* Device Frame container for realistic 390px Mobile Viewport */
+    .iphone-container {
+      width: 100%;
+      max-width: 390px;
+      min-height: 100vh;
+      background-color: #F5F3ED;
+      margin: 0 auto;
+      position: relative;
+      overflow-x: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Custom radio styling simulation */
+    .option-card:has(input[type="radio"]:checked) {
+      border-color: #1D1D1B;
+      background-color: #FFFFFF;
+      box-shadow: 0 6px 20px -2px rgba(29, 29, 27, 0.08);
+    }
+
+    .option-card:has(input[type="radio"]:checked) .radio-circle {
+      border-color: #1D1D1B;
+      background-color: #1D1D1B;
+    }
+
+    .option-card:has(input[type="radio"]:checked) .radio-dot {
+      transform: scale(1);
+    }
+  </style>
+</head>
+<body class="flex justify-center items-start min-h-screen sm:py-6">
+<!-- BEGIN: MobileContainer -->
+<div class="iphone-container shadow-2xl sm:rounded-[36px] border border-nexo-border/60" data-purpose="mobile-screen-wrapper">
+<!-- BEGIN: TopBar -->
+<header class="pt-6 px-5 pb-3 flex items-center justify-between z-10 sticky top-0 bg-nexo-bg/90 backdrop-blur-md" data-purpose="navigation-header">
+<!-- Back button -->
+<button aria-label="Volver al paso anterior" class="w-10 h-10 rounded-full bg-white border border-nexo-border flex items-center justify-center text-nexo-primary hover:bg-nexo-surface transition-colors shadow-sm" type="button">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" viewbox="0 0 24 24">
+<path d="M19 12H5M12 19l-7-7 7-7"></path>
+</svg>
+</button>
+<!-- Nexo Official Logo -->
+<div class="flex items-center">
+<img alt="Nexo Logo" class="h-7 w-auto object-contain" src="https://lh3.googleusercontent.com/aida/AEtjO1UloyYZhhYnPme7McdxZUBXmP6ar80QTtcEGEn47pRaKsFmsZYknHmhDNeD75LRtbRw5oTsqnLRzUaTcTbYGhZbDvTBGWiY6EpF6gBOeDO086tdCb74_Sm9LNWyjQkvZou_HPQFQDapIBFXY1CkOKg9Br1H3KlzVPu9OUDTELOfOkptDDsFNikmKVdKO6X9cozrW82riCaUyGChH94o1IW6stXVxH7TJDqZtpMtgAdLnH4Xbt_cSowxR1Id"/>
+</div>
+<!-- Step Indicator Pill -->
+<div class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-nexo-border text-xs font-semibold text-nexo-text shadow-sm" data-purpose="step-indicator">
+<span class="w-2 h-2 rounded-full bg-[#9edc31] animate-pulse"></span>
+<span>Paso 2 de 2</span>
+</div>
+</header>
+<!-- END: TopBar -->
+<!-- BEGIN: MainContent -->
+<main class="flex-1 px-5 pt-3 pb-32 flex flex-col gap-6" data-purpose="onboarding-flow">
+<!-- BEGIN: HeroText -->
+<section class="space-y-1.5" data-purpose="header-titles">
+<h1 class="text-[28px] leading-[1.18] font-extrabold tracking-tight text-nexo-primary">
+          ¿Qué quieres conectar?
+        </h1>
+<p class="text-[14px] leading-snug text-nexo-muted font-normal">
+          Elige tu banco, billetera o sube un estado de cuenta. <span class="font-medium text-nexo-primary">No pediremos contraseñas bancarias.</span>
+</p>
+</section>
+<!-- END: HeroText -->
+<!-- BEGIN: ConnectionOptions -->
+<form class="space-y-3.5" data-purpose="selection-options-group" id="connectionForm">
+<!-- OPTION A: Bancos Locales -->
+<label class="option-card relative block p-4 rounded-[22px] bg-white border-2 border-transparent transition-all duration-200 cursor-pointer shadow-soft hover:shadow-hover">
+<input checked="" class="sr-only peer" name="connection_type" type="radio" value="banks"/>
+<div class="flex items-start justify-between gap-3">
+<div class="flex items-start gap-3">
+<!-- Bank Icon Badge -->
+<div class="w-11 h-11 rounded-2xl bg-[#F6F4EB] border border-[#EBE8DD] flex items-center justify-center text-amber-700 shrink-0">
+<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+<path d="M3 21h18M3 10h18M5 10v11M19 10v11M9 10v11M15 10v11M12 2l10 5H2l10-5z"></path>
+</svg>
+</div>
+<!-- Content text -->
+<div>
+<div class="flex items-center gap-2 flex-wrap">
+<h3 class="text-base font-bold text-nexo-primary">Bancos locales</h3>
+<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200/80">
+                    Lectura protegida
+                  </span>
+</div>
+<p class="text-xs text-nexo-muted mt-0.5">Pichincha, Guayaquil, Produbanco, Pacífico</p>
+</div>
+</div>
+<!-- Custom Radio Graphic -->
+<div class="radio-circle w-5 h-5 rounded-full border-2 border-[#D1CEC4] flex items-center justify-center mt-1 shrink-0 transition-all">
+<span class="radio-dot w-2 h-2 rounded-full bg-white scale-0 transition-transform duration-150"></span>
+</div>
+</div>
+<!-- Quick bank chips selectable preview -->
+<div class="mt-3.5 pt-3 border-t border-nexo-bg flex flex-wrap gap-1.5" data-purpose="quick-bank-chips">
+<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-[#F5F3ED] text-nexo-primary border border-nexo-border">
+<span>Pichincha</span>
+<span class="text-[9px] px-1 py-0.2 rounded-full bg-[#C7F36B] text-black font-bold">Popular</span>
+</span>
+<span class="px-2.5 py-1 rounded-full text-[11px] font-medium bg-[#F5F3ED] text-nexo-muted border border-transparent">
+              Guayaquil
+            </span>
+<span class="px-2.5 py-1 rounded-full text-[11px] font-medium bg-[#F5F3ED] text-nexo-muted border border-transparent">
+              Produbanco
+            </span>
+<span class="px-2.5 py-1 rounded-full text-[11px] font-medium bg-[#F5F3ED] text-nexo-muted border border-transparent">
+              Pacífico
+            </span>
+</div>
+</label>
+<!-- OPTION B: Billeteras Digitales -->
+<label class="option-card relative block p-4 rounded-[22px] bg-white border-2 border-transparent transition-all duration-200 cursor-pointer shadow-soft hover:shadow-hover">
+<input class="sr-only peer" name="connection_type" type="radio" value="wallets"/>
+<div class="flex items-start justify-between gap-3">
+<div class="flex items-start gap-3">
+<!-- Wallet Icon Badge -->
+<div class="w-11 h-11 rounded-2xl bg-[#E8F8F0] border border-[#D5EFE3] flex items-center justify-center text-teal-700 shrink-0">
+<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+<rect height="16" rx="3" width="20" x="2" y="4"></rect>
+<path d="M16 12h2"></path>
+<path d="M2 10h20"></path>
+</svg>
+</div>
+<!-- Content text -->
+<div>
+<div class="flex items-center gap-2 flex-wrap">
+<h3 class="text-base font-bold text-nexo-primary">Billeteras digitales</h3>
+<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#EAFADB] text-black border border-[#C7F36B]">
+                    ⚡ Instantáneo
+                  </span>
+</div>
+<p class="text-xs text-nexo-muted mt-0.5">Sincroniza tus transacciones del día a día</p>
+</div>
+</div>
+<!-- Custom Radio Graphic -->
+<div class="radio-circle w-5 h-5 rounded-full border-2 border-[#D1CEC4] flex items-center justify-center mt-1 shrink-0 transition-all">
+<span class="radio-dot w-2 h-2 rounded-full bg-white scale-0 transition-transform duration-150"></span>
+</div>
+</div>
+<!-- Quick wallet chips -->
+<div class="mt-3.5 pt-3 border-t border-nexo-bg flex flex-wrap gap-1.5" data-purpose="quick-wallet-chips">
+<span class="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[#F5F3ED] text-nexo-primary border border-nexo-border">
+              DEUNA
+            </span>
+<span class="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[#F5F3ED] text-nexo-primary border border-nexo-border">
+              PayPhone
+            </span>
+<span class="px-2.5 py-1 rounded-full text-[11px] font-medium bg-[#F5F3ED] text-nexo-muted">
+              PeiGo
+            </span>
+</div>
+</label>
+<!-- OPTION C: Importar Archivo -->
+<label class="option-card relative block p-4 rounded-[22px] bg-white border-2 border-transparent transition-all duration-200 cursor-pointer shadow-soft hover:shadow-hover">
+<input class="sr-only peer" name="connection_type" type="radio" value="file"/>
+<div class="flex items-start justify-between gap-3">
+<div class="flex items-start gap-3">
+<!-- File / Spreadsheet Icon Badge -->
+<div class="w-11 h-11 rounded-2xl bg-[#EFF6FF] border border-[#DBEAFE] flex items-center justify-center text-blue-700 shrink-0">
+<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" viewbox="0 0 24 24">
+<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+<polyline points="14 2 14 8 20 8"></polyline>
+<line x1="16" x2="8" y1="13" y2="13"></line>
+<line x1="16" x2="8" y1="17" y2="17"></line>
+<line x1="10" x2="8" y1="9" y2="9"></line>
+</svg>
+</div>
+<!-- Content text -->
+<div>
+<div class="flex items-center gap-2 flex-wrap">
+<h3 class="text-base font-bold text-nexo-primary">Importar archivo</h3>
+<span class="px-2 py-0.5 rounded-full text-[10px] font-medium bg-neutral-100 text-neutral-600 border border-neutral-200">
+                    CSV o Excel
+                  </span>
+</div>
+<p class="text-xs text-nexo-muted mt-0.5">Sube el extracto descargado desde tu banco sin conectar credenciales directas.</p>
+</div>
+</div>
+<!-- Custom Radio Graphic -->
+<div class="radio-circle w-5 h-5 rounded-full border-2 border-[#D1CEC4] flex items-center justify-center mt-1 shrink-0 transition-all">
+<span class="radio-dot w-2 h-2 rounded-full bg-white scale-0 transition-transform duration-150"></span>
+</div>
+</div>
+<!-- Feature Tag -->
+<div class="mt-3 pt-2.5 flex items-center gap-1.5 text-[11px] font-semibold text-emerald-800">
+<svg class="w-3.5 h-3.5 text-emerald-600" fill="currentColor" viewbox="0 0 20 20">
+<path clip-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" fill-rule="evenodd"></path>
+</svg>
+<span>100% privado · Sin vincular accesos</span>
+</div>
+</label>
+</form>
+<!-- END: ConnectionOptions -->
+<!-- BEGIN: SecurityBanner -->
+<section class="p-4 rounded-[22px] bg-[#ECE9E1]/80 border border-nexo-border/80 flex items-start gap-3.5 shadow-sm" data-purpose="guarantee-card">
+<div class="w-9 h-9 rounded-xl bg-white flex items-center justify-center text-nexo-primary shrink-0 shadow-sm">
+<!-- Shield icon with check -->
+<svg class="w-4 h-4 text-nexo-primary" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" viewbox="0 0 24 24">
+<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+<path d="m9 12 2 2 4-4"></path>
+</svg>
+</div>
+<div class="space-y-0.5">
+<h4 class="text-xs font-bold text-nexo-primary">Tranquilidad &amp; Privacidad</h4>
+<p class="text-[11px] leading-relaxed text-nexo-muted font-normal">
+            Nexo utiliza cifrado punto a punto AES-256 de nivel bancario. Solo tú tienes control y visibilidad sobre tus datos. Nunca realizaremos cargos ni transferencias.
+          </p>
+</div>
+</section>
+<!-- END: SecurityBanner -->
+</main>
+<!-- END: MainContent -->
+<!-- BEGIN: StickyFooterActions -->
+<footer class="fixed sm:absolute bottom-0 left-0 right-0 max-w-[390px] mx-auto px-5 pt-4 pb-7 bg-gradient-to-t from-nexo-bg via-nexo-bg/95 to-transparent backdrop-blur-[2px] z-20" data-purpose="action-buttons">
+<div class="flex flex-col gap-2.5">
+<!-- Primary Button: Continuar -->
+<button class="w-full h-14 bg-nexo-primary hover:bg-black active:scale-[0.99] text-white rounded-full font-bold text-[15px] px-5 flex items-center justify-between shadow-lg shadow-nexo-primary/10 transition-all" form="connectionForm" type="submit">
+<span class="pl-2">Continuar</span>
+<!-- Lime pill action icon -->
+<div class="w-9 h-9 rounded-full bg-nexo-accent flex items-center justify-center text-nexo-primary">
+<svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="2.6" viewbox="0 0 24 24">
+<path d="M5 12h14M12 5l7 7-7 7"></path>
+</svg>
+</div>
+</button>
+<!-- Secondary action link -->
+<button class="w-full py-2 text-center text-xs font-semibold text-nexo-muted hover:text-nexo-primary transition-colors" type="button">
+          Lo haré más tarde o explorar con datos demo
+        </button>
+<!-- Safety subtext note -->
+<p class="text-center text-[10px] text-[#9A9B93] flex items-center justify-center gap-1">
+<svg class="w-3 h-3 text-[#9A9B93]" fill="none" stroke="currentColor" stroke-width="2" viewbox="0 0 24 24">
+<rect height="11" rx="2" ry="2" width="18" x="3" y="11"></rect>
+<path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+</svg>
+          Protegido con cifrado punto a punto AES-256
+        </p>
+</div>
+</footer>
+<!-- END: StickyFooterActions -->
+</div>
+<!-- END: MobileContainer -->
+</body></html>

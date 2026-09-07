@@ -42,6 +42,13 @@ public abstract partial class SpanishNotificationEmailParser : IBankEmailParser
     [
         "ESTADO DE CUENTA DISPONIBLE", "CAMBIO DE CLAVE", "PROMOCION", "PROMOCIONES",
         "ENCUESTA", "BOLETIN", "NEWSLETTER", "TERMINOS Y CONDICIONES", "INTENTO DE ACCESO",
+
+        // Entregable 26 ("Parsers de correo"): a payment-due reminder or a
+        // buy-now-pay-later promo says "pago" next to a dollar figure without
+        // describing anything that already happened -- exactly what the bare
+        // "PAGO" in ExpenseKeywords (below) would otherwise misread as an expense.
+        "FECHA DE PAGO", "FECHA LIMITE DE PAGO", "PAGO MINIMO", "MONTO A PAGAR",
+        "RECORDATORIO DE PAGO", "PROXIMO A VENCER", "PENDIENTE DE PAGO",
     ];
 
     public virtual bool CanParse(EmailMessage message)
@@ -52,7 +59,12 @@ public abstract partial class SpanishNotificationEmailParser : IBankEmailParser
             return false;
         }
 
-        if (ExcludeKeywords.Any(k => text.Contains(k, StringComparison.Ordinal)))
+        // Entregable 26: normalize the keyword too, the same way Signatures (below)
+        // and DirectionOf already do -- text is accent-stripped/upper-cased, so a
+        // literal "PROMOCIÓN" here would otherwise never match anything again.
+        // Today's list happens to already be accent-free by coincidence; this stops
+        // that from being a silent trap the next time someone adds one naturally.
+        if (ExcludeKeywords.Any(k => text.Contains(TextNormalizer.Normalize(k), StringComparison.Ordinal)))
         {
             return false;
         }
@@ -129,21 +141,42 @@ public abstract partial class SpanishNotificationEmailParser : IBankEmailParser
         return null;
     }
 
+    /// <summary>
+    /// Entregable 26 ("Parsers de correo"): "Su saldo disponible es de USD 1.204,33.
+    /// Se realizó una compra por USD 48,20 en..." is a completely ordinary real
+    /// notification shape, and the old version of this method took whichever dollar
+    /// figure came first -- the balance, not the movement. An amount is skipped when
+    /// the text right before it looks like a balance/limit rather than a movement;
+    /// the first one that does not is trusted, same as before when there is only one.
+    /// </summary>
     protected virtual bool TryReadAmount(string raw, out decimal amount)
     {
         amount = 0m;
 
         foreach (Match match in AmountRegex().Matches(raw))
         {
-            if (AmountParser.TryParse(match.Groups["amount"].Value, out var parsed) && parsed > 0m)
+            if (!AmountParser.TryParse(match.Groups["amount"].Value, out var parsed) || parsed <= 0m)
             {
-                amount = parsed;
-                return true;
+                continue;
             }
+
+            var windowStart = Math.Max(0, match.Index - AmountContextWindow);
+            var preceding = TextNormalizer.Normalize(raw[windowStart..match.Index]);
+            if (BalanceContextKeywords.Any(term => preceding.Contains(term, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            amount = parsed;
+            return true;
         }
 
         return false;
     }
+
+    private const int AmountContextWindow = 40;
+
+    private static readonly string[] BalanceContextKeywords = ["SALDO", "CUPO", "DISPONIBLE", "LIMITE"];
 
     /// <summary>
     /// Walks the candidates and takes the first that actually looks like a merchant.
@@ -205,6 +238,17 @@ public abstract partial class SpanishNotificationEmailParser : IBankEmailParser
             && hour is >= 0 and < 24
             && minute is >= 0 and < 60)
         {
+            // Entregable 26: "a las 6:12 PM" is a 12-hour clock -- without this,
+            // the meridiem was matched by nothing and silently thrown away, so a
+            // real PM time was stored as if it were AM (off by up to 12 hours).
+            if (timeMatch.Groups["ampm"].Success && hour is >= 1 and <= 12)
+            {
+                var isPm = timeMatch.Groups["ampm"].Value.Contains('P', StringComparison.OrdinalIgnoreCase);
+                hour = isPm
+                    ? (hour == 12 ? 12 : hour + 12)
+                    : (hour == 12 ? 0 : hour);
+            }
+
             time = new TimeSpan(hour, minute, 0);
         }
 
@@ -247,9 +291,17 @@ public abstract partial class SpanishNotificationEmailParser : IBankEmailParser
     [GeneratedRegex(@"(?:referencia|comprobante|documento|transacci[oó]n\s*(?:n[uú]mero|nro)?|autorizaci[oó]n)\s*[:#]?\s*(?<reference>[A-Za-z0-9\-]{4,24})", RegexOptions.IgnoreCase, 500)]
     protected static partial Regex ReferenceRegex();
 
-    [GeneratedRegex(@"(?<date>\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2})", RegexOptions.IgnoreCase, 500)]
+    // Entregable 26: the year-first alternative used to require exactly two digits
+    // for month and day (\d{2}-\d{2}), so "2026-8-31" (a single-digit month/day --
+    // the same shape ValueParsers.cs's own comment says Pichincha's web export
+    // actually uses) fell through to the day/month alternative instead, which then
+    // matched only the truncated tail "26-8-31" and lost the century. The \b at
+    // both ends stops either alternative from ever starting or ending mid-run.
+    [GeneratedRegex(@"\b(?<date>\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b", RegexOptions.IgnoreCase, 500)]
     protected static partial Regex DateRegex();
 
-    [GeneratedRegex(@"\b(?<h>\d{1,2}):(?<m>\d{2})(?::\d{2})?\b", RegexOptions.IgnoreCase, 500)]
+    // Entregable 26: an optional meridiem group -- "6:12 PM" has no way to reach
+    // ReadDate as anything but a plain 18-minus-12-hours-wrong "06:12" without it.
+    [GeneratedRegex(@"\b(?<h>\d{1,2}):(?<m>\d{2})(?::\d{2})?\s*(?<ampm>[AaPp]\.?\s?[Mm]\.?)?\b", RegexOptions.IgnoreCase, 500)]
     protected static partial Regex TimeRegex();
 }

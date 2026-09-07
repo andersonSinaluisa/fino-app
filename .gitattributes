@@ -1,0 +1,12 @@
+# Un repositorio que se usa desde Windows, Linux y CI necesita esto: sin ello,
+# descomprimir o clonar en Windows marca cada archivo como modificado.
+* text=auto eol=lf
+
+*.ps1  text eol=crlf
+*.cmd  text eol=crlf
+*.bat  text eol=crlf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.zip binary

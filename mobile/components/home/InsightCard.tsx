@@ -1,4 +1,4 @@
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, type ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../theme';
 import { Typo } from '../ui/Typo';
@@ -6,6 +6,7 @@ import type { Insight } from '../../types/api';
 
 interface InsightCardProps {
   insight: Insight;
+  style?: ViewStyle;
 }
 
 const iconFor: Record<string, keyof typeof Ionicons.glyphMap> = {
@@ -20,7 +21,7 @@ const iconFor: Record<string, keyof typeof Ionicons.glyphMap> = {
   STALE_ACCOUNT: 'refresh-outline',
 };
 
-export function InsightCard({ insight }: InsightCardProps) {
+export function InsightCard({ insight, style }: InsightCardProps) {
   const accent =
     insight.severity === 'Positive'
       ? colors.accentSecondary
@@ -29,7 +30,7 @@ export function InsightCard({ insight }: InsightCardProps) {
         : colors.accent;
 
   return (
-    <View style={styles.card}>
+    <View style={[styles.card, style]}>
       <View style={[styles.icon, { backgroundColor: `${accent}33` }]}>
         <Ionicons name={iconFor[insight.code] ?? 'sparkles-outline'} size={16} color={colors.text} />
       </View>

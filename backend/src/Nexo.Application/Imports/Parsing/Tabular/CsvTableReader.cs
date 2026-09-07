@@ -12,13 +12,20 @@ public static class CsvTableReader
 {
     private static readonly char[] CandidateDelimiters = [';', ',', '\t', '|'];
 
-    public static TabularTable Read(Stream stream, int maxRows = 20000)
+    /// <summary>
+    /// No real bank export needs more than a few dozen columns; this is a
+    /// defensive ceiling against a file built to allocate memory without limit
+    /// (thousands of delimiters on a single line), not a realistic width.
+    /// </summary>
+    public const int DefaultMaxColumns = 200;
+
+    public static TabularTable Read(Stream stream, int maxRows = 20000, int maxColumns = DefaultMaxColumns)
     {
         var text = ReadAllText(stream);
-        return ReadFromText(text, maxRows);
+        return ReadFromText(text, maxRows, maxColumns);
     }
 
-    public static TabularTable ReadFromText(string text, int maxRows = 20000)
+    public static TabularTable ReadFromText(string text, int maxRows = 20000, int maxColumns = DefaultMaxColumns)
     {
         var delimiter = DetectDelimiter(text);
         var rows = new List<TabularRow>();
@@ -26,10 +33,15 @@ public static class CsvTableReader
         var current = new StringBuilder();
         var inQuotes = false;
         var lineNumber = 1;
+        var overflowedColumns = false;
 
         void CloseRow()
         {
-            cells.Add(current.ToString().Trim());
+            if (cells.Count < maxColumns)
+            {
+                cells.Add(current.ToString().Trim());
+            }
+
             current.Clear();
             rows.Add(new TabularRow(lineNumber, cells.ToArray()));
             cells.Clear();
@@ -68,7 +80,15 @@ public static class CsvTableReader
             }
             else if (ch == delimiter)
             {
-                cells.Add(current.ToString().Trim());
+                if (cells.Count < maxColumns)
+                {
+                    cells.Add(current.ToString().Trim());
+                }
+                else
+                {
+                    overflowedColumns = true;
+                }
+
                 current.Clear();
             }
             else if (ch == '\r')
@@ -88,6 +108,12 @@ public static class CsvTableReader
         if (current.Length > 0 || cells.Count > 0)
         {
             CloseRow();
+        }
+
+        if (overflowedColumns)
+        {
+            throw new InvalidDataException(
+                $"El archivo tiene más de {maxColumns} columnas en una fila; no parece un estado de cuenta válido.");
         }
 
         return new TabularTable(rows);

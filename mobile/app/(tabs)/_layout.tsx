@@ -4,11 +4,13 @@ import { Platform, StyleSheet } from 'react-native';
 import { colors, typography } from '../../theme';
 import { useAuthStore } from '../../store/authStore';
 import { usePushRegistration } from '../../hooks/usePushRegistration';
+import { useRealtime } from '../../hooks/useRealtime';
 
 export default function TabsLayout() {
   const status = useAuthStore((state) => state.status);
 
   usePushRegistration();
+  useRealtime();
 
   if (status === 'anonymous') {
     return <Redirect href="/(auth)/login" />;
@@ -41,6 +43,15 @@ export default function TabsLayout() {
           title: 'Movimientos',
           tabBarIcon: ({ color, focused }) => (
             <Ionicons name={focused ? 'swap-vertical' : 'swap-vertical-outline'} size={22} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="estadisticas"
+        options={{
+          title: 'Estadísticas',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'stats-chart' : 'stats-chart-outline'} size={22} color={color} />
           ),
         }}
       />

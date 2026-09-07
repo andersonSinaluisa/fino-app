@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Nexo.Api.Endpoints;
 using Nexo.Api.Setup;
@@ -51,30 +52,44 @@ builder.Services.AddScoped<IRealtimeNotifier, SignalRRealtimeNotifier>();
 
 // ---------------------------------------------------------------------------
 // Authentication
+//
+// The signing key is read through IOptions<JwtOptions>, never captured here.
+// `builder.Configuration` before `builder.Build()` only sees the application's own
+// providers: a test host, or any provider added later in the host pipeline, layers
+// its values on afterwards. Capturing the key eagerly made the API *sign* tokens
+// with one key and *validate* them with another, so every authenticated request
+// answered 401 while sign-in itself looked healthy.
 // ---------------------------------------------------------------------------
-var jwtSection = builder.Configuration.GetSection(JwtOptions.SectionName);
-var jwt = jwtSection.Get<JwtOptions>() ?? new JwtOptions();
+builder.Services
+    .AddOptions<JwtOptions>()
+    .Bind(builder.Configuration.GetSection(JwtOptions.SectionName))
+    .PostConfigure<IHostEnvironment>((options, environment) =>
+    {
+        if (options.SigningKey.Length >= 32 || !environment.IsDevelopment())
+        {
+            return;
+        }
 
-if (string.IsNullOrWhiteSpace(jwt.SigningKey) || jwt.SigningKey.Length < 32)
-{
-    if (builder.Environment.IsDevelopment())
-    {
-        // Deterministic only so a fresh clone runs; production fails fast below.
-        jwt.SigningKey = "nexo-development-signing-key-change-me-please";
-        builder.Configuration["Nexo:Jwt:SigningKey"] = jwt.SigningKey;
-    }
-    else
-    {
-        throw new InvalidOperationException(
-            "Nexo:Jwt:SigningKey must be set to at least 32 characters outside Development.");
-    }
-}
+        // Deterministic only so a fresh clone runs; every other environment is
+        // rejected by the validation below, at startup rather than at first login.
+        options.SigningKey = "nexo-development-signing-key-change-me-please";
+    })
+    .Validate(
+        options => options.SigningKey.Length >= 32,
+        "Nexo:Jwt:SigningKey must be set to at least 32 characters outside Development.")
+    .ValidateOnStart();
 
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
+    .AddJwtBearer();
+
+builder.Services
+    .AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+    .Configure<IOptions<JwtOptions>>((bearer, accessor) =>
     {
-        options.TokenValidationParameters = new TokenValidationParameters
+        var jwt = accessor.Value;
+
+        bearer.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
             ValidateAudience = true,
@@ -87,7 +102,7 @@ builder.Services
         };
 
         // SignalR cannot send an Authorization header on the websocket handshake.
-        options.Events = new JwtBearerEvents
+        bearer.Events = new JwtBearerEvents
         {
             OnMessageReceived = context =>
             {
@@ -164,11 +179,21 @@ builder.Services.AddCors(options => options.AddPolicy("mobile", policy =>
     {
         policy.WithOrigins(origins).AllowAnyHeader().AllowAnyMethod().AllowCredentials();
     }
-    else
+    else if (builder.Environment.IsDevelopment())
     {
         // Expo Go talks to the API from a device on the LAN; there is no browser
         // origin to pin in development.
         policy.SetIsOriginAllowed(_ => true).AllowAnyHeader().AllowAnyMethod().AllowCredentials();
+    }
+    else
+    {
+        // Entregable 20: forgetting Nexo:Cors:AllowedOrigins outside Development
+        // must fail closed (no cross-origin browser access at all), not fall
+        // back to "any origin" -- the same fail-closed shape already used for
+        // Nexo:Jwt:SigningKey above. Native mobile clients are unaffected: CORS
+        // is a browser-enforced mechanism, so Expo/React Native requests never
+        // go through it in the first place.
+        policy.WithOrigins([]).AllowAnyHeader().AllowAnyMethod();
     }
 }));
 
@@ -204,10 +229,15 @@ if (!app.Environment.IsDevelopment())
 
 app.Use(async (context, next) =>
 {
-    // Minimal, boring security headers. The API serves JSON only.
+    // Minimal, boring security headers. The API serves JSON only, so there is
+    // nothing for a browser to render: CSP and Permissions-Policy are pure
+    // defense in depth for the one page that does exist (the Development-only
+    // OpenAPI UI below), not something an actual attack surface depends on.
     context.Response.Headers["X-Content-Type-Options"] = "nosniff";
     context.Response.Headers["Referrer-Policy"] = "no-referrer";
     context.Response.Headers["X-Frame-Options"] = "DENY";
+    context.Response.Headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'";
+    context.Response.Headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()";
     await next();
 });
 
@@ -220,7 +250,7 @@ app.UseAuthentication();
 // The policies are always registered (endpoints reference them by name); only the
 // middleware is optional, so an automated suite can hammer /auth without tripping
 // the brute-force budget.
-if (builder.Configuration.GetValue("Nexo:RateLimiting:Enabled", true))
+if (app.Configuration.GetValue("Nexo:RateLimiting:Enabled", true))
 {
     app.UseRateLimiter();
 }
@@ -230,6 +260,8 @@ app.UseAuthorization();
 app.MapAuthEndpoints();
 app.MapAccountEndpoints();
 app.MapTransactionEndpoints();
+app.MapAnalyticsEndpoints();
+app.MapInternalTransferEndpoints();
 app.MapImportEndpoints();
 app.MapProfileEndpoints();
 app.MapEmailIngestionEndpoints();

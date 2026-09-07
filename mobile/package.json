@@ -1,7 +1,13 @@
 {
-  "name": "nexo-mobile",
+  "name": "fino-mobile",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.13.0 <23 || >=24.3.0"
+  },
+  "volta": {
+    "node": "22.22.3"
+  },
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
@@ -13,11 +19,15 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.1.1",
+    "@microsoft/signalr": "^10.0.11",
     "@tanstack/react-query": "^5.102.8",
     "expo": "~57.0.20",
     "expo-constants": "~57.0.17",
+    "expo-dev-client": "~57.0.18",
     "expo-device": "~57.0.1",
     "expo-document-picker": "~57.0.1",
+    "expo-file-system": "~57.0.6",
+    "expo-font": "~57.0.3",
     "expo-haptics": "~57.0.2",
     "expo-linking": "~57.0.9",
     "expo-notifications": "~57.0.17",
@@ -34,11 +44,13 @@
   },
   "devDependencies": {
     "@babel/core": "^7.29.7",
+    "@testing-library/react-native": "^14.0.1",
     "@types/jest": "^30.0.0",
     "@types/react": "~19.2.2",
     "babel-preset-expo": "^57.0.10",
     "jest": "^30.5.1",
     "jest-expo": "~57.0.5",
+    "test-renderer": "^1.2.0",
     "typescript": "~6.0.3"
   },
   "jest": {

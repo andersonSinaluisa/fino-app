@@ -22,6 +22,15 @@ public sealed class HttpCurrentUser(IHttpContextAccessor accessor) : ICurrentUse
 
     public bool IsAuthenticated => UserId is not null;
 
+    public Guid? SessionId
+    {
+        get
+        {
+            var value = accessor.HttpContext?.User.FindFirstValue("sid");
+            return Guid.TryParse(value, out var id) ? id : null;
+        }
+    }
+
     public Guid RequireUserId() =>
         UserId ?? throw new UnauthorizedException("Necesitas iniciar sesión.");
 }

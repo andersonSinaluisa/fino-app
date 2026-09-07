@@ -164,7 +164,7 @@ public class ImportFlowTests(NexoApiFactory factory) : IClassFixture<NexoApiFact
             $"/api/v1/imports/{preview.GetProperty("importId").GetGuid()}/confirm",
             new { excludedRowIds = new[] { excluded }, applyDeclaredClosingBalance = false });
 
-        response.EnsureSuccessStatusCode();
+        await response.EnsureOkAsync();
         var result = await response.Content.ReadFromJsonAsync<JsonElement>();
 
         Assert.Equal(3, result.GetProperty("importedCount").GetInt32());
@@ -183,7 +183,7 @@ public class ImportFlowTests(NexoApiFactory factory) : IClassFixture<NexoApiFact
             $"/api/v1/accounts/{accountId}/verified-balance",
             new { balance = 2352.01m, asOf = new DateTimeOffset(2026, 3, 8, 5, 0, 0, TimeSpan.Zero) });
 
-        verified.EnsureSuccessStatusCode();
+        await verified.EnsureOkAsync();
         var account = await verified.Content.ReadFromJsonAsync<JsonElement>();
 
         Assert.Equal(2352.01m, account.GetProperty("balance").GetDecimal());
@@ -236,7 +236,7 @@ public class ImportFlowTests(NexoApiFactory factory) : IClassFixture<NexoApiFact
             $"/api/v1/transactions/{netflix.GetProperty("id").GetGuid()}/category",
             new { categoryId = entertainment, createRule = true });
 
-        response.EnsureSuccessStatusCode();
+        await response.EnsureOkAsync();
         var updated = await response.Content.ReadFromJsonAsync<JsonElement>();
 
         Assert.Equal("Entretenimiento", updated.GetProperty("categoryName").GetString());
@@ -273,7 +273,7 @@ public class ImportFlowTests(NexoApiFactory factory) : IClassFixture<NexoApiFact
         await user.ConfirmImportAsync(preview.GetProperty("importId").GetGuid());
 
         var response = await user.Client.GetAsync("/api/v1/privacy/export");
-        response.EnsureSuccessStatusCode();
+        await response.EnsureOkAsync();
 
         var json = await response.Content.ReadAsStringAsync();
         using var document = JsonDocument.Parse(json);

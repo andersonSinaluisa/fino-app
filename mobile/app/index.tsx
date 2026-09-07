@@ -11,7 +11,7 @@ export default function Index() {
   if (status === 'loading') {
     return (
       <View style={styles.splash}>
-        <Typo variant="title">Nexo</Typo>
+        <Typo variant="title">Fino</Typo>
         <Typo variant="caption" color={colors.textSecondary}>
           Todo tu dinero, en un solo lugar.
         </Typo>

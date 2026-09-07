@@ -167,3 +167,67 @@ habilitado; la app dibuja solo eso, y abrir una cuenta en un modo no soportado
 lanza una excepción de dominio.
 **Consecuencias.** La UI no puede mentir por accidente. Activar un modo nuevo es
 un cambio de datos, no de código.
+
+### ADR-008 — La configuración sensible se resuelve tarde, nunca al componer
+
+**Contexto.** `Program.cs` leía `Nexo:Jwt:SigningKey` de `builder.Configuration`
+para armar el middleware bearer, y al mismo tiempo el servicio que **firma** los
+tokens recibía `IOptions<JwtOptions>`, que se resuelve al usarse. Son dos vistas
+distintas de la configuración: lo que se agrega después de los proveedores de la
+aplicación —un host de pruebas, un proveedor tardío, un almacén de secretos—
+llega a la segunda y no a la primera. El resultado fue una API que firmaba con
+una clave y validaba con otra: el login devolvía 200 con un token impecable y
+cada petición autenticada respondía 401, sin un solo error en los logs.
+
+**Decisión.** Ningún valor de configuración se captura mientras se componen los
+servicios. `JwtOptions` se enlaza una vez, el respaldo de desarrollo vive en un
+`PostConfigure` que recibe `IHostEnvironment`, la exigencia de una clave real se
+expresa con `Validate(...).ValidateOnStart()` —falla al arrancar, no al primer
+login— y `JwtBearerOptions` se configura a partir de `IOptions<JwtOptions>`.
+Después de `builder.Build()` se lee `app.Configuration`, que ya es la definitiva.
+
+**Consecuencias.** Emisor y validador comparten origen por construcción, así que
+la clase de fallo no puede reaparecer en silencio. `AuthenticationTests` fija la
+propiedad como prueba: un token que esta API emite es un token que esta API
+acepta. Efecto colateral: los sellos `nbf`/`exp` se toman de `TimeProvider` y no
+de `IClock` —el reloj de negocio, que las pruebas fijan en el mes de sus
+fixtures— porque el middleware los compara contra el reloj de pared.
+
+### ADR-009 — Nunca componer `ids.Contains(...)` con el filtro global de usuario
+
+**Contexto.** `DeduplicationService.CheckBatchAsync` filtraba movimientos con
+`accountIds.Contains(t.FinancialAccountId)`. Combinado con el filtro global de
+`NexoDbContext` (un `OrElse` sobre una propiedad del propio `DbContext`), EF Core no
+podía traducir la consulta contra SQLite —el proveedor de las pruebas de
+integración— y `POST /api/v1/imports` respondía 500 en cualquier importación, de
+cualquier banco, con cualquier archivo. SQLite no tiene un tipo GUID nativo; el
+proveedor de EF Core lo resuelve con su propio mapeo interno, y ese mapeo no
+sobrevive la combinación de un `Contains` sobre un arreglo capturado con el árbol
+booleano del filtro global. El mismo patrón exacto —`ids.Contains(entidad.Id)`
+sobre un tipo `IUserOwned`— existía además en
+`TransactionService.LoadAccountAliasesAsync` (rompía la pantalla de Movimientos en
+cuanto existiera un solo movimiento) y en `PrivacyService` al eliminar una cuenta
+financiera con historial de importaciones. Los tres se descubrieron buscando
+variantes del mismo patrón, no solo el que reventó primero.
+
+**Decisión.** Ningún filtro por lote de ids se escribe como `ids.Contains(...)`
+sobre una columna Guid de un tipo `IUserOwned`. En su lugar,
+`QueryableGuidExtensions.WhereIdIn` arma una cadena explícita de comparaciones de
+igualdad (`OR`), que sí es traducible en todos los proveedores de Nexo porque es
+exactamente la forma que ya usa cualquier búsqueda por un solo id. El filtro
+explícito por `UserId` se mantiene siempre antes de `WhereIdIn` —la doble capa de
+ADR-006 no se toca— y el filtro global de EF Core sigue activo (nunca se llama
+`IgnoreQueryFilters` en esta ruta).
+
+**Consecuencias.** Los conjuntos de ids en los que se usa este patrón son siempre
+pequeños (una cuenta por importación, las cuentas distintas de una página de
+movimientos, las filas de importación de una cuenta eliminada); no está pensado
+para filtrar por miles de ids, y quien lo reutilice con un conjunto grande debe
+medirlo antes. `DeduplicationFlowTests` cubre el caso que reventó primero (los
+cuatro escenarios de importación de la auditoría, más el aislamiento cruzado
+entre usuarios) e incluye, dentro de la misma prueba, la verificación de
+`accountAlias` en el listado de movimientos que ejercitaba
+`TransactionService.LoadAccountAliasesAsync`; `PrivacyFlowTests` cubre el tercer
+sitio, en `PrivacyService.DeleteFinancialAccountAsync`.
+`CrossSourceDeduplicationTests` complementa esto con el caso de deduplicación
+entre canales (email + estado de cuenta) que motivó el Entregable 2.

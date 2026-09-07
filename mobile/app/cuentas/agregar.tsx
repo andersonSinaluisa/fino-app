@@ -89,7 +89,7 @@ export default function AddAccountScreen() {
             keyboardType="number-pad"
             maxLength={4}
             placeholder="4821"
-            hint="Nexo nunca guarda tu número de cuenta completo."
+            hint="Fino nunca guarda tu número de cuenta completo."
           />
 
           <View style={styles.typeRow}>
@@ -138,7 +138,7 @@ export default function AddAccountScreen() {
       <View style={styles.header}>
         <Typo variant="title">Agregar cuenta</Typo>
         <Typo variant="caption" color={colors.textSecondary}>
-          Elige tu institución. Mostramos solo lo que Nexo puede hacer hoy con cada una.
+          Elige tu institución. Mostramos solo lo que Fino puede hacer hoy con cada una.
         </Typo>
       </View>
 

@@ -22,7 +22,11 @@ public sealed class WorkerOptions
 }
 
 /// <summary>
-/// Recomputes insights for users who had movement since the last pass.
+/// Recomputes insights for every active user, on a timer -- not only those who
+/// had movement since the last pass. This also keeps month-scoped insights
+/// (Entregable 16's ValidUntil) from lingering into a new month for someone who
+/// simply stopped importing: a next pass always comes along and replaces the set,
+/// on top of the defensive ValidUntil filter both readers already apply.
 ///
 /// ADR-004: workers run in-process inside the API host. A separate deployable and a
 /// queue would be the right call once ingestion is continuous; for an MVP whose

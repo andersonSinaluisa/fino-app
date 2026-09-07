@@ -94,6 +94,111 @@ public class XlsxTableReaderTests
 }
 
 /// <summary>
+/// Banco Guayaquil's real export is an HTML document saved with a ".xls"
+/// extension (see GuayaquilHtmlStatementTests). Nothing about the file name or
+/// declared content type says so -- detection and reading both work off the
+/// actual bytes.
+/// </summary>
+public class HtmlTableReaderTests
+{
+    [Fact]
+    public void Recognises_a_full_html_document()
+    {
+        var bytes = "<html><body><table><tr><td>a</td></tr></table></body></html>"u8.ToArray();
+        Assert.True(HtmlTableReader.LooksLikeHtml(bytes));
+    }
+
+    [Fact]
+    public void Recognises_a_bare_table_with_no_html_wrapper()
+    {
+        var bytes = "<table><tr><td>a</td></tr></table>"u8.ToArray();
+        Assert.True(HtmlTableReader.LooksLikeHtml(bytes));
+    }
+
+    [Fact]
+    public void Recognises_a_doctype_declaration()
+    {
+        var bytes = "<!DOCTYPE html><html><body></body></html>"u8.ToArray();
+        Assert.True(HtmlTableReader.LooksLikeHtml(bytes));
+    }
+
+    [Fact]
+    public void Does_not_mistake_a_csv_for_html()
+    {
+        var bytes = "Fecha,Concepto,Valor\n04/03/2026,SUPERMAXI,-48.2\n"u8.ToArray();
+        Assert.False(HtmlTableReader.LooksLikeHtml(bytes));
+    }
+
+    [Fact]
+    public void Reads_every_row_and_cell_stripping_tags_and_decoding_entities()
+    {
+        const string html = """
+            <html><body><table>
+              <tr><th>Fecha</th><th>Concepto</th><th>Monto</th></tr>
+              <tr><td>04/03/2026</td><td>Caf&eacute; &amp; T&eacute;</td><td>$48,20</td></tr>
+            </table></body></html>
+            """;
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(html));
+        var table = HtmlTableReader.Read(stream);
+
+        Assert.Equal(2, table.RowCount);
+        Assert.Equal(3, table.Rows[0].Cells.Count);
+        Assert.Equal("Fecha", table.Rows[0][0]);
+        Assert.Equal("Concepto", table.Rows[0][1]);
+        Assert.Equal("Monto", table.Rows[0][2]);
+        Assert.Equal("Café & Té", table.Rows[1][1]);
+        Assert.Equal("$48,20", table.Rows[1][2]);
+    }
+
+    [Fact]
+    public void A_line_break_inside_a_cell_becomes_a_space_not_lost_text()
+    {
+        const string html = "<html><body><table><tr><td>Linea uno<br/>Linea dos</td></tr></table></body></html>";
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(html));
+        var table = HtmlTableReader.Read(stream);
+
+        Assert.Equal("Linea uno Linea dos", table.Rows[0][0]);
+    }
+
+    [Fact]
+    public void Rows_used_only_for_layout_colspan_and_rowspan_are_read_as_is()
+    {
+        // The summary block above a real statement's movements table is full of
+        // colspan/rowspan cells. The reader does not need to reconstruct a grid
+        // for them -- HeaderMappedStatementParser only ever needs the actual
+        // header and data rows, which have no merged cells.
+        const string html = """
+            <html><body><table>
+              <tr><td colspan="4"></td><td colspan="4" rowspan="6">Ayuda</td></tr>
+              <tr><td>Resumen del periodo</td></tr>
+            </table></body></html>
+            """;
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(html));
+        var table = HtmlTableReader.Read(stream);
+
+        Assert.Equal(2, table.RowCount);
+        Assert.Equal(2, table.Rows[0].Cells.Count);
+        Assert.Equal("Ayuda", table.Rows[0][1]);
+    }
+
+    [Fact]
+    public void Skips_a_UTF8_byte_order_mark()
+    {
+        var bytes = new byte[] { 0xEF, 0xBB, 0xBF }
+            .Concat(System.Text.Encoding.UTF8.GetBytes("<html><body><table><tr><td>Fecha</td></tr></table></body></html>"))
+            .ToArray();
+
+        using var stream = new MemoryStream(bytes);
+        var table = HtmlTableReader.Read(stream);
+
+        Assert.Equal("Fecha", table.Rows[0][0]);
+    }
+}
+
+/// <summary>
 /// Builds a minimal but valid .xlsx package in memory, so the reader is exercised
 /// against real SpreadsheetML rather than a mock.
 /// </summary>

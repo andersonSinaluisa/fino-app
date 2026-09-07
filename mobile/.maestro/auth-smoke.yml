@@ -1,0 +1,15 @@
+appId: app.nexo.mobile
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Nexo"
+- assertVisible: "Todo tu dinero, en un solo lugar."
+- assertVisible: "Correo"
+- assertVisible: "Entrar"
+- assertVisible: "Crear una"
+- tapOn: "Crear una"
+- assertVisible: "Crea tu cuenta"
+- assertVisible: "Nombre"
+- assertVisible: "Crear cuenta"
+- tapOn: "Ya tengo cuenta"
+- assertVisible: "Nexo"

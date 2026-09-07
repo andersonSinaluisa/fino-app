@@ -28,6 +28,9 @@ public static class TransactionEndpoints
             string? direction,
             DateTimeOffset? from,
             DateTimeOffset? to,
+            string? providerCode,
+            decimal? minAmount,
+            decimal? maxAmount,
             bool? includeIgnored,
             int? page,
             int? pageSize,
@@ -43,6 +46,9 @@ public static class TransactionEndpoints
                 Direction = direction,
                 From = from,
                 To = to,
+                ProviderCode = providerCode,
+                MinAmount = minAmount,
+                MaxAmount = maxAmount,
                 IncludeIgnored = includeIgnored ?? false,
                 Page = new PageRequest { Page = page ?? 1, PageSize = pageSize ?? 30 },
             };
@@ -84,6 +90,32 @@ public static class TransactionEndpoints
                 id,
                 request,
                 cancellationToken)));
+
+        group.MapPut("/transactions/{id:guid}/merchant", async (
+            Guid id,
+            UpdateMerchantRequest request,
+            ITransactionService transactions,
+            ICurrentUser currentUser,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await transactions.UpdateMerchantAsync(
+                currentUser.RequireUserId(),
+                id,
+                request,
+                cancellationToken)))
+            .WithSummary("Corrige el nombre del comercio sin tocar la descripción original del banco.");
+
+        group.MapPut("/transactions/{id:guid}/duplicate-review", async (
+            Guid id,
+            ResolveDuplicateRequest request,
+            ITransactionService transactions,
+            ICurrentUser currentUser,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await transactions.ResolveDuplicateAsync(
+                currentUser.RequireUserId(),
+                id,
+                request,
+                cancellationToken)))
+            .WithSummary("Resuelve un posible duplicado: lo mantiene como movimiento propio o lo ignora. Nunca lo borra.");
 
         group.MapGet("/categories", async (
                 ICategoryService categories,

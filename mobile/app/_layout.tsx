@@ -44,6 +44,19 @@ export default function RootLayout() {
           <Stack.Screen name="movimiento/[id]" options={{ presentation: 'card' }} />
           <Stack.Screen name="cuentas/agregar" options={{ presentation: 'modal' }} />
           <Stack.Screen name="cuentas/importar" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="cuentas/importaciones" options={{ presentation: 'card' }} />
+          <Stack.Screen name="cuentas/actualizar-saldo" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="cuentas/conciliacion" options={{ presentation: 'card' }} />
+          <Stack.Screen name="cuentas/reconectar" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="dinero-disponible/index" options={{ presentation: 'card' }} />
+          <Stack.Screen name="plan/index" options={{ presentation: 'card' }} />
+          <Stack.Screen name="analisis-gastos/index" options={{ presentation: 'card' }} />
+          <Stack.Screen name="transferencias/index" options={{ presentation: 'card' }} />
+          <Stack.Screen name="alertas-financieras/index" options={{ presentation: 'card' }} />
+          <Stack.Screen name="conectar-correo/index" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="notificaciones/index" options={{ presentation: 'card' }} />
+          <Stack.Screen name="sesiones/index" options={{ presentation: 'card' }} />
+          <Stack.Screen name="actividad/index" options={{ presentation: 'card' }} />
         </Stack>
       </QueryClientProvider>
     </SafeAreaProvider>

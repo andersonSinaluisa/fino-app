@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { colors, spacing } from '../../theme';
 import { Button, Input, Screen, Typo } from '../../components/ui';
@@ -18,7 +18,15 @@ export default function LoginScreen() {
   const submit = async () => {
     setBusy(true);
     try {
-      await login(email, password);
+      const deletionCancelled = await login(email, password);
+      if (deletionCancelled) {
+        // Entregable 22: this is the one door back after "eliminar mi cuenta"
+        // -- worth telling the person plainly what just happened.
+        Alert.alert(
+          'Tu cuenta sigue activa',
+          'Habías pedido eliminar tu cuenta Fino. Como volviste a iniciar sesión, cancelamos esa solicitud.',
+        );
+      }
       router.replace('/(tabs)');
     } catch {
       // The store already holds the message; the screen just stops spinning.
@@ -34,7 +42,7 @@ export default function LoginScreen() {
     >
       <Screen>
         <View style={styles.header}>
-          <Typo variant="title">Nexo</Typo>
+          <Typo variant="title">Fino</Typo>
           <Typo variant="body" color={colors.textSecondary}>
             Todo tu dinero, en un solo lugar.
           </Typo>

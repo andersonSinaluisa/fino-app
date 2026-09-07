@@ -30,17 +30,54 @@ services:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Development}
       ASPNETCORE_URLS: http://0.0.0.0:8080
       ConnectionStrings__Default: "Host=db;Port=5432;Database=${POSTGRES_DB:-nexo};Username=${POSTGRES_USER:-nexo};Password=${POSTGRES_PASSWORD:-nexo_local_dev}"
+      Nexo__Database__AutoMigrate: ${Nexo__Database__AutoMigrate:-true}
       Nexo__Jwt__SigningKey: ${Nexo__Jwt__SigningKey:-development-signing-key-change-me-please}
       Nexo__Secrets__EncryptionKey: ${Nexo__Secrets__EncryptionKey:-bmV4by1kZXZlbG9wbWVudC1vbmx5LWtleS0zMmJ5dGU=}
       Nexo__Seed__Demo: ${Nexo__Seed__Demo:-true}
+      Nexo__Workers__Enabled: ${Nexo__Workers__Enabled:-true}
+      Nexo__RateLimiting__Enabled: ${Nexo__RateLimiting__Enabled:-true}
       Nexo__Push__Enabled: ${Nexo__Push__Enabled:-false}
+      Nexo__Cors__AllowedOrigins__0: ${Nexo__Cors__AllowedOrigins__0:-}
+      Nexo__EmailIngestion__Gmail__ClientId: ${Nexo__EmailIngestion__Gmail__ClientId:-}
+      Nexo__EmailIngestion__Gmail__ClientSecret: ${Nexo__EmailIngestion__Gmail__ClientSecret:-}
+      Nexo__EmailIngestion__Gmail__RedirectUri: ${Nexo__EmailIngestion__Gmail__RedirectUri:-}
+      Nexo__EmailIngestion__Outlook__ClientId: ${Nexo__EmailIngestion__Outlook__ClientId:-}
+      Nexo__EmailIngestion__Outlook__ClientSecret: ${Nexo__EmailIngestion__Outlook__ClientSecret:-}
+      Nexo__EmailIngestion__Outlook__RedirectUri: ${Nexo__EmailIngestion__Outlook__RedirectUri:-}
+      Nexo__EmailIngestion__Forwarding__InboundDomain: ${Nexo__EmailIngestion__Forwarding__InboundDomain:-}
+      Nexo__EmailIngestion__Forwarding__WebhookSecret: ${Nexo__EmailIngestion__Forwarding__WebhookSecret:-}
     ports:
       - "5080:8080"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health/live"]
+      test: ["CMD-SHELL", "timeout 5 bash -c '</dev/tcp/127.0.0.1/8080'"]
       interval: 10s
       timeout: 5s
       retries: 6
 
+  # Compila, prueba y genera la migración inicial dentro de la imagen del SDK.
+  # No necesitas .NET instalado en el host: Docker ya lo trae.
+  #
+  #   docker compose --profile tools run --rm verify
+  #
+  # Los resultados quedan en .verify/ dentro del repositorio.
+  verify:
+    profiles: ["tools"]
+    image: mcr.microsoft.com/dotnet/sdk:10.0
+    working_dir: /repo
+    environment:
+      # obj/ y bin/ van a un volumen, no al directorio montado.
+      NexoArtifactsPath: /build
+      NUGET_PACKAGES: /nuget
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      DOTNET_NOLOGO: "1"
+      DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+    volumes:
+      - ./:/repo
+      - nexo-nuget:/nuget
+      - nexo-build:/build
+    entrypoint: ["bash", "scripts/verify.sh"]
+
 volumes:
   nexo-db-data:
+  nexo-nuget:
+  nexo-build:

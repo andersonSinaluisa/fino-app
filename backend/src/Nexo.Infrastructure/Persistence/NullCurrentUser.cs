@@ -14,6 +14,8 @@ public sealed class NullCurrentUser : ICurrentUser
 
     public bool IsAuthenticated => false;
 
+    public Guid? SessionId => null;
+
     public Guid RequireUserId() =>
         throw new UnauthorizedException("This operation requires an authenticated user.");
 }

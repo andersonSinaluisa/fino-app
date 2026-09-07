@@ -129,13 +129,13 @@ public class AuthorizationTests(NexoApiFactory factory) : IClassFixture<NexoApiF
             password = "NexoIntegration2026!",
             displayName = "Rotación",
         });
-        registration.EnsureSuccessStatusCode();
+        await registration.EnsureOkAsync();
 
         var payload = await registration.Content.ReadFromJsonAsync<JsonElement>();
         var refreshToken = payload.GetProperty("refreshToken").GetString()!;
 
         var first = await client.PostAsJsonAsync("/api/v1/auth/refresh", new { refreshToken });
-        first.EnsureSuccessStatusCode();
+        await first.EnsureOkAsync();
 
         // Replaying the original token is the signature of a stolen token.
         var replay = await client.PostAsJsonAsync("/api/v1/auth/refresh", new { refreshToken });
@@ -157,7 +157,7 @@ public class AuthorizationTests(NexoApiFactory factory) : IClassFixture<NexoApiF
 
         var body = new { email, password = "NexoIntegration2026!", displayName = "Duplicado" };
 
-        (await client.PostAsJsonAsync("/api/v1/auth/register", body)).EnsureSuccessStatusCode();
+        await (await client.PostAsJsonAsync("/api/v1/auth/register", body)).EnsureOkAsync();
 
         var second = await client.PostAsJsonAsync("/api/v1/auth/register", body);
         Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);

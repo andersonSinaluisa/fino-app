@@ -43,7 +43,20 @@ public sealed class CategorizationRuleConfiguration : IEntityTypeConfiguration<C
         builder.Property(r => r.MatchKind).HasConversion<string>().HasMaxLength(16).IsRequired();
         builder.Property(r => r.Direction).HasConversion<string>().HasMaxLength(16);
 
+        // Entregable 14 ("Categorización v2"): merchant/provider/amount-range match
+        // criteria added alongside the original description pattern.
+        builder.Property(r => r.MerchantPattern).HasMaxLength(120);
+        builder.Property(r => r.ProviderCode).HasMaxLength(40);
+        builder.Property(r => r.MinAmount).HasPrecision(18, 2);
+        builder.Property(r => r.MaxAmount).HasPrecision(18, 2);
+
+        // Computed, not persisted -- same treatment as Transaction.SignedAmount /
+        // EffectiveMerchant in MoneyConfigurations.cs.
+        builder.Ignore(r => r.Specificity);
+        builder.Ignore(r => r.MatchTextLength);
+
         builder.HasIndex(r => new { r.UserId, r.IsActive, r.Priority });
+        builder.HasIndex(r => new { r.UserId, r.MerchantPattern });
 
         builder.HasOne<Category>()
             .WithMany()
@@ -129,6 +142,26 @@ public sealed class ImportRowConfiguration : IEntityTypeConfiguration<ImportRow>
     }
 }
 
+public sealed class ImportColumnMappingConfiguration : IEntityTypeConfiguration<ImportColumnMapping>
+{
+    public void Configure(EntityTypeBuilder<ImportColumnMapping> builder)
+    {
+        builder.ToTable("import_column_mappings");
+        builder.HasKey(m => m.Id);
+
+        builder.Property(m => m.ProviderCode).HasMaxLength(40).IsRequired();
+
+        // One saved mapping per institution per user: a re-mapping replaces it
+        // (see ImportColumnMapping's doc comment) rather than growing a history.
+        builder.HasIndex(m => new { m.UserId, m.ProviderCode }).IsUnique();
+
+        builder.HasOne<User>()
+            .WithMany()
+            .HasForeignKey(m => m.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
 public sealed class EmailConnectionConfiguration : IEntityTypeConfiguration<EmailConnection>
 {
     public void Configure(EntityTypeBuilder<EmailConnection> builder)
@@ -184,6 +217,9 @@ public sealed class InsightConfiguration : IEntityTypeConfiguration<Insight>
         builder.Property(i => i.PercentChange).HasPrecision(9, 2);
 
         builder.HasIndex(i => new { i.UserId, i.DisplayOrder });
+        // Entregable 16: both readers (GET /insights, GetHomeSummaryAsync) filter
+        // out anything past ValidUntil on top of DisplayOrder.
+        builder.HasIndex(i => new { i.UserId, i.ValidUntil });
 
         builder.HasOne<User>()
             .WithMany()

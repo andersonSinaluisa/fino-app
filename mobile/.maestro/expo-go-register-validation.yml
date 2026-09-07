@@ -1,0 +1,17 @@
+appId: host.exp.exponent
+---
+- launchApp:
+    clearState: true
+- openLink: "exp://192.168.100.110:8082"
+- tapOn: "Crear una"
+- assertVisible: "Crea tu cuenta"
+- tapOn: "Anderson"
+- inputText: "QA E2E"
+- tapOn: "tu@correo.com"
+- inputText: "qa+nexo-e2e@example.com"
+- tapOn: "Mínimo 10 caracteres"
+- inputText: "short"
+- assertVisible: "Usa al menos 10 caracteres."
+- eraseText
+- inputText: "Password123!"
+- assertVisible: "Crear cuenta"

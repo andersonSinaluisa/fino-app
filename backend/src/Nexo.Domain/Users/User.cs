@@ -40,6 +40,16 @@ public sealed class User : Entity
 
     public DateTimeOffset? DeletionRequestedAt { get; private set; }
 
+    /// <summary>
+    /// Entregable 20 ("Hardening de seguridad"): consecutive wrong-password
+    /// attempts since the last successful login or the last lockout. Reset to
+    /// zero the moment a lockout starts, so the next window starts clean.
+    /// </summary>
+    public int FailedLoginAttempts { get; private set; }
+
+    /// <summary>Entregable 20: set once <see cref="FailedLoginAttempts"/> reaches the configured limit.</summary>
+    public DateTimeOffset? LockedUntil { get; private set; }
+
     public static string NormalizeEmail(string email) =>
         DomainException.RequireText(email, nameof(email), 320).ToLowerInvariant();
 
@@ -71,7 +81,34 @@ public sealed class User : Entity
     public void RecordLogin(DateTimeOffset now)
     {
         LastLoginAt = now;
+        FailedLoginAttempts = 0;
+        LockedUntil = null;
         Stamp(now);
+    }
+
+    /// <summary>Entregable 20: true while a brute-force lockout is still in effect.</summary>
+    public bool IsLockedOut(DateTimeOffset now) => LockedUntil is { } until && until > now;
+
+    /// <summary>
+    /// Entregable 20: records one more wrong-password attempt. Once the count
+    /// reaches <paramref name="maxAttempts"/>, starts a lockout of
+    /// <paramref name="lockoutDuration"/> and resets the counter so the next
+    /// window starts clean. Returns true exactly on the attempt that triggers
+    /// the lock, so the caller can audit it distinctly from an ordinary failure.
+    /// </summary>
+    public bool RegisterFailedLogin(int maxAttempts, TimeSpan lockoutDuration, DateTimeOffset now)
+    {
+        FailedLoginAttempts++;
+        Stamp(now);
+
+        if (FailedLoginAttempts < maxAttempts)
+        {
+            return false;
+        }
+
+        LockedUntil = now.Add(lockoutDuration);
+        FailedLoginAttempts = 0;
+        return true;
     }
 
     public void UpdateProfile(string? displayName, string? timeZoneId, string? locale, DateTimeOffset now)
@@ -98,6 +135,22 @@ public sealed class User : Entity
     {
         Status = UserStatus.PendingDeletion;
         DeletionRequestedAt = now;
+        Stamp(now);
+    }
+
+    /// <summary>
+    /// Entregable 22 ("Privacidad completa"): the grace period only means
+    /// something if there is a real way back. Every refresh token is revoked
+    /// the moment deletion is requested, so the one door still open during the
+    /// grace period is a fresh email+password login -- see
+    /// AuthService.LoginAsync, which calls this the instant it verifies the
+    /// password of a PendingDeletion account, before AccountDeletionWorker
+    /// ever gets a chance to run.
+    /// </summary>
+    public void CancelDeletion(DateTimeOffset now)
+    {
+        Status = UserStatus.Active;
+        DeletionRequestedAt = null;
         Stamp(now);
     }
 }

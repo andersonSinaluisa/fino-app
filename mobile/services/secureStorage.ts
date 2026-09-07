@@ -5,9 +5,9 @@ import * as SecureStore from 'expo-secure-store';
  * On the rare device where SecureStore is unavailable we fail closed: the user
  * signs in again rather than having credentials written somewhere weaker.
  */
-const ACCESS_TOKEN_KEY = 'nexo.accessToken';
-const REFRESH_TOKEN_KEY = 'nexo.refreshToken';
-const USER_KEY = 'nexo.user';
+const ACCESS_TOKEN_KEY = 'fino.accessToken';
+const REFRESH_TOKEN_KEY = 'fino.refreshToken';
+const USER_KEY = 'fino.user';
 
 export interface StoredSession {
   accessToken: string;

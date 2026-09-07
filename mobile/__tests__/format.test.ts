@@ -1,13 +1,20 @@
 import {
+  accountBalanceStatus,
+  balanceStatusLabel,
+  balanceStatusTone,
   balanceTypeLabel,
   formatCompactCurrency,
   formatCurrency,
+  formatDateInput,
   formatDayHeading,
   formatFullDateTime,
+  formatMonthComparison,
   formatRelativeTime,
   groupByDay,
   initialsOf,
   maskLabel,
+  parseAmountFilter,
+  parseDateInput,
 } from '../utils/format';
 
 describe('formatCurrency', () => {
@@ -114,5 +121,113 @@ describe('small helpers', () => {
 
   it('formats a full timestamp for the movement detail', () => {
     expect(formatFullDateTime(new Date(2026, 2, 4, 18, 12, 0))).toBe('4 de marzo de 2026, 18:12');
+  });
+});
+
+describe('accountBalanceStatus (Entregable 11)', () => {
+  it('is verified only when the backend says so', () => {
+    expect(accountBalanceStatus({ balanceType: 'Verified', lastVerifiedAt: null })).toBe('Verified');
+  });
+
+  it('is estimated when it drifted away from a real anchor', () => {
+    expect(
+      accountBalanceStatus({ balanceType: 'Estimated', lastVerifiedAt: new Date(2026, 2, 1).toISOString() }),
+    ).toBe('Estimated');
+  });
+
+  it('needs an update when there has never been a real anchor at all', () => {
+    expect(accountBalanceStatus({ balanceType: 'Estimated', lastVerifiedAt: null })).toBe('NeedsUpdate');
+  });
+
+  it('labels and colours each status distinctly', () => {
+    expect(balanceStatusLabel('Verified')).toBe('Saldo verificado');
+    expect(balanceStatusLabel('Estimated')).toBe('Saldo estimado');
+    expect(balanceStatusLabel('NeedsUpdate')).toBe('Necesita actualización');
+
+    expect(balanceStatusTone('Verified')).toBe('positive');
+    expect(balanceStatusTone('Estimated')).toBe('neutral');
+    expect(balanceStatusTone('NeedsUpdate')).toBe('attention');
+  });
+});
+
+describe('formatDateInput / parseDateInput (Entregable 11)', () => {
+  const now = new Date(2026, 2, 10, 12, 0, 0);
+
+  it('round-trips a real date', () => {
+    const text = formatDateInput(new Date(2026, 2, 4));
+    expect(text).toBe('04/03/2026');
+    expect(parseDateInput(text, now)).toEqual(new Date(2026, 2, 4));
+  });
+
+  it('rejects a date that does not exist rather than rolling it forward', () => {
+    expect(parseDateInput('31/02/2026', now)).toBeNull();
+  });
+
+  it('rejects a balance the person could not have seen yet', () => {
+    expect(parseDateInput('11/03/2026', now)).toBeNull();
+    expect(parseDateInput('10/03/2026', now)).not.toBeNull();
+  });
+
+  it('rejects text that is not shaped like a date at all', () => {
+    expect(parseDateInput('hoy', now)).toBeNull();
+    expect(parseDateInput('', now)).toBeNull();
+    expect(parseDateInput('4/3/26', now)).toBeNull();
+  });
+});
+
+describe('parseAmountFilter (Entregable 12)', () => {
+  it('parses a plain integer', () => {
+    expect(parseAmountFilter('100')).toBe(100);
+  });
+
+  it('treats a comma as the decimal separator, same as the balance screen', () => {
+    expect(parseAmountFilter('15,50')).toBe(15.5);
+  });
+
+  it('also accepts a period as the decimal separator', () => {
+    expect(parseAmountFilter('15.50')).toBe(15.5);
+  });
+
+  it('trims surrounding whitespace', () => {
+    expect(parseAmountFilter('  42  ')).toBe(42);
+  });
+
+  it('returns undefined for an empty filter so it is simply omitted', () => {
+    expect(parseAmountFilter('')).toBeUndefined();
+    expect(parseAmountFilter('   ')).toBeUndefined();
+  });
+
+  it('returns undefined for text that is not a number', () => {
+    expect(parseAmountFilter('abc')).toBeUndefined();
+  });
+
+  it('rejects a negative amount -- a movement filter is never negative, the sign lives in direction', () => {
+    expect(parseAmountFilter('-10')).toBeUndefined();
+  });
+
+  it('accepts zero as a valid lower bound', () => {
+    expect(parseAmountFilter('0')).toBe(0);
+  });
+});
+
+describe('formatMonthComparison (Entregable 15)', () => {
+  it('returns null when there is nothing to compare against', () => {
+    expect(formatMonthComparison(null)).toBeNull();
+  });
+
+  it('labels a spending increase as "más"', () => {
+    expect(formatMonthComparison(12.4)).toEqual({ label: '12% más que el mes pasado', up: true });
+  });
+
+  it('labels a spending decrease as "menos"', () => {
+    expect(formatMonthComparison(-8.2)).toEqual({ label: '8% menos que el mes pasado', up: false });
+  });
+
+  it('treats no change as "más" (>= 0), never a misleading "menos"', () => {
+    expect(formatMonthComparison(0)).toEqual({ label: '0% más que el mes pasado', up: true });
+  });
+
+  it('rounds to the nearest whole percent', () => {
+    expect(formatMonthComparison(12.6)).toEqual({ label: '13% más que el mes pasado', up: true });
   });
 });

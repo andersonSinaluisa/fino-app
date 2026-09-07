@@ -21,8 +21,16 @@ public sealed record EmailMessage(
     public IReadOnlyDictionary<string, string> Headers { get; init; } =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Subject and body together, which is what the patterns run against.</summary>
-    public string SearchableText => $"{Subject}\n{PlainTextBody}";
+    /// <summary>
+    /// Subject and body together, which is what the patterns run against.
+    /// Entregable 26 ("Parsers de correo"): nothing in this pipeline decodes HTML
+    /// entities, and there is no guarantee a relay always hands over clean plain
+    /// text -- an undecoded "SUPERMAXI&amp;nbsp;ALBORADA" would otherwise poison
+    /// the merchant capture with a literal "Nbsp" token once normalized. Decoding
+    /// once, here, fixes every downstream regex/normalizer at the same time; it is
+    /// a no-op on text that had no entities to begin with.
+    /// </summary>
+    public string SearchableText => System.Net.WebUtility.HtmlDecode($"{Subject}\n{PlainTextBody}");
 }
 
 /// <summary>What a bank email parser produces. Not yet a domain Transaction.</summary>

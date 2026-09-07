@@ -10,8 +10,10 @@
 * Categorías por reglas + aprendizaje de correcciones manuales
 * Insights por reglas
 * App móvil completa: Inicio, Movimientos, Cuentas, Perfil, detalle e importación
-* Notificaciones push (Expo) y señal en tiempo real (SignalR)
-* Privacidad: exportar, eliminar movimientos, eliminar cuenta financiera, eliminar cuenta Nexo
+* Notificaciones push (Expo) con handler de primer plano, y señal en tiempo
+  real (SignalR) con degradación a refetch por `AppState`
+* Privacidad completa, con interfaz: exportar datos, eliminar movimientos,
+  desconectar correo, eliminar una cuenta financiera y eliminar la cuenta Nexo
 * Docker Compose, seed demo, documentación y suite de tests
 
 ## Fase 2 — correo y sincronización
@@ -49,6 +51,9 @@ configuración y el endpoint ya existen; ver `docs/email-ingestion.md`.
 | Workers | In-process; separar cuando la ingesta sea continua (ADR-004) |
 | OpenTelemetry | Instrumentado con la BCL; falta el exportador |
 | Cifrado en reposo | Depende del proveedor de base de datos |
+| CI (`.github/workflows/ci.yml`) | Existe y se corrigió el trigger de rama, pero no hay remoto de GitHub configurado: nunca ha corrido de verdad. Ver `docs/deployment.md` |
+| Staging | No hay host real desplegado (falta cuenta de nube, dominio y TLS -- decisión de Anderson). Plantilla de entorno y smoke test listos (`.env.staging.example`, `scripts/smoke-staging.sh`). Ver `docs/deployment.md` |
+| Mobile builds (EAS) | `app.json`/`eas.json` corregidos y validados con `expo-doctor` (19/21 -- los otros 2 checks necesitan red que este entorno no tiene). `extra.eas.projectId` sigue siendo un placeholder a propósito: falta `eas login` con una cuenta de Expo real. Ver `docs/deployment.md` |
 
 ## Principio de trabajo
 

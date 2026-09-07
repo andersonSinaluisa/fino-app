@@ -1,6 +1,8 @@
 using Nexo.Api.Setup;
 using Nexo.Application.Abstractions;
+using Nexo.Application.Audit;
 using Nexo.Application.Auth;
+using Nexo.Application.Common;
 
 namespace Nexo.Api.Endpoints;
 
@@ -71,6 +73,40 @@ public static class AuthEndpoints
         })
         .RequireAuthorization()
         .WithSummary("Cierra la sesión en todos los dispositivos.");
+
+        group.MapGet("/sessions", async (
+            IAuthService auth,
+            ICurrentUser currentUser,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await auth.ListSessionsAsync(currentUser.RequireUserId(), currentUser.SessionId, cancellationToken)))
+        .RequireAuthorization()
+        .WithSummary("Lista las sesiones activas (dispositivos con sesión abierta).");
+
+        group.MapDelete("/sessions/{id:guid}", async (
+            Guid id,
+            IAuthService auth,
+            ICurrentUser currentUser,
+            HttpContext http,
+            CancellationToken cancellationToken) =>
+        {
+            await auth.RevokeSessionAsync(currentUser.RequireUserId(), id, currentUser.SessionId, http.ToRequestContext(), cancellationToken);
+            return Results.NoContent();
+        })
+        .RequireAuthorization()
+        .WithSummary("Cierra la sesión de otro dispositivo.");
+
+        group.MapGet("/activity", async (
+            int? page,
+            int? pageSize,
+            IAuditActivityService activity,
+            ICurrentUser currentUser,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await activity.ListAsync(
+                currentUser.RequireUserId(),
+                new PageRequest { Page = page ?? 1, PageSize = pageSize ?? 30 },
+                cancellationToken)))
+        .RequireAuthorization()
+        .WithSummary("Historial de actividad de la cuenta (inicios de sesión, cambios, exportaciones...), más reciente primero.");
 
         return app;
     }

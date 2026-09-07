@@ -38,6 +38,8 @@ public interface INexoDbContext
 
     DbSet<ImportRow> ImportRows { get; }
 
+    DbSet<ImportColumnMapping> ImportColumnMappings { get; }
+
     DbSet<EmailConnection> EmailConnections { get; }
 
     DbSet<TrustedSender> TrustedSenders { get; }

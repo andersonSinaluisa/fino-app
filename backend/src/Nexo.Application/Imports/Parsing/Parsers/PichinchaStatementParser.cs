@@ -20,6 +20,14 @@ public sealed class PichinchaStatementParser : HeaderMappedStatementParser
     protected override IReadOnlyList<string> FileSignatures =>
         ["PICHINCHA", "BANCO PICHINCHA"];
 
+    /// <summary>
+    /// The XLSX export from banca web carries no bank name anywhere — its heading
+    /// says only "Movimientos de Cuenta". This header combination is what actually
+    /// identifies it, and it is specific enough not to catch other banks.
+    /// </summary>
+    protected override IReadOnlyList<string> HeaderSignatures =>
+        ["FECHA", "CONCEPTO", "NRO DOCUMENTO", "TIPO", "BENEFICIARIO", "MONTO", "SALDO"];
+
     protected override IReadOnlyList<string> DateHeaders =>
         ["FECHA", "FECHA TRANSACCION", "FECHA DE TRANSACCION"];
 
@@ -37,4 +45,9 @@ public sealed class PichinchaStatementParser : HeaderMappedStatementParser
 
     protected override IReadOnlyList<string> BalanceHeaders =>
         ["SALDO", "SALDO CONTABLE"];
+
+    // The export writes the amount signed in a single "Monto" column and repeats
+    // the direction in "Tipo"; there are no debit/credit columns.
+    protected override IReadOnlyList<string> AmountHeaders =>
+        ["MONTO", "VALOR", "IMPORTE"];
 }

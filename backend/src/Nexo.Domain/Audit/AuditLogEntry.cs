@@ -67,11 +67,19 @@ public static class AuditActions
     public const string UserRegistered = "user.registered";
     public const string UserLoggedIn = "user.logged_in";
     public const string UserLoginFailed = "user.login_failed";
+
+    /// <summary>Entregable 20: the failed attempt that crossed the lockout threshold.</summary>
+    public const string AccountLocked = "user.account_locked";
+
+    /// <summary>Entregable 20: a login attempt rejected purely because the account is mid-lockout.</summary>
+    public const string UserLoginBlocked = "user.login_blocked";
+
     public const string TokenRefreshed = "auth.token_refreshed";
     public const string TokenReuseDetected = "auth.token_reuse_detected";
     public const string UserLoggedOut = "user.logged_out";
     public const string AccountCreated = "financial_account.created";
     public const string AccountArchived = "financial_account.archived";
+    public const string AccountDeleted = "financial_account.deleted";
     public const string ImportUploaded = "import.uploaded";
     public const string ImportConfirmed = "import.confirmed";
     public const string EmailConnected = "email_connection.connected";
@@ -79,4 +87,7 @@ public static class AuditActions
     public const string DataExported = "privacy.data_exported";
     public const string TransactionsDeleted = "privacy.transactions_deleted";
     public const string AccountDeletionRequested = "privacy.account_deletion_requested";
+
+    /// <summary>Entregable 22: a login during the grace period undid a pending deletion.</summary>
+    public const string AccountDeletionCancelled = "privacy.account_deletion_cancelled";
 }

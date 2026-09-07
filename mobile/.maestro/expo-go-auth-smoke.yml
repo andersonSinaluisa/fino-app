@@ -1,0 +1,16 @@
+appId: host.exp.exponent
+---
+- launchApp:
+    clearState: true
+- openLink: "exp://192.168.100.110:8082"
+- assertVisible: "Nexo"
+- assertVisible: "Todo tu dinero, en un solo lugar."
+- assertVisible: "Correo"
+- assertVisible: "Entrar"
+- assertVisible: "Crear una"
+- tapOn: "Crear una"
+- assertVisible: "Crea tu cuenta"
+- assertVisible: "Nombre"
+- assertVisible: "Crear cuenta"
+- tapOn: "Ya tengo cuenta"
+- assertVisible: "Nexo"

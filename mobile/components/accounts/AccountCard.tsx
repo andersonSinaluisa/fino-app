@@ -1,20 +1,32 @@
-import { StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 import { colors, spacing } from '../../theme';
 import { Card } from '../ui/Card';
 import { Typo } from '../ui/Typo';
 import { Badge } from '../ui/Badge';
 import { ProviderAvatar } from '../ui/ProviderAvatar';
-import { balanceTypeLabel, formatCurrency, formatRelativeTime, maskLabel } from '../../utils/format';
+import {
+  accountBalanceStatus,
+  balanceStatusLabel,
+  balanceStatusTone,
+  formatCurrency,
+  formatRelativeTime,
+  maskLabel,
+} from '../../utils/format';
 import type { Account } from '../../types/api';
 
 interface AccountCardProps {
   account: Account;
   hidden?: boolean;
   onPress?: (account: Account) => void;
+  /** Entregable 11: tapping the balance status badge goes straight to "actualizar saldo". */
+  onUpdateBalance?: (account: Account) => void;
   compact?: boolean;
 }
 
-export function AccountCard({ account, hidden = false, onPress, compact = false }: AccountCardProps) {
+export function AccountCard({ account, hidden = false, onPress, onUpdateBalance, compact = false }: AccountCardProps) {
+  const status = accountBalanceStatus(account);
+  const badge = <Badge label={balanceStatusLabel(status)} tone={balanceStatusTone(status)} />;
+
   return (
     <Card onPress={onPress ? () => onPress(account) : undefined}>
       <View style={styles.header}>
@@ -37,10 +49,18 @@ export function AccountCard({ account, hidden = false, onPress, compact = false 
       </View>
 
       <View style={styles.footer}>
-        <Badge
-          label={balanceTypeLabel(account.balanceType)}
-          tone={account.balanceType === 'Verified' ? 'positive' : 'neutral'}
-        />
+        {onUpdateBalance ? (
+          <Pressable
+            onPress={() => onUpdateBalance(account)}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`Actualizar saldo de ${account.alias}`}
+          >
+            {badge}
+          </Pressable>
+        ) : (
+          badge
+        )}
         <Typo variant="caption" color={colors.textSecondary}>
           Actualizado {formatRelativeTime(account.lastSyncedAt ?? account.lastTransactionAt)}
         </Typo>

@@ -21,6 +21,18 @@ public sealed class AuthOptions
 
     /// <summary>Registration can be closed while the product is in private testing.</summary>
     public bool AllowSelfRegistration { get; set; } = true;
+
+    /// <summary>
+    /// Entregable 20 ("Hardening de seguridad"): consecutive wrong-password
+    /// attempts allowed before the account is temporarily locked. This is on
+    /// top of, not instead of, the per-IP rate limit on /auth/login -- the rate
+    /// limit slows a distributed attacker; this stops one that simply waits out
+    /// the rate-limit window against a single account.
+    /// </summary>
+    public int MaxFailedLoginAttempts { get; set; } = 5;
+
+    /// <summary>How long an account stays locked out once <see cref="MaxFailedLoginAttempts"/> is reached.</summary>
+    public int LockoutMinutes { get; set; } = 15;
 }
 
 public interface IAuthService
@@ -34,6 +46,16 @@ public interface IAuthService
     Task LogoutAsync(string refreshToken, RequestContext context, CancellationToken cancellationToken);
 
     Task LogoutAllAsync(Guid userId, RequestContext context, CancellationToken cancellationToken);
+
+    /// <summary>Every active session for the user, newest first, current one marked.</summary>
+    Task<IReadOnlyList<SessionDto>> ListSessionsAsync(Guid userId, Guid? currentSessionId, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Revokes one specific session. Refuses to revoke the caller's own current
+    /// session this way -- that is what /auth/logout is for, and doing it here
+    /// would pull the rug out from under the same request that asked for it.
+    /// </summary>
+    Task RevokeSessionAsync(Guid userId, Guid sessionId, Guid? currentSessionId, RequestContext context, CancellationToken cancellationToken);
 }
 
 public sealed class AuthService(
@@ -96,12 +118,38 @@ public sealed class AuthService(
         var user = await db.Users.FirstOrDefaultAsync(u => u.NormalizedEmail == email, cancellationToken);
         var now = clock.UtcNow;
 
+        // Entregable 20: an account mid-lockout is rejected before the password
+        // is even checked, with the exact same message and shape as a wrong
+        // password below -- a locked account must stay indistinguishable from
+        // one that doesn't exist or was just given the wrong password.
+        if (user is not null && user.IsLockedOut(now))
+        {
+            db.AuditLog.Add(AuditLogEntry.Record(
+                user.Id,
+                AuditActions.UserLoginBlocked,
+                nameof(User),
+                now,
+                user.Id.ToString(),
+                context.CorrelationId,
+                ipHasher.Hash(context.IpAddress),
+                context.UserAgent,
+                succeeded: false));
+            await db.SaveChangesAsync(cancellationToken);
+
+            throw new UnauthorizedException("Correo o contraseña incorrectos.");
+        }
+
         if (user?.PasswordHash is null
             || !passwordHasher.Verify(request.Password, user.PasswordHash, out var needsRehash))
         {
+            // Only an existing account has anything to lock -- a nonexistent
+            // email keeps behaving exactly as before.
+            var justLocked = user is not null
+                && user.RegisterFailedLogin(_options.MaxFailedLoginAttempts, TimeSpan.FromMinutes(_options.LockoutMinutes), now);
+
             db.AuditLog.Add(AuditLogEntry.Record(
                 user?.Id,
-                AuditActions.UserLoginFailed,
+                justLocked ? AuditActions.AccountLocked : AuditActions.UserLoginFailed,
                 nameof(User),
                 now,
                 user?.Id.ToString(),
@@ -114,7 +162,29 @@ public sealed class AuthService(
             throw new UnauthorizedException("Correo o contraseña incorrectos.");
         }
 
-        if (user.Status != UserStatus.Active)
+        // Entregable 22 ("Privacidad completa"): RequestAccountDeletionAsync
+        // revokes every refresh token immediately, so a fresh login is the
+        // ONLY door left open during the grace period -- this is where "an
+        // accidental request can still be undone" actually has to happen, or
+        // it is not true. A Disabled account gets no such door: it stays
+        // rejected exactly as before.
+        var deletionCancelled = false;
+        if (user.Status == UserStatus.PendingDeletion)
+        {
+            user.CancelDeletion(now);
+            deletionCancelled = true;
+
+            db.AuditLog.Add(AuditLogEntry.Record(
+                user.Id,
+                AuditActions.AccountDeletionCancelled,
+                nameof(User),
+                now,
+                user.Id.ToString(),
+                context.CorrelationId,
+                ipHasher.Hash(context.IpAddress),
+                context.UserAgent));
+        }
+        else if (user.Status != UserStatus.Active)
         {
             throw new ForbiddenException("Esta cuenta no está activa.");
         }
@@ -138,7 +208,8 @@ public sealed class AuthService(
 
         await db.SaveChangesAsync(cancellationToken);
 
-        return await IssueAsync(user, context, cancellationToken);
+        var result = await IssueAsync(user, context, cancellationToken);
+        return deletionCancelled ? result with { AccountDeletionCancelled = true } : result;
     }
 
     public async Task<AuthResult> RefreshAsync(
@@ -255,6 +326,59 @@ public sealed class AuthService(
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task<IReadOnlyList<SessionDto>> ListSessionsAsync(
+        Guid userId,
+        Guid? currentSessionId,
+        CancellationToken cancellationToken)
+    {
+        var now = clock.UtcNow;
+
+        return await db.IgnoringUserFilter<RefreshToken>()
+            .Where(t => t.UserId == userId && t.RevokedAt == null && t.ExpiresAt > now)
+            .OrderByDescending(t => t.CreatedAt)
+            .Select(t => new SessionDto(t.Id, t.DeviceLabel, t.UserAgent, t.CreatedAt, t.ExpiresAt, t.Id == currentSessionId))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task RevokeSessionAsync(
+        Guid userId,
+        Guid sessionId,
+        Guid? currentSessionId,
+        RequestContext context,
+        CancellationToken cancellationToken)
+    {
+        if (sessionId == currentSessionId)
+        {
+            throw new ConflictException("Para cerrar la sesión de este dispositivo, usa \"Cerrar sesión\".");
+        }
+
+        var now = clock.UtcNow;
+        var session = await db.IgnoringUserFilter<RefreshToken>()
+            .FirstOrDefaultAsync(t => t.Id == sessionId && t.UserId == userId, cancellationToken)
+            ?? throw new NotFoundException("Session", sessionId);
+
+        if (!session.IsActive(now))
+        {
+            // Already gone (expired or previously revoked): nothing left to do,
+            // and the person asked for exactly this outcome either way.
+            return;
+        }
+
+        session.Revoke("revoked_by_user", now);
+
+        db.AuditLog.Add(AuditLogEntry.Record(
+            userId,
+            AuditActions.UserLoggedOut,
+            nameof(RefreshToken),
+            now,
+            session.Id.ToString(),
+            context.CorrelationId,
+            ipHasher.Hash(context.IpAddress),
+            context.UserAgent));
+
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     private async Task<AuthResult> IssueAsync(
         User user,
         RequestContext context,
@@ -262,7 +386,6 @@ public sealed class AuthService(
         RefreshToken? rotating = null)
     {
         var now = clock.UtcNow;
-        var access = tokens.Issue(user);
         var (refreshToken, refreshHash) = tokens.CreateRefreshToken();
         var refreshExpiry = now.AddDays(_options.RefreshTokenDays);
 
@@ -272,10 +395,15 @@ public sealed class AuthService(
             refreshExpiry,
             now,
             context.DeviceLabel,
-            ipHasher.Hash(context.IpAddress));
+            ipHasher.Hash(context.IpAddress),
+            context.UserAgent);
 
         db.RefreshTokens.Add(entity);
         rotating?.Revoke("rotated", now, entity.Id);
+
+        // The access token's "sid" claim is this row's id, so a request can find
+        // its own session without ever resending the refresh token itself.
+        var access = tokens.Issue(user, entity.Id);
 
         await db.SaveChangesAsync(cancellationToken);
 

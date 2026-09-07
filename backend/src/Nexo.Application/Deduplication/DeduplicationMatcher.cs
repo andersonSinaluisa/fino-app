@@ -51,12 +51,18 @@ public sealed class DeduplicationMatcher(DeduplicationOptions options)
                     new DuplicateMatch(candidate.Id, DuplicateMatchType.ExactMatch, 1d, "same_fingerprint"));
             }
 
+            // Same reference is strong evidence, not proof: a bank groups a transfer,
+            // its commission and the tax on that commission under one document
+            // number. Without the amount and direction here, the commission would be
+            // discarded as a duplicate of the transfer.
             if (TransactionFingerprint.HasUsableReference(incoming.ExternalReference)
                 && TransactionFingerprint.HasUsableReference(candidate.ExternalReference)
                 && string.Equals(
                     candidate.ExternalReference!.Trim(),
                     incoming.ExternalReference!.Trim(),
-                    StringComparison.OrdinalIgnoreCase))
+                    StringComparison.OrdinalIgnoreCase)
+                && candidate.Direction == incoming.Direction
+                && AmountScore(incoming.Amount, candidate.Amount) > 0d)
             {
                 return new DuplicateCheckResult(
                     DuplicateMatchType.ExactMatch,
@@ -88,7 +94,13 @@ public sealed class DeduplicationMatcher(DeduplicationOptions options)
             return null;
         }
 
-        var dayGap = Math.Abs((incoming.TransactionDate.UtcDateTime.Date - candidate.TransactionDate.UtcDateTime.Date).TotalDays);
+        // Entregable 27: the account holder's calendar day, not the UTC one -- see
+        // TransactionFingerprint.EcuadorCalendarDay. An evening purchase near a UTC
+        // day boundary must not look further apart (or closer) than it really is
+        // just because the raw UTC dates happened to fall either side of midnight.
+        var dayGap = (double)Math.Abs(
+            TransactionFingerprint.EcuadorCalendarDay(incoming.TransactionDate).DayNumber
+            - TransactionFingerprint.EcuadorCalendarDay(candidate.TransactionDate).DayNumber);
         if (dayGap > _options.DateWindowDays)
         {
             return null;

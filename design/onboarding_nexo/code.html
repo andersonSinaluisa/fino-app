@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="es" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Onboarding — Nexo</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              bg: '#F5F3ED',
+              surface: '#FFFFFF',
+              surfaceAlt: '#ECE9E1',
+              dark: '#1D1D1B',
+              lime: '#C7F36B',
+              mint: '#8DD9B6',
+              textPrimary: '#191A18',
+              textSecondary: '#74766F',
+            }
+          },
+          fontFamily: {
+            sans: ['Plus Jakarta Sans', 'sans-serif'],
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background-color: #F5F3ED;
+      color: #191A18;
+      -webkit-font-smoothing: antialiased;
+    }
+  </style>
+</head>
+<body class="min-h-full flex flex-col justify-between max-w-[390px] mx-auto bg-[#F5F3ED] text-[#191A18] relative overflow-hidden px-6 pt-12 pb-10 shadow-2xl">
+  
+  <!-- Ambient background glow elements -->
+  <div class="absolute -top-16 -left-16 w-64 h-64 bg-[#C7F36B]/25 rounded-full blur-3xl pointer-events-none"></div>
+  <div class="absolute top-80 -right-20 w-72 h-72 bg-[#8DD9B6]/20 rounded-full blur-3xl pointer-events-none"></div>
+
+  <!-- Header: Logo & Step indicator -->
+  <header class="relative z-10 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <!-- Logo Symbol + Text -->
+      <div class="flex items-center gap-2.5">
+        <div class="relative w-8 h-8 flex items-center justify-center">
+          <span class="w-3.5 h-3.5 rounded-full bg-[#1D1D1B] absolute left-0.5"></span>
+          <span class="w-3 h-3 rounded-full bg-[#C7F36B] absolute top-0.5 right-1"></span>
+          <span class="w-2.5 h-2.5 rounded-full bg-[#8DD9B6] absolute bottom-0.5 right-1.5"></span>
+        </div>
+        <span class="text-2xl font-extrabold tracking-tight text-[#1D1D1B] leading-none">nexo</span>
+        <span class="w-1.5 h-1.5 rounded-full bg-[#C7F36B] -ml-1 mt-1"></span>
+      </div>
+    </div>
+    <div class="flex items-center gap-1.5 bg-[#ECE9E1]/80 backdrop-blur px-3 py-1.5 rounded-full border border-black/5 text-[11px] font-semibold text-[#74766F]">
+      <span class="w-2 h-2 rounded-full bg-[#C7F36B]"></span>
+      Paso 1 de 2
+    </div>
+  </header>
+
+  <!-- Main Showcase / Graphic Composition -->
+  <main class="relative z-10 flex-1 flex flex-col justify-center my-6">
+    <!-- Abstract converging cards illustration -->
+    <div class="relative w-full h-[270px] flex items-center justify-center">
+      
+      <!-- Central Hub Card (Nexo) -->
+      <div class="relative z-20 w-[240px] bg-white rounded-3xl p-4 shadow-[0_20px_40px_-15px_rgba(29,29,27,0.08)] border border-black/5 text-center">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-1.5">
+            <span class="w-2 h-2 rounded-full bg-[#C7F36B] animate-pulse"></span>
+            <span class="text-[10px] uppercase font-bold tracking-wider text-[#74766F]">Todo conectado</span>
+          </div>
+          <span class="bg-[#F5F3ED] text-[#1D1D1B] text-[10px] font-bold px-2 py-0.5 rounded-full">4 cuentas</span>
+        </div>
+        
+        <div class="text-[11px] text-[#74766F] font-medium">Tu saldo disponible</div>
+        <div class="text-[28px] font-extrabold text-[#1D1D1B] tracking-tight my-0.5 leading-none">$2,846<span class="text-lg text-[#74766F]">.20</span></div>
+        
+        <!-- Micro Pills of Connected Apps -->
+        <div class="flex items-center justify-center gap-1.5 mt-3 pt-2.5 border-t border-[#F5F3ED]">
+          <span class="text-[10px] font-bold bg-[#F5F3ED] text-[#1D1D1B] px-2 py-0.5 rounded-md">Pichincha</span>
+          <span class="text-[10px] font-bold bg-[#F5F3ED] text-[#1D1D1B] px-2 py-0.5 rounded-md">Guayaquil</span>
+          <span class="text-[10px] font-bold bg-[#F5F3ED] text-[#1D1D1B] px-2 py-0.5 rounded-md">DEUNA</span>
+          <span class="text-[10px] font-bold bg-[#C7F36B]/40 text-[#1D1D1B] px-1.5 py-0.5 rounded-md">+1</span>
+        </div>
+      </div>
+
+      <!-- Converging Floating Card 1: Bank card top-left -->
+      <div class="absolute -top-1 left-2 z-10 bg-white/90 backdrop-blur-md px-3.5 py-2.5 rounded-2xl border border-black/5 shadow-md flex items-center gap-2.5 -rotate-6 transform hover:rotate-0 transition">
+        <div class="w-7 h-7 rounded-full bg-[#FFF5DC] flex items-center justify-center text-[#996B00]">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 21h18M3 10h18M5 10v11M19 10v11M9 10v11M15 10v11M12 3L2 10h20L12 3z"/>
+          </svg>
+        </div>
+        <div>
+          <div class="text-[11px] font-bold text-[#1D1D1B] leading-tight">Banco Pichincha</div>
+          <div class="text-[10px] font-semibold text-[#74766F]">$1,240.50</div>
+        </div>
+      </div>
+
+      <!-- Converging Floating Card 2: Digital Wallet top-right -->
+      <div class="absolute top-2 right-1 z-10 bg-white/90 backdrop-blur-md px-3.5 py-2.5 rounded-2xl border border-black/5 shadow-md flex items-center gap-2.5 rotate-6 transform hover:rotate-0 transition">
+        <div class="w-7 h-7 rounded-full bg-[#E5F9EE] flex items-center justify-center text-[#1E824C]">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="4" width="20" height="16" rx="2"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+        </div>
+        <div>
+          <div class="text-[11px] font-bold text-[#1D1D1B] leading-tight">DEUNA</div>
+          <div class="text-[10px] font-semibold text-[#74766F]">$485.50</div>
+        </div>
+      </div>
+
+      <!-- Converging Floating Card 3: Account card bottom-left -->
+      <div class="absolute bottom-1 left-4 z-10 bg-white/90 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-black/5 shadow-md flex items-center gap-2.5 3 transform rotate-3">
+        <div class="w-6 h-6 rounded-full bg-[#FCE8E6] flex items-center justify-center text-[#C0392B]">
+          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect width="20" height="14" x="2" y="5" rx="2"/>
+            <line x1="2" x2="22" y1="10" y2="10"/>
+          </svg>
+        </div>
+        <div>
+          <div class="text-[10px] font-bold text-[#1D1D1B] leading-tight">Banco Guayaquil</div>
+          <div class="text-[9px] font-semibold text-[#74766F]">$860.20</div>
+        </div>
+      </div>
+
+      <!-- Converging Floating Card 4: Import badge bottom-right -->
+      <div class="absolute bottom-3 right-5 z-10 bg-white/95 backdrop-blur-md px-3 py-2 rounded-2xl border border-black/5 shadow-md flex items-center gap-2 -rotate-3">
+        <div class="w-6 h-6 rounded-full bg-[#C7F36B]/30 flex items-center justify-center text-[#1D1D1B]">
+          <svg class="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="12" y1="18" x2="12" y2="12"/>
+            <line x1="9" y1="15" x2="12" y2="12"/>
+            <line x1="15" y1="15" x2="12" y2="12"/>
+          </svg>
+        </div>
+        <div>
+          <div class="text-[10px] font-bold text-[#1D1D1B] leading-tight">CSV / Excel</div>
+          <div class="text-[9px] font-medium text-[#74766F]">Importación fácil</div>
+        </div>
+      </div>
+
+      <!-- Curved subtle guide lines -->
+      <svg class="absolute inset-0 w-full h-full pointer-events-none opacity-40" viewBox="0 0 340 270" fill="none">
+        <path d="M70 45 C 110 80, 120 100, 140 120" stroke="#1D1D1B" stroke-width="1.5" stroke-dasharray="4 4"/>
+        <path d="M270 50 C 230 80, 220 100, 200 120" stroke="#1D1D1B" stroke-width="1.5" stroke-dasharray="4 4"/>
+        <path d="M80 230 C 110 200, 130 180, 150 160" stroke="#1D1D1B" stroke-width="1.5" stroke-dasharray="4 4"/>
+        <path d="M260 220 C 230 190, 210 180, 190 160" stroke="#1D1D1B" stroke-width="1.5" stroke-dasharray="4 4"/>
+      </svg>
+    </div>
+
+    <!-- Text Narrative Section -->
+    <div class="mt-4 text-center">
+      <h1 class="text-[34px] font-extrabold text-[#1D1D1B] tracking-tight leading-[1.15]">
+        Todo tu dinero.<br>
+        <span class="relative inline-block">
+          En un solo lugar.
+          <span class="absolute left-0 bottom-1 w-full h-2.5 bg-[#C7F36B] -z-10 rounded-full opacity-60"></span>
+        </span>
+      </h1>
+      <p class="text-[14px] text-[#74766F] font-normal leading-relaxed mt-3 px-3">
+        Mira tus bancos y billeteras sin tener que saltar entre aplicaciones. Entiende tus gastos en segundos, sin complicaciones.
+      </p>
+
+      <!-- Trust Pillars -->
+      <div class="grid grid-cols-3 gap-2 mt-5 pt-4 border-t border-[#ECE9E1]">
+        <div class="flex flex-col items-center">
+          <div class="w-6 h-6 rounded-full bg-white flex items-center justify-center text-[#1D1D1B] shadow-sm mb-1">
+            <svg class="w-3.5 h-3.5 text-[#191A18]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect width="18" height="11" x="3" y="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          </div>
+          <span class="text-[10px] font-bold text-[#1D1D1B]">100% Privado</span>
+          <span class="text-[9px] text-[#74766F]">Tus datos son tuyos</span>
+        </div>
+
+        <div class="flex flex-col items-center">
+          <div class="w-6 h-6 rounded-full bg-[#C7F36B]/50 flex items-center justify-center text-[#1D1D1B] shadow-sm mb-1">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+            </svg>
+          </div>
+          <span class="text-[10px] font-bold text-[#1D1D1B]">Cero Comisiones</span>
+          <span class="text-[9px] text-[#74766F]">Uso personal libre</span>
+        </div>
+
+        <div class="flex flex-col items-center">
+          <div class="w-6 h-6 rounded-full bg-white flex items-center justify-center text-[#1D1D1B] shadow-sm mb-1">
+            <svg class="w-3.5 h-3.5 text-[#191A18]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+              <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+          </div>
+          <span class="text-[10px] font-bold text-[#1D1D1B]">Sin Contraseñas</span>
+          <span class="text-[9px] text-[#74766F]">Solo lectura segura</span>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Action CTA Section -->
+  <footer class="relative z-10 flex flex-col gap-3">
+    <!-- Primary CTA: Empezar -->
+    <a href="#" class="w-full h-14 bg-[#1D1D1B] text-white rounded-full flex items-center justify-between px-6 font-bold text-[16px] shadow-[0_12px_24px_-8px_rgba(29,29,27,0.3)] active:scale-[0.98] transition hover:bg-black group">
+      <span>Empezar ahora</span>
+      <div class="w-9 h-9 rounded-full bg-[#C7F36B] text-[#1D1D1B] flex items-center justify-center group-hover:translate-x-0.5 transition-transform">
+        <svg class="w-4 h-4 stroke-[3]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 12h14M12 5l7 7-7 7"/>
+        </svg>
+      </div>
+    </a>
+
+    <!-- Secondary CTA: Ya tengo una cuenta -->
+    <a href="#" class="w-full h-11 bg-white/70 backdrop-blur-sm border border-black/5 text-[#1D1D1B] rounded-full flex items-center justify-center font-semibold text-[14px] hover:bg-white active:scale-[0.98] transition">
+      Ya tengo una cuenta
+    </a>
+
+    <!-- Security disclaimer -->
+    <p class="text-[11px] text-[#74766F] text-center mt-1">
+      Protegido con cifrado punto a punto AES-256
+    </p>
+  </footer>
+
+</body>
+</html>

@@ -15,7 +15,18 @@ public interface ICategorizationEngine
 
 public interface ICategorizationSession
 {
-    CategorySuggestion? Suggest(string normalizedDescription, TransactionDirection direction);
+    /// <summary>
+    /// <paramref name="normalizedMerchant"/> is the transaction's own automatic
+    /// merchant guess (normalized), never the person's display correction --
+    /// matching stays tied to what the raw bank data actually says, the same way a
+    /// merchant correction never rewrites the original description (Entregable 12).
+    /// </summary>
+    CategorySuggestion? Suggest(
+        string normalizedDescription,
+        string? normalizedMerchant,
+        string providerCode,
+        decimal amount,
+        TransactionDirection direction);
 
     Guid FallbackCategoryId(TransactionDirection direction);
 }
@@ -24,6 +35,11 @@ public interface ICategorizationSession
 /// Rules-only categorisation for the MVP: deterministic, explainable and cheap.
 /// The interface is the seam where a model-based classifier can be added later
 /// without touching the import or email pipelines (roadmap phase 3).
+///
+/// Entregable 14 ("Categorización v2"): a movement can match several rules at
+/// once (e.g. both "UBER" and "UBER EATS" contain-match a transaction whose
+/// merchant is "Uber Eats"). Resolution is "most specific wins", not "first
+/// found wins" -- see the ordering in <see cref="Session.Suggest"/>.
 /// </summary>
 public sealed class CategorizationEngine(INexoDbContext db) : ICategorizationEngine
 {
@@ -33,7 +49,6 @@ public sealed class CategorizationEngine(INexoDbContext db) : ICategorizationEng
             .AsNoTracking()
             .Where(r => r.IsActive && (r.UserId == null || r.UserId == userId))
             .OrderBy(r => r.Priority)
-            .ThenByDescending(r => r.Pattern.Length)
             .ToListAsync(cancellationToken);
 
         var categories = await db.Categories
@@ -55,26 +70,48 @@ public sealed class CategorizationEngine(INexoDbContext db) : ICategorizationEng
         Guid incomeFallback,
         Guid otherFallback) : ICategorizationSession
     {
-        public CategorySuggestion? Suggest(string normalizedDescription, TransactionDirection direction)
+        public CategorySuggestion? Suggest(
+            string normalizedDescription,
+            string? normalizedMerchant,
+            string providerCode,
+            decimal amount,
+            TransactionDirection direction)
         {
-            if (string.IsNullOrWhiteSpace(normalizedDescription))
+            if (string.IsNullOrWhiteSpace(normalizedDescription) && string.IsNullOrWhiteSpace(normalizedMerchant))
             {
                 return null;
             }
 
+            // "La regla más específica gana": collect every rule that matches, then
+            // pick by (1) priority tier -- a personal rule always beats a system one,
+            // (2) how many match dimensions it pins down, (3) the longer match text
+            // as a final, deterministic tiebreak. Not first-match-wins: a movement
+            // routinely satisfies more than one rule (see the class doc's UBER example).
+            CategorizationRule? best = null;
+
             foreach (var rule in rules)
             {
-                if (rule.Matches(normalizedDescription, direction))
+                if (!rule.Matches(normalizedDescription, normalizedMerchant, providerCode, amount, direction))
                 {
-                    return new CategorySuggestion(
-                        rule.CategoryId,
-                        rule.IsSystem ? "system_rule" : "user_rule",
-                        rule.Priority);
+                    continue;
+                }
+
+                if (best is null
+                    || rule.Priority < best.Priority
+                    || (rule.Priority == best.Priority && IsMoreSpecific(rule, best)))
+                {
+                    best = rule;
                 }
             }
 
-            return null;
+            return best is null
+                ? null
+                : new CategorySuggestion(best.CategoryId, best.IsSystem ? "system_rule" : "user_rule", best.Priority);
         }
+
+        private static bool IsMoreSpecific(CategorizationRule candidate, CategorizationRule current) =>
+            candidate.Specificity > current.Specificity
+            || (candidate.Specificity == current.Specificity && candidate.MatchTextLength > current.MatchTextLength);
 
         public Guid FallbackCategoryId(TransactionDirection direction) =>
             direction == TransactionDirection.Income ? incomeFallback : otherFallback;

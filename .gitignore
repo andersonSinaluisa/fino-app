@@ -29,3 +29,6 @@ web-build/
 
 # Scratch
 .scratch/
+
+# Salida local de scripts/verify.ps1
+.verify/

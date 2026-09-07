@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Nexo.Application.Abstractions;
 using Nexo.Application.EmailIngestion;
 using Nexo.Domain.Common;
@@ -55,6 +56,10 @@ public static class DependencyInjection
         services.AddScoped<DemoDataSeeder>();
 
         services.AddSingleton<IClock, SystemClock>();
+
+        // The wall clock, kept separate from IClock: token lifetimes are validated
+        // by middleware against real time, so they must never follow a pinned clock.
+        services.TryAddSingleton(TimeProvider.System);
         services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
         services.AddSingleton<ISecretProtector, AesSecretProtector>();
         services.AddSingleton<IIpHasher, HmacIpHasher>();

@@ -24,6 +24,18 @@ public enum BalanceType
     Verified = 1,
 }
 
+/// <summary>
+/// Shared threshold for "this account hasn't synced in a while", used both by
+/// <c>InsightEngine</c> (the "Cuentas por actualizar" insight) and
+/// <c>TransactionService.GetHomeSummaryAsync</c> (Entregable 15's dedicated
+/// "cuentas desactualizadas" dashboard section) -- one number, not two that could
+/// silently drift apart.
+/// </summary>
+public static class AccountStaleness
+{
+    public const int ThresholdDays = 7;
+}
+
 public sealed class FinancialAccount : Entity, IUserOwned
 {
     private FinancialAccount()

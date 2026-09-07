@@ -221,4 +221,97 @@ public class BankEmailParserTests
         Assert.NotNull(parsed);
         Assert.Equal(new DateTime(2026, 4, 1, 4, 30, 0), parsed.OccurredAt.UtcDateTime);
     }
+
+    /// <summary>
+    /// Entregable 26 ("Parsers de correo"): before this, "6:12 PM" was read as a
+    /// plain 24-hour "06:12" -- the meridiem was matched by nothing and silently
+    /// dropped, so a real afternoon purchase landed twelve hours off.
+    /// </summary>
+    [Fact]
+    public async Task A_12_hour_clock_time_with_PM_is_read_as_the_afternoon_hour()
+    {
+        var message = Message(
+            "Banco Pichincha: compra realizada",
+            "Se realizó una compra por USD 12,00 en TIENDA el 31/03/2026 a las 6:12 PM con su tarjeta terminada en 4821.");
+
+        var parser = Resolver().Resolve(message, ProviderCodes.Pichincha)!;
+        var parsed = await parser.ParseAsync(message, CancellationToken.None);
+
+        Assert.NotNull(parsed);
+        // 18:12 Ecuador time (UTC-5, no DST) on 31/03/2026 is 23:12 UTC the same day.
+        Assert.Equal(new DateTime(2026, 3, 31, 23, 12, 0), parsed.OccurredAt.UtcDateTime);
+    }
+
+    /// <summary>
+    /// Entregable 26: a completely ordinary real notification shape -- the balance
+    /// mentioned first must never win over the actual movement amount that follows.
+    /// </summary>
+    [Fact]
+    public async Task The_purchase_amount_wins_over_an_available_balance_mentioned_earlier()
+    {
+        var message = Message(
+            "Banco Pichincha: compra realizada",
+            "Su saldo disponible es de USD 1.204,33. Se realizó una compra por USD 48,20 en SUPERMAXI ALBORADA "
+            + "con su tarjeta terminada en 4821 el 04/03/2026.");
+
+        var parser = Resolver().Resolve(message, ProviderCodes.Pichincha)!;
+        var parsed = await parser.ParseAsync(message, CancellationToken.None);
+
+        Assert.NotNull(parsed);
+        Assert.Equal(48.20m, parsed.Amount);
+    }
+
+    /// <summary>
+    /// Entregable 26: relays are not guaranteed to hand over entity-decoded plain
+    /// text. An undecoded "&amp;amp;" used to poison the merchant capture with a
+    /// literal "Amp" token once normalized.
+    /// </summary>
+    [Fact]
+    public async Task An_undecoded_html_entity_does_not_poison_the_merchant_name()
+    {
+        var message = Message(
+            "Banco Pichincha: compra realizada",
+            "Se realizó una compra por USD 48,20 en SUPERMAXI&amp;ALBORADA con su tarjeta terminada en 4821 "
+            + "el 04/03/2026.");
+
+        var parser = Resolver().Resolve(message, ProviderCodes.Pichincha)!;
+        var parsed = await parser.ParseAsync(message, CancellationToken.None);
+
+        Assert.NotNull(parsed);
+        Assert.Equal("Supermaxi Alborada", parsed.Merchant);
+    }
+
+    /// <summary>
+    /// Entregable 26: a payment-due reminder says "pago" next to a dollar figure
+    /// without describing anything that already happened -- exactly what the bare
+    /// "PAGO" expense keyword would otherwise misread as a completed expense.
+    /// </summary>
+    [Fact]
+    public void A_payment_due_reminder_is_not_a_movement()
+    {
+        var message = Message(
+            "Recordatorio de pago",
+            "Tu fecha de pago es el 15/03/2026 y el monto a pagar es de USD 120,00. Evita intereses pagando a tiempo.");
+
+        Assert.Null(Resolver().Resolve(message, ProviderCodes.Pichincha));
+    }
+
+    /// <summary>
+    /// Entregable 26: the previous test's fix must not throw out a genuine,
+    /// already-completed payment just because it also contains the word "pago".
+    /// </summary>
+    [Fact]
+    public async Task A_completed_payment_notification_is_still_an_expense()
+    {
+        var message = Message(
+            "Banco Pichincha: pago realizado",
+            "Se realizó un pago de USD 45,00 a favor de EMPRESA XYZ el 10/03/2026.");
+
+        var parser = Resolver().Resolve(message, ProviderCodes.Pichincha)!;
+        var parsed = await parser.ParseAsync(message, CancellationToken.None);
+
+        Assert.NotNull(parsed);
+        Assert.Equal(TransactionDirection.Expense, parsed.Direction);
+        Assert.Equal(45.00m, parsed.Amount);
+    }
 }

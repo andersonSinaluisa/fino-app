@@ -36,6 +36,29 @@ public class TransactionFingerprintTests
     }
 
     [Fact]
+    public void A_reference_alone_is_not_an_identity()
+    {
+        // A real Banco Pichincha statement puts a transfer, its commission and the
+        // tax on that commission under one document number. Keying on the reference
+        // alone collapsed 54 movements into 34 fingerprints.
+        var when = new DateTimeOffset(2026, 8, 31, 17, 51, 0, TimeSpan.Zero);
+
+        var transfer = TransactionFingerprint.Compute(
+            "PICHINCHA", Account, "90000001", when, 116.00m, TransactionDirection.Expense,
+            "TRANSFERENCIA INTERBANCARIA A PROVEEDOR");
+
+        var commission = TransactionFingerprint.Compute(
+            "PICHINCHA", Account, "90000001", when, 0.36m, TransactionDirection.Expense,
+            "COMISION TRANSFERENCIA INTERBANCARIA ENVIADA");
+
+        var tax = TransactionFingerprint.Compute(
+            "PICHINCHA", Account, "90000001", when, 0.05m, TransactionDirection.Expense,
+            "IVA COBRADO");
+
+        Assert.Equal(3, new[] { transfer, commission, tax }.Distinct().Count());
+    }
+
+    [Fact]
     public void A_different_amount_produces_a_different_fingerprint()
     {
         var a = TransactionFingerprint.Compute(
@@ -71,6 +94,25 @@ public class TransactionFingerprintTests
             "PICHINCHA", other, "REF-1234", DateTimeOffset.UnixEpoch, 10m, TransactionDirection.Expense, "X");
 
         Assert.NotEqual(a, b);
+    }
+
+    [Fact]
+    public void The_calendar_day_used_is_the_account_holders_not_UTCs()
+    {
+        // Entregable 27: 23:30 on 4 March in Ecuador (UTC-5) is 04:30 UTC on 5
+        // March -- a different UTC calendar day, but the same local one. The HEU
+        // recipe has to key on the local day, or an email fired late at night and
+        // its statement row (dated locally) can fail to fingerprint-match even
+        // when everything else about them is identical.
+        var lateLocal = TransactionFingerprint.Compute(
+            "PICHINCHA", Account, null, new DateTimeOffset(2026, 3, 5, 4, 30, 0, TimeSpan.Zero),
+            48.20m, TransactionDirection.Expense, "SUPERMAXI ALBORADA");
+
+        var sameLocalDayNoon = TransactionFingerprint.Compute(
+            "PICHINCHA", Account, null, new DateTimeOffset(2026, 3, 4, 17, 0, 0, TimeSpan.Zero),
+            48.20m, TransactionDirection.Expense, "SUPERMAXI ALBORADA");
+
+        Assert.Equal(lateLocal, sameLocalDayNoon);
     }
 
     [Theory]

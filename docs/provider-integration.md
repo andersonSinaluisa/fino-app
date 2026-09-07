@@ -18,6 +18,33 @@ Provider.Create(
 exactamente lo que hay aquí, y abrir una cuenta en un modo no soportado lanza
 `unsupported_connection_mode`.
 
+## 1.b Lo que un export real puede tener de raro
+
+Merece la pena mirar un archivo real antes de escribir sinónimos. El export XLSX
+de la banca web de Pichincha, por ejemplo:
+
+* **No nombra al banco en ninguna parte.** Su encabezado dice solo "Movimientos
+  de Cuenta". Por eso existe `HeaderSignatures`: la combinación de columnas
+  identifica el formato cuando el membrete no lo hace.
+* **El encabezado está en la fila 6**, con filas vacías y un descargo legal
+  encima.
+* **Cada movimiento ocupa dos filas físicas**: la primera lleva fecha, concepto,
+  tipo, monto y saldo; la segunda, el Nro. de Documento. La clase base fusiona la
+  segunda en la primera.
+* **La celda del encabezado y la del valor no están en la misma columna** (celdas
+  combinadas): el Nro. de Documento se rotula en la columna 8 y se escribe en la
+  7. Por eso la fusión busca por forma —una celda de solo dígitos— y no por
+  índice de columna.
+* **La fecha trae hora en formato de 12 horas**: `2026-8-31, 12:51 PM`.
+* **La dirección viene escrita** en una columna `Tipo` (Débito/Crédito), que es
+  más fiable que deducirla del signo.
+* **Los movimientos van del más nuevo al más viejo**, así que el saldo de cierre
+  es el de la *primera* fila.
+* **Una transferencia interbancaria genera tres movimientos** —la transferencia,
+  la comisión y el IVA de esa comisión— **con un mismo Nro. de Documento**. Ver
+  `docs/transaction-deduplication.md`: por esto el importe forma parte del
+  fingerprint incluso cuando hay referencia.
+
 ## 2. Parser de estado de cuenta
 
 Casi siempre basta con declarar los sinónimos de las columnas:

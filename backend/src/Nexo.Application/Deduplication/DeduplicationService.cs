@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Nexo.Application.Abstractions;
+using Nexo.Application.Common;
 using Nexo.Domain.Transactions;
 
 namespace Nexo.Application.Deduplication;
@@ -40,12 +41,16 @@ public sealed class DeduplicationService(
         var from = movements.Min(m => m.TransactionDate) - window;
         var to = movements.Max(m => m.TransactionDate) + window;
 
+        // Not `accountIds.Contains(t.FinancialAccountId)`: combined with the global
+        // per-user filter, that shape does not translate on the SQLite provider our
+        // integration tests run against (see QueryableGuidExtensions.WhereIdIn for
+        // the full explanation — this was the root cause of every import failing).
         var stored = await db.Transactions
             .AsNoTracking()
             .Where(t => t.UserId == userId
-                        && accountIds.Contains(t.FinancialAccountId)
                         && t.TransactionDate >= from
                         && t.TransactionDate <= to)
+            .WhereIdIn(t => t.FinancialAccountId, accountIds)
             .Select(t => new DeduplicationMatcher.ExistingMovement(
                 t.Id,
                 t.FinancialAccountId,
@@ -80,6 +85,18 @@ public sealed class DeduplicationService(
             {
                 pool.RemoveAll(c => c.Id == result.Match.TransactionId);
             }
+        }
+
+        // Entregable 28 ("Observabilidad"): a business metric, not a log line --
+        // "how often do movements from different sources turn out to be the same
+        // one" is exactly the kind of question a log line answers badly and a
+        // counter answers well. Grouped once instead of one Add per movement so an
+        // import of a thousand rows records at most three measurements.
+        foreach (var group in results.GroupBy(r => r.MatchType))
+        {
+            NexoTelemetry.DeduplicationChecks.Add(
+                group.Count(),
+                new KeyValuePair<string, object?>("match_type", group.Key.ToString()));
         }
 
         return results;

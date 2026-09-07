@@ -7,23 +7,36 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "node": "22.22.3",
       "env": {
-        "EXPO_PUBLIC_API_URL": "http://10.0.2.2:5080"
+        "EXPO_PUBLIC_API_URL": "https://492kh6nx-5080.use2.devtunnels.ms/"
+      }
+    },
+    "development:device": {
+      "extends": "development",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://492kh6nx-5080.use2.devtunnels.ms/"
       }
     },
     "preview": {
       "distribution": "internal",
+      "node": "22.22.3",
       "android": { "buildType": "apk" },
-      "ios": { "simulator": true },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.staging.nexo.app"
+        "EXPO_PUBLIC_API_URL": "https://492kh6nx-5080.use2.devtunnels.ms/"
       }
+    },
+    "preview:simulator": {
+      "extends": "preview",
+      "ios": { "simulator": true }
     },
     "production": {
       "autoIncrement": true,
+      "node": "22.22.3",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.nexo.app"
-      }
+        "EXPO_PUBLIC_API_URL": "https://492kh6nx-5080.use2.devtunnels.ms/"
+      },
+      "distribution": "store"
     }
   },
   "submit": {

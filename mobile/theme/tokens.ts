@@ -1,5 +1,5 @@
 /**
- * Nexo's visual identity.
+ * Fino's visual identity.
  *
  * Deliberately not the default fintech blue: a warm paper background, near-black
  * ink, and a single high-energy lime accent used sparingly. Everything else is

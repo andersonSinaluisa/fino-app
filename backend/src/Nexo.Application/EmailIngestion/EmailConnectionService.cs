@@ -68,9 +68,20 @@ public sealed class EmailConnectionService(
         }
 
         var now = clock.UtcNow;
-        var inbound = kind == EmailProviderKind.Forwarding ? BuildInboundAddress(userId) : null;
+        var isForwarding = kind == EmailProviderKind.Forwarding;
+        var inbound = isForwarding ? BuildInboundAddress(userId) : null;
 
         var connection = EmailConnection.Start(userId, kind, request.EmailAddress, now, inbound);
+
+        // Entregable 23: Gmail/Outlook still need a real consent flow (Entregables
+        // 24/25) before they can go Connected, but Forwarding needs no OAuth at
+        // all -- the inbound address above is already usable the moment it exists,
+        // so this is the only provider that can honestly connect itself right here.
+        if (isForwarding)
+        {
+            connection.ConnectForwarding(now);
+        }
+
         db.EmailConnections.Add(connection);
 
         db.AuditLog.Add(AuditLogEntry.Record(

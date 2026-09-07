@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { Animated, StyleSheet, View, type ViewStyle } from 'react-native';
 import { colors, radius, spacing } from '../../theme';
 
@@ -10,7 +10,7 @@ interface SkeletonProps {
 
 /** A calm pulse, not a shimmer: the app should feel unhurried even while loading. */
 export function Skeleton({ height = 16, width = '100%', style }: SkeletonProps) {
-  const opacity = useRef(new Animated.Value(0.5)).current;
+  const [opacity] = useState(() => new Animated.Value(0.5));
 
   useEffect(() => {
     const animation = Animated.loop(

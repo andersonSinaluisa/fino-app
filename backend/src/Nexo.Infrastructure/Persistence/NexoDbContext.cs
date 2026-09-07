@@ -1,5 +1,6 @@
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Nexo.Application.Abstractions;
 using Nexo.Domain.Accounts;
 using Nexo.Domain.Audit;
@@ -56,6 +57,8 @@ public sealed class NexoDbContext : DbContext, INexoDbContext
 
     public DbSet<ImportRow> ImportRows => Set<ImportRow>();
 
+    public DbSet<ImportColumnMapping> ImportColumnMappings => Set<ImportColumnMapping>();
+
     public DbSet<EmailConnection> EmailConnections => Set<EmailConnection>();
 
     public DbSet<TrustedSender> TrustedSenders => Set<TrustedSender>();
@@ -87,6 +90,30 @@ public sealed class NexoDbContext : DbContext, INexoDbContext
             {
                 property.SetProviderClrType(typeof(double));
             }
+
+            var dateTimeOffsetConverter = new ValueConverter<DateTimeOffset, long>(
+                value => value.ToUniversalTime().Ticks,
+                value => new DateTimeOffset(value, TimeSpan.Zero));
+
+            var nullableDateTimeOffsetConverter = new ValueConverter<DateTimeOffset?, long?>(
+                value => value.HasValue ? value.Value.ToUniversalTime().Ticks : null,
+                value => value.HasValue ? new DateTimeOffset(value.Value, TimeSpan.Zero) : null);
+
+            // SQLite has no DateTimeOffset type. Mapping it as UTC ticks keeps date
+            // filters and ordering translatable in the integration-test provider.
+            foreach (var property in modelBuilder.Model.GetEntityTypes().SelectMany(t => t.GetProperties()))
+            {
+                if (property.ClrType == typeof(DateTimeOffset))
+                {
+                    property.SetValueConverter(dateTimeOffsetConverter);
+                    property.SetProviderClrType(typeof(long));
+                }
+                else if (property.ClrType == typeof(DateTimeOffset?))
+                {
+                    property.SetValueConverter(nullableDateTimeOffsetConverter);
+                    property.SetProviderClrType(typeof(long?));
+                }
+            }
         }
 
         base.OnModelCreating(modelBuilder);
@@ -96,8 +123,34 @@ public sealed class NexoDbContext : DbContext, INexoDbContext
     /// Every entity implementing <see cref="IUserOwned"/> gets the same filter, so a
     /// new module cannot forget it. Adding an entity to the model is enough.
     /// </summary>
+    /// <remarks>
+    /// The comparison is built as <c>e.UserId == CurrentUserId.GetValueOrDefault()</c>,
+    /// not <c>(Guid?)e.UserId == CurrentUserId</c>: widening the mapped, non-nullable
+    /// <c>UserId</c> column to <see cref="Nullable{Guid}"/> with <c>Convert</c> produced
+    /// a filter that, composed with almost any additional caller-side <c>Where</c> (a
+    /// date range, a second equality -- nothing exotic), the SQLite provider reported
+    /// as "could not be translated". Real example that surfaced this: every statement
+    /// upload 500'd inside <c>DeduplicationService.CheckBatchAsync</c>, and
+    /// <c>AuthService.ListSessionsAsync</c>'s <c>db.RefreshTokens.Where(r => r.UserId
+    /// == userId &amp;&amp; r.RevokedAt == null &amp;&amp; r.ExpiresAt > now)</c> hit the
+    /// exact same error with no <c>Contains</c>/OR-chain involved at all -- so this was
+    /// never about <see cref="Nexo.Application.Common.QueryableGuidExtensions.WhereIdIn{T}"/>
+    /// specifically, it was the query filter's own <c>Convert</c> node. Moving the
+    /// nullability handling onto <c>CurrentUserId</c> (already <see cref="Nullable{Guid}"/>)
+    /// via <c>GetValueOrDefault()</c> keeps every filtered query a plain <c>Guid == Guid</c>
+    /// equality against the mapped column -- the one shape this codebase has confirmed
+    /// both providers translate without issue, filter or no filter, with or without
+    /// whatever the caller ANDs on top. When there is no ambient user, <c>noAmbientUser</c>
+    /// is true and the OR passes every row regardless of what <c>matchesUser</c> evaluates
+    /// to (it becomes <c>e.UserId == Guid.Empty</c>, which no real row matches anyway, but
+    /// it is never what makes the filter pass in that case).
+    /// </remarks>
     private void ApplyUserOwnedFilters(ModelBuilder modelBuilder)
     {
+        var getValueOrDefault = typeof(Guid?).GetMethod(
+            nameof(Nullable<Guid>.GetValueOrDefault),
+            Type.EmptyTypes)!;
+
         foreach (var entityType in modelBuilder.Model.GetEntityTypes())
         {
             if (!typeof(IUserOwned).IsAssignableFrom(entityType.ClrType))
@@ -115,9 +168,8 @@ public sealed class NexoDbContext : DbContext, INexoDbContext
                 currentUserId,
                 Expression.Constant(null, typeof(Guid?)));
 
-            var matchesUser = Expression.Equal(
-                Expression.Convert(userIdProperty, typeof(Guid?)),
-                currentUserId);
+            var currentUserIdOrEmpty = Expression.Call(currentUserId, getValueOrDefault);
+            var matchesUser = Expression.Equal(userIdProperty, currentUserIdOrEmpty);
 
             var body = Expression.OrElse(noAmbientUser, matchesUser);
             modelBuilder.Entity(entityType.ClrType).HasQueryFilter(Expression.Lambda(body, parameter));

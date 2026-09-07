@@ -1,6 +1,9 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Nexo.Application.Abstractions;
 using Nexo.Application.Accounts;
+using Nexo.Application.Analytics;
+using Nexo.Application.Audit;
 using Nexo.Application.Auth;
 using Nexo.Application.Categories;
 using Nexo.Application.Categorization;
@@ -15,6 +18,7 @@ using Nexo.Application.Notifications;
 using Nexo.Application.Privacy;
 using Nexo.Application.Providers;
 using Nexo.Application.Transactions;
+using Nexo.Application.Transfers;
 
 namespace Nexo.Application;
 
@@ -27,9 +31,12 @@ public static class DependencyInjection
         services.Configure<DeduplicationOptions>(configuration.GetSection(DeduplicationOptions.SectionName));
 
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<IAuditActivityService, AuditActivityService>();
         services.AddScoped<IProviderCatalogService, ProviderCatalogService>();
         services.AddScoped<IAccountService, AccountService>();
         services.AddScoped<ITransactionService, TransactionService>();
+        services.AddScoped<IAnalyticsService, AnalyticsService>();
+        services.AddScoped<IInternalTransferService, InternalTransferService>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ICategorizationEngine, CategorizationEngine>();
         services.AddScoped<IDeduplicationService, DeduplicationService>();

@@ -35,11 +35,20 @@ public sealed class Device : Entity, IUserOwned
     /// <summary>When false the push payload carries no amounts or merchant names.</summary>
     public bool ShowAmountsInPreview { get; private set; } = true;
 
-    public bool NotifyOnNewTransaction { get; private set; } = true;
+    /// <summary>Categoría "Movimientos": gastos detectados e importaciones completadas.</summary>
+    public bool NotifyOnMovements { get; private set; } = true;
 
-    public bool NotifyOnImportFinished { get; private set; } = true;
+    /// <summary>Categoría "Ingresos": dinero recibido detectado.</summary>
+    public bool NotifyOnIncome { get; private set; } = true;
 
-    public bool NotifyOnWeeklySummary { get; private set; } = true;
+    /// <summary>Categoría "Insights": hallazgos nuevos del motor de insights.</summary>
+    public bool NotifyOnInsights { get; private set; } = true;
+
+    /// <summary>Categoría "Seguridad": correos sospechosos rechazados u otra alerta de seguridad.</summary>
+    public bool NotifyOnSecurity { get; private set; } = true;
+
+    /// <summary>Categoría "Recordatorios": resumen periódico y cuentas desactualizadas.</summary>
+    public bool NotifyOnReminders { get; private set; } = true;
 
     public DateTimeOffset LastSeenAt { get; private set; }
 
@@ -74,16 +83,20 @@ public sealed class Device : Entity, IUserOwned
     public void UpdatePreferences(
         bool pushEnabled,
         bool showAmountsInPreview,
-        bool notifyOnNewTransaction,
-        bool notifyOnImportFinished,
-        bool notifyOnWeeklySummary,
+        bool notifyOnMovements,
+        bool notifyOnIncome,
+        bool notifyOnInsights,
+        bool notifyOnSecurity,
+        bool notifyOnReminders,
         DateTimeOffset now)
     {
         PushEnabled = pushEnabled;
         ShowAmountsInPreview = showAmountsInPreview;
-        NotifyOnNewTransaction = notifyOnNewTransaction;
-        NotifyOnImportFinished = notifyOnImportFinished;
-        NotifyOnWeeklySummary = notifyOnWeeklySummary;
+        NotifyOnMovements = notifyOnMovements;
+        NotifyOnIncome = notifyOnIncome;
+        NotifyOnInsights = notifyOnInsights;
+        NotifyOnSecurity = notifyOnSecurity;
+        NotifyOnReminders = notifyOnReminders;
         Stamp(now);
     }
 }

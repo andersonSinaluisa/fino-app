@@ -91,6 +91,22 @@ movimientos e insights; recategorizar invalida el detalle, la lista y el resumen
 La lista de movimientos usa `useInfiniteQuery` con páginas de 30 y scroll
 infinito.
 
+## Tiempo real
+
+Dos capas, y la segunda es el suelo:
+
+1. **SignalR** (`useRealtime`) para "acaba de entrar un movimiento" sin que el
+   usuario haga nada. El hub no transporta datos financieros: dice *que* algo
+   cambió y el cliente vuelve a pedirlo por la API autenticada, de modo que el
+   socket nunca se convierte en una segunda vía —más débil— de leer el dinero
+   de alguien.
+2. **Refetch al volver a primer plano** (`AppState`). Si el socket nunca conecta
+   —red restrictiva, un proxy que corta websockets, una sorpresa de bundling en
+   un dispositivo real— la app se sigue actualizando, solo que menos inmediata.
+
+El fallo de conexión es silencioso a propósito. El tiempo real es una mejora,
+nunca algo de lo que el producto dependa.
+
 ## Pantallas
 
 * **Inicio**: saludo, saldo total con opción de ocultar, ingresos y gastos del
@@ -115,6 +131,18 @@ contraste suficiente para AA en el texto sobre papel.
 
 ## Tests
 
-`jest-expo` sobre la lógica pura: formato de moneda, encabezados de día,
-agrupación con totales, tiempo relativo, construcción de query strings.
-19 pruebas, más `tsc --noEmit` en estricto sin errores.
+**Lógica** (19): formato de moneda, encabezados de día, agrupación con totales
+diarios, tiempo relativo, construcción de query strings.
+
+**Componentes** (13): las dos piezas donde una regresión sería cara.
+`TransactionRow` comprueba el signo del monto, el ocultado de cantidades sin
+ocultar el comercio, los avisos de "posible duplicado" y "por confirmar", el
+fallback a la descripción y la etiqueta de accesibilidad. `AccountCard`
+comprueba que un saldo estimado **nunca** se rotule como verificado.
+
+En `@testing-library/react-native` 14 `render` es asíncrono (`await render(...)`),
+un cambio de API respecto a v13. Los módulos nativos que no aportan nada a la
+aserción —`@expo/vector-icons`, `expo-haptics`, `expo-secure-store`— están
+sustituidos en `jest.setup.ts`.
+
+32 pruebas en total, más `tsc --noEmit` en estricto sin errores.

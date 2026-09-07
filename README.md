@@ -24,7 +24,8 @@ sistema contable. **En el MVP no mueve ni custodia dinero.**
 | Categorización por reglas + aprendizaje de correcciones | Implementado |
 | Motor de insights por reglas | Implementado |
 | App móvil Expo + Expo Router (todas las pantallas del MVP) | Implementado |
-| Notificaciones push (Expo) y tiempo real (SignalR) | Implementado |
+| Notificaciones push (Expo) y tiempo real (SignalR + refetch) | Implementado |
+| Privacidad completa con interfaz en la app | Implementado |
 | Ingesta por correo | Arquitectura, parsers y endpoint listos; **requiere credenciales** |
 | APIs oficiales de bancos | No implementado (fase 3, requiere acuerdos) |
 
@@ -37,7 +38,7 @@ anuncia una conexión automática que no está implementada.
 
 * [.NET SDK 10](https://dotnet.microsoft.com/download)
 * [Docker](https://docs.docker.com/get-docker/) (para PostgreSQL)
-* [Node.js 20+](https://nodejs.org) y npm
+* [Node.js 22.13+](https://nodejs.org) y npm (hay `.nvmrc`: `nvm use` en `mobile/`)
 * Android Studio (emulador) o la app **Expo Go** en tu teléfono
 
 ---
@@ -140,9 +141,27 @@ dotnet test --filter Deduplication  # solo un área
 # Móvil
 cd mobile
 npm run typecheck                 # tsc --noEmit
-npm test                          # jest
+npm test                          # jest (lógica + componentes)
 npx expo start                    # servidor de desarrollo
 ```
+
+### Sin .NET instalado: verificar el backend con Docker
+
+Docker ya trae el SDK, así que no hace falta instalarlo en el host:
+
+```bash
+docker compose --profile tools run --rm verify
+```
+
+Compila, corre la suite completa y genera la migración `InitialCreate` si
+todavía no existe. Los resultados quedan en `.verify/`:
+
+| Archivo | Contenido |
+| --- | --- |
+| `summary.txt` | Una línea por etapa |
+| `build-errors.txt` | Solo los errores del compilador |
+| `test-failures.txt` | Solo las pruebas que fallaron |
+| `build.log`, `test.log` | Salida completa |
 
 ---
 
@@ -209,6 +228,9 @@ nexo/
 | [docs/provider-integration.md](docs/provider-integration.md) | Cómo agregar un banco nuevo |
 | [docs/mobile-architecture.md](docs/mobile-architecture.md) | Estructura y design system del móvil |
 | [docs/deployment.md](docs/deployment.md) | Despliegue y operación |
+| [docs/qa-test-plan.md](docs/qa-test-plan.md) | Guiones de QA manual antes de la beta cerrada |
+| [docs/beta-readiness.md](docs/beta-readiness.md) | Checklist de beta cerrada, aviso de privacidad para testers, plantilla de feedback |
+| [docs/go-no-go.md](docs/go-no-go.md) | Estado real de los 34 entregables, como insumo para la decisión de lanzamiento |
 | [docs/roadmap.md](docs/roadmap.md) | MVP, fase 2 y fase 3 |
 
 ---

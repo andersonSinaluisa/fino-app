@@ -15,6 +15,20 @@
          America/Guayaquil. Invariant globalization silently breaks both. -->
     <InvariantGlobalization>false</InvariantGlobalization>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <DefaultItemExcludes>$(DefaultItemExcludes);**/bin/**;**/obj/**</DefaultItemExcludes>
+  </PropertyGroup>
+
+  <!--
+    Cuando NexoArtifactsPath está definido (lo hace el servicio 'verify' de
+    docker compose), obj/ y bin/ salen de la copia de trabajo montada. Sin esto,
+    un build dentro del contenedor deja rutas de NuGet de Linux en
+    project.assets.json y el siguiente build en Windows falla de forma confusa.
+    MSBuild toma las variables de entorno como propiedades, así que basta con
+    exportarla.
+  -->
+  <PropertyGroup Condition="'$(NexoArtifactsPath)' != ''">
+    <BaseIntermediateOutputPath>$(NexoArtifactsPath)/obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
+    <BaseOutputPath>$(NexoArtifactsPath)/bin/$(MSBuildProjectName)/</BaseOutputPath>
   </PropertyGroup>
 
 </Project>

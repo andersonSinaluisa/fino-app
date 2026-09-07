@@ -176,9 +176,13 @@ public sealed class DemoDataSeeder(
 
         await db.SaveChangesAsync(cancellationToken);
 
+        // Entregable 28 ("Observabilidad"): this only ever runs behind
+        // Nexo:Seed:Demo (Development-only, fail-closed -- see Program.cs), but an
+        // email address is still an email address; docs/security.md's logging
+        // discipline makes no Development exception, so this doesn't either.
         logger.LogInformation(
-            "Demo data seeded for {Email}: {Accounts} accounts, {Transactions} movements.",
-            email,
+            "Demo data seeded for {UserId}: {Accounts} accounts, {Transactions} movements.",
+            user.Id,
             accounts.Count,
             transactions.Count);
     }

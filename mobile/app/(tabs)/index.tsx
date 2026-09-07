@@ -4,12 +4,15 @@ import { colors, spacing } from '../../theme';
 import { Screen, SectionHeader, SkeletonCard, Skeleton, EmptyState, Typo, Button } from '../../components/ui';
 import { BalanceHeader } from '../../components/home/BalanceHeader';
 import { MonthTiles } from '../../components/home/MonthTiles';
+import { MonthBalanceBar } from '../../components/home/MonthBalanceBar';
+import { StaleAccountsBanner } from '../../components/home/StaleAccountsBanner';
 import { InsightCard } from '../../components/home/InsightCard';
 import { CategoryBreakdown } from '../../components/home/CategoryBreakdown';
 import { AccountCard } from '../../components/accounts/AccountCard';
 import { TransactionRow } from '../../components/transactions/TransactionRow';
 import { useSummary } from '../../hooks/queries';
 import { usePreferencesStore } from '../../store/preferencesStore';
+import { currentMonthLabel } from '../../utils/format';
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -55,7 +58,16 @@ export default function HomeScreen() {
         />
       ) : (
         <>
-          <MonthTiles income={data.month.income} expense={data.month.expense} hidden={hidden} />
+          <View style={styles.stack}>
+            <SectionHeader title={currentMonthLabel()} />
+            <MonthTiles income={data.month.income} expense={data.month.expense} hidden={hidden} />
+            <MonthBalanceBar
+              balance={data.month.net}
+              expenseChangePercent={data.monthComparison.expenseChangePercent}
+              hidden={hidden}
+            />
+          </View>
+          <StaleAccountsBanner accounts={data.staleAccounts} />
 
           {data.insights.length > 0 ? (
             <View style={styles.section}>
@@ -89,7 +101,11 @@ export default function HomeScreen() {
 
           {data.categoryBreakdown.length > 0 ? (
             <View style={styles.section}>
-              <SectionHeader title="En qué gastas" />
+              <SectionHeader
+                title="En qué gastas"
+                actionLabel="Ver estadísticas"
+                onAction={() => router.push('/(tabs)/estadisticas')}
+              />
               <CategoryBreakdown items={data.categoryBreakdown} hidden={hidden} />
             </View>
           ) : null}

@@ -37,6 +37,17 @@ public sealed class Transaction : Entity, IUserOwned
 
     public string? Merchant { get; private set; }
 
+    /// <summary>
+    /// Entregable 12: the user's own correction, kept separate from
+    /// <see cref="Merchant"/> (Nexo's automatic guess from the bank
+    /// description) and from <see cref="Description"/> (the untouched bank
+    /// text) so neither is ever overwritten by an edit.
+    /// </summary>
+    public string? MerchantCorrected { get; private set; }
+
+    /// <summary>What the UI should show: the user's correction if there is one, else the guess.</summary>
+    public string? EffectiveMerchant => string.IsNullOrWhiteSpace(MerchantCorrected) ? Merchant : MerchantCorrected;
+
     public Guid? CategoryId { get; private set; }
 
     /// <summary>True once the user has corrected the category by hand; rules must not overwrite it.</summary>
@@ -60,6 +71,18 @@ public sealed class Transaction : Entity, IUserOwned
     public Guid? EmailConnectionId { get; private set; }
 
     public string? Note { get; private set; }
+
+    /// <summary>
+    /// Entregable 13: true once the person confirmed this movement is one leg of a
+    /// transfer between their own accounts. Confirmed transfers still move each
+    /// account's balance (the money really did move) but are excluded from net
+    /// income/expense totals and insights -- moving your own money is neither
+    /// spending nor earning.
+    /// </summary>
+    public bool IsInternalTransfer { get; private set; }
+
+    /// <summary>The matching movement on the other account, once confirmed.</summary>
+    public Guid? InternalTransferLinkId { get; private set; }
 
     /// <summary>Positive for income, negative for expense. Never persisted; derived on read.</summary>
     public decimal SignedAmount => Direction == TransactionDirection.Income ? Amount : -Amount;
@@ -165,6 +188,42 @@ public sealed class Transaction : Entity, IUserOwned
     public void SetNote(string? note, DateTimeOffset now)
     {
         Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim()[..Math.Min(note.Trim().Length, 500)];
+        Stamp(now);
+    }
+
+    /// <summary>
+    /// Entregable 12: a user override for the merchant name -- passing null or
+    /// blank clears it, falling back to the automatic guess again. Never
+    /// touches <see cref="Merchant"/> or <see cref="Description"/>.
+    /// </summary>
+    public void CorrectMerchant(string? merchant, DateTimeOffset now)
+    {
+        MerchantCorrected = string.IsNullOrWhiteSpace(merchant) ? null : merchant.Trim()[..Math.Min(merchant.Trim().Length, 120)];
+        Stamp(now);
+    }
+
+    /// <summary>
+    /// Entregable 13: links this movement to the matching one on another of the
+    /// person's own accounts. The caller (InternalTransferService) is responsible
+    /// for calling this on both legs, since a transfer is always a pair.
+    /// </summary>
+    public void MarkAsInternalTransfer(Guid linkedTransactionId, DateTimeOffset now)
+    {
+        if (linkedTransactionId == Id)
+        {
+            throw new DomainException("invalid_transfer_link", "A movement cannot be its own transfer pair.");
+        }
+
+        IsInternalTransfer = true;
+        InternalTransferLinkId = linkedTransactionId;
+        Stamp(now);
+    }
+
+    /// <summary>Undoes a transfer confirmation, e.g. because it was matched by mistake.</summary>
+    public void ClearInternalTransfer(DateTimeOffset now)
+    {
+        IsInternalTransfer = false;
+        InternalTransferLinkId = null;
         Stamp(now);
     }
 

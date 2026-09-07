@@ -39,7 +39,7 @@ export default function RegisterScreen() {
         <View style={styles.header}>
           <Typo variant="title">Crea tu cuenta</Typo>
           <Typo variant="body" color={colors.textSecondary}>
-            Nexo no mueve tu dinero: solo te ayuda a entenderlo.
+            Fino no mueve tu dinero: solo te ayuda a entenderlo.
           </Typo>
         </View>
 

@@ -28,11 +28,18 @@ public sealed class JwtOptions
 /// The access token carries only the user id and display name — never balances,
 /// never the email in a claim the client might log.
 /// </summary>
-public sealed class JwtAccessTokenService(IOptions<JwtOptions> options, IClock clock) : IAccessTokenService
+/// <remarks>
+/// Deliberately on <see cref="TimeProvider"/> and not on <see cref="IClock"/>.
+/// <c>IClock</c> is the <em>business</em> clock — a test may pin it to the month its
+/// fixtures describe — while <c>nbf</c>/<c>exp</c> are compared by the JWT middleware
+/// against the wall clock. Minting these stamps from a pinned clock produces tokens
+/// that are born expired, and the symptom is an unexplained 401 on every request.
+/// </remarks>
+public sealed class JwtAccessTokenService(IOptions<JwtOptions> options, TimeProvider time) : IAccessTokenService
 {
     private readonly JwtOptions _options = options.Value;
 
-    public AccessTokenResult Issue(User user)
+    public AccessTokenResult Issue(User user, Guid sessionId)
     {
         if (_options.SigningKey.Length < 32)
         {
@@ -40,7 +47,7 @@ public sealed class JwtAccessTokenService(IOptions<JwtOptions> options, IClock c
                 "Nexo:Jwt:SigningKey must be at least 32 characters. Set it in configuration or user secrets.");
         }
 
-        var now = clock.UtcNow;
+        var now = time.GetUtcNow();
         var expires = now.AddMinutes(_options.AccessTokenMinutes);
 
         var credentials = new SigningCredentials(
@@ -60,6 +67,7 @@ public sealed class JwtAccessTokenService(IOptions<JwtOptions> options, IClock c
                 new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                 new Claim("name", user.DisplayName),
                 new Claim("tz", user.TimeZoneId),
+                new Claim("sid", sessionId.ToString()),
             ]),
         };
 

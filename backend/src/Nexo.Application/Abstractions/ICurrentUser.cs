@@ -11,6 +11,14 @@ public interface ICurrentUser
 
     bool IsAuthenticated { get; }
 
+    /// <summary>
+    /// Entregable 19: the RefreshToken row behind the access token making this
+    /// request, from the "sid" claim -- lets the session-list endpoint mark
+    /// "this device" without the client resending its refresh token. Null for
+    /// a token minted before this claim existed, or with no session backing it.
+    /// </summary>
+    Guid? SessionId { get; }
+
     /// <summary>Throws when there is no authenticated user. Use in handlers that require one.</summary>
     Guid RequireUserId();
 }

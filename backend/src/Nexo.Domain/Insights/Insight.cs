@@ -58,6 +58,17 @@ public sealed class Insight : Entity, IUserOwned
 
     public int DisplayOrder { get; private set; }
 
+    /// <summary>
+    /// Entregable 16 ("Insights v1"): the instant this observation stops being
+    /// worth showing -- "no generar insights irrelevantes" applies over time too,
+    /// not only at the moment of computing. Every reader (dashboard, GET
+    /// /insights) filters on this in addition to whatever RecomputeAsync already
+    /// replaced, so a missed or delayed recompute never leaves a stale insight
+    /// on screen. Required, not defaulted: every call site must say on purpose
+    /// how long this particular observation stays true.
+    /// </summary>
+    public DateTimeOffset ValidUntil { get; private set; }
+
     public static Insight Create(
         Guid userId,
         string code,
@@ -66,6 +77,7 @@ public sealed class Insight : Entity, IUserOwned
         string title,
         string body,
         DateTimeOffset now,
+        DateTimeOffset validUntil,
         decimal? value = null,
         decimal? comparisonValue = null,
         decimal? percentChange = null,
@@ -73,6 +85,8 @@ public sealed class Insight : Entity, IUserOwned
         string? referenceId = null,
         int displayOrder = 0)
     {
+        DomainException.Require(validUntil > now, "Un insight no puede nacer ya vencido.");
+
         var insight = new Insight
         {
             UserId = userId,
@@ -87,6 +101,7 @@ public sealed class Insight : Entity, IUserOwned
             Severity = severity,
             ReferenceId = referenceId,
             DisplayOrder = displayOrder,
+            ValidUntil = validUntil,
         };
         insight.Stamp(now);
         return insight;

@@ -63,6 +63,71 @@ public static class ImportEndpoints
         })
         .WithSummary("Sube un estado de cuenta y devuelve el preview: nada se guarda como movimiento todavía.");
 
+        // Entregable 10 (Generic CSV mapper): the same file, re-sent once the user
+        // has told Nexo by hand which raw column is which -- shown only after a
+        // POST above comes back Failed with unmappedColumns populated.
+        group.MapPost("/manual", async (
+            IFormFile file,
+            Guid accountId,
+            bool firstRowIsHeader,
+            int dateColumn,
+            int descriptionColumn,
+            int? amountColumn,
+            int? debitColumn,
+            int? creditColumn,
+            int? referenceColumn,
+            bool saveMapping,
+            IImportService imports,
+            ICurrentUser currentUser,
+            CancellationToken cancellationToken) =>
+        {
+            if (file.Length == 0)
+            {
+                throw ValidationException.For("file", "El archivo está vacío.");
+            }
+
+            if (file.Length > MaxUploadBytes)
+            {
+                throw new UnsupportedFileException("El archivo supera el límite de 10 MB.");
+            }
+
+            var contentType = file.ContentType ?? "application/octet-stream";
+            if (!AllowedContentTypes.Contains(contentType, StringComparer.OrdinalIgnoreCase))
+            {
+                throw new UnsupportedFileException($"Tipo de archivo no soportado: {contentType}.");
+            }
+
+            await using var stream = file.OpenReadStream();
+
+            var mapping = new ManualColumnMapping(
+                firstRowIsHeader, dateColumn, descriptionColumn, amountColumn, debitColumn, creditColumn, referenceColumn);
+
+            var preview = await imports.UploadManualAsync(
+                currentUser.RequireUserId(),
+                accountId,
+                Path.GetFileName(file.FileName),
+                contentType,
+                stream,
+                mapping,
+                saveMapping,
+                cancellationToken);
+
+            return Results.Ok(preview);
+        })
+        .WithSummary("Reenvía el archivo con columnas elegidas a mano cuando ningún parser lo reconoció.");
+
+        group.MapGet("", async (
+            int? page,
+            int? pageSize,
+            IImportService imports,
+            ICurrentUser currentUser,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await imports.ListAsync(
+                currentUser.RequireUserId(),
+                new PageRequest { Page = page ?? 1, PageSize = pageSize ?? 30 },
+                cancellationToken)))
+            .WithSummary("Historial de importaciones del usuario, más recientes primero.");
+
         group.MapGet("/{id:guid}", async (
             Guid id,
             IImportService imports,

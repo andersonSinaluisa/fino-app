@@ -4,8 +4,10 @@ using Nexo.Application.Accounts;
 using Nexo.Application.Common;
 using Nexo.Application.Imports.Parsing.Tabular;
 using Nexo.Application.Insights;
+using Nexo.Domain.Accounts;
 using Nexo.Domain.Categories;
 using Nexo.Domain.Common;
+using Nexo.Domain.Providers;
 using Nexo.Domain.Transactions;
 
 namespace Nexo.Application.Transactions;
@@ -20,12 +22,36 @@ public interface ITransactionService
 
     Task<TransactionDetailDto> UpdateNoteAsync(Guid userId, Guid transactionId, UpdateNoteRequest request, CancellationToken cancellationToken);
 
+    Task<TransactionDetailDto> UpdateMerchantAsync(Guid userId, Guid transactionId, UpdateMerchantRequest request, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Entregable 27 ("Dedup correo/importación"): closes the review loop the
+    /// deduplication design promises but, until now, never let the user act on --
+    /// a probable duplicate was flagged <see cref="TransactionStatus.NeedsReview"/>
+    /// and shown ("lo guardamos aparte para que decidas tú"), but no endpoint
+    /// existed to record that decision, so it stayed flagged forever.
+    /// <paramref name="request"/>.KeepAsSeparate = true means the user confirmed
+    /// this is its own distinct movement (back to Posted); false means the user
+    /// agrees it is the same movement already on record (Ignored -- kept, never
+    /// deleted, just excluded from balances and totals from here on).
+    /// </summary>
+    Task<TransactionDetailDto> ResolveDuplicateAsync(Guid userId, Guid transactionId, ResolveDuplicateRequest request, CancellationToken cancellationToken);
+
     Task<HomeSummaryDto> GetHomeSummaryAsync(Guid userId, CancellationToken cancellationToken);
 
-    Task<IReadOnlyList<CategoryBreakdownItemDto>> GetCategoryBreakdownAsync(Guid userId, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken);
+    Task<IReadOnlyList<CategoryBreakdownItemDto>> GetCategoryBreakdownAsync(
+        Guid userId,
+        DateTimeOffset from,
+        DateTimeOffset to,
+        CancellationToken cancellationToken,
+        Guid? accountId = null);
 }
 
-public sealed class TransactionService(INexoDbContext db, IClock clock) : ITransactionService
+public sealed class TransactionService(
+    INexoDbContext db,
+    IClock clock,
+    IAccountService accounts,
+    IInsightEngine insights) : ITransactionService
 {
     public async Task<PagedResult<TransactionListItemDto>> QueryAsync(
         Guid userId,
@@ -102,21 +128,25 @@ public sealed class TransactionService(INexoDbContext db, IClock clock) : ITrans
             now));
 
         // Learn the correction so the next movement from the same merchant is right
-        // without asking again. One rule per (user, pattern, direction).
-        if (request.CreateRule && !string.IsNullOrWhiteSpace(transaction.NormalizedDescription))
+        // without asking again (Entregable 14: "Correcciones del usuario crean
+        // reglas personales"). Scoped to Nexo's own automatic merchant guess
+        // (transaction.Merchant), never the person's display correction, so the
+        // rule keeps matching the raw signal every future import/email actually
+        // carries. One rule per (user, merchant pattern, direction).
+        if (request.CreateRule)
         {
-            var pattern = BuildRulePattern(transaction.NormalizedDescription);
-            if (pattern.Length >= 4)
+            var merchantPattern = TextNormalizer.NormalizeForMatching(transaction.Merchant ?? string.Empty);
+            if (merchantPattern.Length > 0)
             {
                 var existing = await db.CategorizationRules.FirstOrDefaultAsync(
-                    r => r.UserId == userId && r.Pattern == pattern && r.Direction == transaction.Direction,
+                    r => r.UserId == userId && r.MerchantPattern == merchantPattern && r.Direction == transaction.Direction,
                     cancellationToken);
 
                 if (existing is null)
                 {
-                    db.CategorizationRules.Add(CategorizationRule.LearnedFromCorrection(
+                    db.CategorizationRules.Add(CategorizationRule.LearnedFromMerchant(
                         userId,
-                        pattern,
+                        merchantPattern,
                         category.Id,
                         transaction.Direction,
                         now));
@@ -144,6 +174,54 @@ public sealed class TransactionService(INexoDbContext db, IClock clock) : ITrans
         return await MapDetailAsync(userId, transaction, cancellationToken);
     }
 
+    public async Task<TransactionDetailDto> UpdateMerchantAsync(
+        Guid userId,
+        Guid transactionId,
+        UpdateMerchantRequest request,
+        CancellationToken cancellationToken)
+    {
+        var transaction = await RequireTransactionAsync(userId, transactionId, cancellationToken);
+        transaction.CorrectMerchant(request.Merchant, clock.UtcNow);
+        await db.SaveChangesAsync(cancellationToken);
+        return await MapDetailAsync(userId, transaction, cancellationToken);
+    }
+
+    public async Task<TransactionDetailDto> ResolveDuplicateAsync(
+        Guid userId,
+        Guid transactionId,
+        ResolveDuplicateRequest request,
+        CancellationToken cancellationToken)
+    {
+        var transaction = await RequireTransactionAsync(userId, transactionId, cancellationToken);
+
+        if (transaction.Status != TransactionStatus.NeedsReview)
+        {
+            throw new ConflictException("Este movimiento no tiene una revisión de duplicado pendiente.");
+        }
+
+        var now = clock.UtcNow;
+
+        // NeedsReview never counts towards the balance (Transaction.CountsTowardsBalance);
+        // Posted does, Ignored still doesn't. So only the "keep as separate" branch
+        // can actually change the account's balance -- but both call RecalculateBalanceAsync
+        // below, since a wrong assumption here is exactly the kind of bug that is
+        // invisible until the one case that needed it silently didn't happen.
+        if (request.KeepAsSeparate)
+        {
+            transaction.ConfirmNotDuplicate(now);
+        }
+        else
+        {
+            transaction.Ignore(now);
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+        await accounts.RecalculateBalanceAsync(userId, transaction.FinancialAccountId, cancellationToken);
+        await insights.RecomputeAsync(userId, cancellationToken);
+
+        return await MapDetailAsync(userId, transaction, cancellationToken);
+    }
+
     public async Task<HomeSummaryDto> GetHomeSummaryAsync(Guid userId, CancellationToken cancellationToken)
     {
         var user = await db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId, cancellationToken)
@@ -165,10 +243,14 @@ public sealed class TransactionService(INexoDbContext db, IClock clock) : ITrans
 
         var accountDtos = accounts.Select(a => AccountService.Map(a, providerMap)).ToList();
 
+        // Entregable 13: a confirmed transfer between the person's own accounts
+        // still moves each account's balance, but it is neither income nor an
+        // expense -- excluded here the same way NeedsReview/Ignored already are.
         var monthlyQuery = db.Transactions
             .AsNoTracking()
             .Where(t => t.UserId == userId
                         && t.TransactionDate >= monthStart
+                        && !t.IsInternalTransfer
                         && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending));
 
         var income = await monthlyQuery
@@ -179,6 +261,42 @@ public sealed class TransactionService(INexoDbContext db, IClock clock) : ITrans
             .Where(t => t.Direction == TransactionDirection.Expense)
             .SumAsync(t => (decimal?)t.Amount, cancellationToken) ?? 0m;
 
+        // Entregable 15 ("Dashboard final MVP"): "comparación mensual" as a
+        // guaranteed dashboard figure, computed the same way every time -- unlike
+        // the MonthOverMonth insight, which only appears when it wins one of the
+        // six "Para ti" slots (see InsightEngine.RecomputeAsync).
+        var previousMonthStart = dates.StartOfPreviousMonth(now);
+        var previousMonthQuery = db.Transactions
+            .AsNoTracking()
+            .Where(t => t.UserId == userId
+                        && t.TransactionDate >= previousMonthStart
+                        && t.TransactionDate < monthStart
+                        && !t.IsInternalTransfer
+                        && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending));
+
+        var previousIncome = await previousMonthQuery
+            .Where(t => t.Direction == TransactionDirection.Income)
+            .SumAsync(t => (decimal?)t.Amount, cancellationToken) ?? 0m;
+
+        var previousExpense = await previousMonthQuery
+            .Where(t => t.Direction == TransactionDirection.Expense)
+            .SumAsync(t => (decimal?)t.Amount, cancellationToken) ?? 0m;
+
+        var monthComparison = new MonthComparisonDto(
+            MoneyMath.Round(previousIncome),
+            MoneyMath.Round(previousExpense),
+            MoneyMath.PercentChange(previousIncome, income),
+            MoneyMath.PercentChange(previousExpense, expense));
+
+        // Entregable 15: "cuentas desactualizadas" as its own guaranteed section,
+        // same rule as the "Cuentas por actualizar" insight (AccountStaleness).
+        var staleThreshold = now.AddDays(-AccountStaleness.ThresholdDays);
+        var staleAccounts = accounts
+            .Where(a => a.ConnectionMode == ConnectionMode.ManualImport
+                        && (a.LastSyncedAt is null || a.LastSyncedAt < staleThreshold))
+            .Select(a => new StaleAccountDto(a.Id, a.Alias, a.LastSyncedAt))
+            .ToList();
+
         var recent = await QueryAsync(
             userId,
             new TransactionFilter { Page = new PageRequest { Page = 1, PageSize = 8 } },
@@ -186,9 +304,12 @@ public sealed class TransactionService(INexoDbContext db, IClock clock) : ITrans
 
         var breakdown = await GetCategoryBreakdownAsync(userId, monthStart, now, cancellationToken);
 
+        // Entregable 16: same "no generar insights irrelevantes" guard as
+        // InsightService.ListAsync -- never show one past its ValidUntil, even if
+        // a scheduled recompute (InsightRefreshWorker) was missed.
         var insights = await db.Insights
             .AsNoTracking()
-            .Where(i => i.UserId == userId)
+            .Where(i => i.UserId == userId && i.ValidUntil > now)
             .OrderBy(i => i.DisplayOrder)
             .Take(6)
             .Select(i => new InsightDto(
@@ -201,7 +322,8 @@ public sealed class TransactionService(INexoDbContext db, IClock clock) : ITrans
                 i.Severity.ToString(),
                 i.ReferenceId,
                 i.PeriodStart,
-                i.PeriodEnd))
+                i.PeriodEnd,
+                i.ValidUntil))
             .ToListAsync(cancellationToken);
 
         return new HomeSummaryDto(
@@ -215,9 +337,11 @@ public sealed class TransactionService(INexoDbContext db, IClock clock) : ITrans
                 MoneyMath.Round(income),
                 MoneyMath.Round(expense),
                 MoneyMath.Round(income - expense)),
+            monthComparison,
             accountDtos,
             recent.Items,
             breakdown,
+            staleAccounts,
             insights);
     }
 
@@ -225,15 +349,24 @@ public sealed class TransactionService(INexoDbContext db, IClock clock) : ITrans
         Guid userId,
         DateTimeOffset from,
         DateTimeOffset to,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        Guid? accountId = null)
     {
-        var grouped = await db.Transactions
+        var query = db.Transactions
             .AsNoTracking()
             .Where(t => t.UserId == userId
                         && t.Direction == TransactionDirection.Expense
                         && t.TransactionDate >= from
                         && t.TransactionDate <= to
-                        && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending))
+                        && !t.IsInternalTransfer
+                        && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending));
+
+        if (accountId is { } id)
+        {
+            query = query.Where(t => t.FinancialAccountId == id);
+        }
+
+        var grouped = await query
             .GroupBy(t => t.CategoryId)
             .Select(g => new { CategoryId = g.Key, Total = g.Sum(x => x.Amount), Count = g.Count() })
             .ToListAsync(cancellationToken);
@@ -297,6 +430,24 @@ public sealed class TransactionService(INexoDbContext db, IClock clock) : ITrans
         if (filter.To is { } to)
         {
             query = query.Where(t => t.TransactionDate <= to);
+        }
+
+        if (!string.IsNullOrWhiteSpace(filter.ProviderCode))
+        {
+            query = query.Where(t => t.ProviderCode == filter.ProviderCode);
+        }
+
+        // Amount is always the movement's magnitude (never signed -- the sign lives
+        // in Direction), so "monto mínimo/máximo" filters the size of the movement
+        // regardless of whether it's income or an expense.
+        if (filter.MinAmount is { } minAmount)
+        {
+            query = query.Where(t => t.Amount >= minAmount);
+        }
+
+        if (filter.MaxAmount is { } maxAmount)
+        {
+            query = query.Where(t => t.Amount <= maxAmount);
         }
 
         if (!string.IsNullOrWhiteSpace(filter.Search))
@@ -375,13 +526,14 @@ public sealed class TransactionService(INexoDbContext db, IClock clock) : ITrans
             transaction.Currency,
             transaction.Direction.ToString(),
             transaction.Description,
-            transaction.Merchant,
+            transaction.EffectiveMerchant,
             transaction.CategoryId,
             category?.Name,
             category?.Icon,
             category?.Color,
             transaction.Status.ToString(),
-            transaction.Source.ToString());
+            transaction.Source.ToString(),
+            transaction.IsInternalTransfer);
     }
 
     private async Task<TransactionDetailDto> MapDetailAsync(
@@ -420,7 +572,8 @@ public sealed class TransactionService(INexoDbContext db, IClock clock) : ITrans
             transaction.Currency,
             transaction.Direction.ToString(),
             transaction.Description,
-            transaction.Merchant,
+            transaction.EffectiveMerchant,
+            transaction.MerchantCorrected,
             transaction.CategoryId,
             categoryName,
             transaction.CategoryManuallySet,
@@ -431,17 +584,9 @@ public sealed class TransactionService(INexoDbContext db, IClock clock) : ITrans
             transaction.Note,
             transaction.PossibleDuplicateOfId,
             transaction.ImportId,
-            transaction.CreatedAt);
-    }
-
-    private static string BuildRulePattern(string normalizedDescription)
-    {
-        var tokens = normalizedDescription
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Take(2)
-            .ToArray();
-
-        return string.Join(' ', tokens);
+            transaction.CreatedAt,
+            transaction.IsInternalTransfer,
+            transaction.InternalTransferLinkId);
     }
 
     private async Task<Dictionary<Guid, string>> LoadAccountAliasesAsync(
@@ -455,9 +600,13 @@ public sealed class TransactionService(INexoDbContext db, IClock clock) : ITrans
             return new Dictionary<Guid, string>();
         }
 
+        // See QueryableGuidExtensions.WhereIdIn: `ids.Contains(a.Id)` combined with
+        // the global per-user filter does not translate on SQLite. This path runs
+        // on every non-empty movements list, so it broke that screen outright.
         var accounts = await db.FinancialAccounts
             .AsNoTracking()
-            .Where(a => a.UserId == userId && ids.Contains(a.Id))
+            .Where(a => a.UserId == userId)
+            .WhereIdIn(a => a.Id, ids)
             .Select(a => new { a.Id, a.Alias })
             .ToListAsync(cancellationToken);
 

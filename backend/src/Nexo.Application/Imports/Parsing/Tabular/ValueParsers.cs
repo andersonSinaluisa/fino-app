@@ -84,6 +84,12 @@ public static class DateParser
     private static readonly string[] Formats =
     [
         "yyyy-MM-dd", "yyyy/MM/dd", "yyyy-MM-ddTHH:mm:ss", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm",
+        // Entregable 26 ("Parsers de correo"): "2026-8-31" -- single-digit month
+        // and day, same shape as the "2026-8-31, 12:51 PM" export format already
+        // documented below on DateTimeFormats -- has no exact match without this,
+        // so a date-only value in that shape fell through to the loose DateTime.
+        // TryParse fallback, which is culture-dependent instead of deterministic.
+        "yyyy-M-d",
         "dd/MM/yyyy", "d/M/yyyy", "dd-MM-yyyy", "d-M-yyyy", "dd.MM.yyyy",
         "dd/MM/yyyy HH:mm", "dd/MM/yyyy HH:mm:ss", "dd/MM/yy", "d/M/yy",
         "MM/dd/yyyy", "dd/MMM/yyyy", "dd-MMM-yyyy", "dd MMM yyyy",
@@ -94,6 +100,48 @@ public static class DateParser
         ["ENE"] = 1, ["FEB"] = 2, ["MAR"] = 3, ["ABR"] = 4, ["MAY"] = 5, ["JUN"] = 6,
         ["JUL"] = 7, ["AGO"] = 8, ["SEP"] = 9, ["OCT"] = 10, ["NOV"] = 11, ["DIC"] = 12,
     };
+
+    /// <summary>
+    /// Formats that carry a time of day. Pichincha's export writes
+    /// "2026-8-31, 12:51 PM" — a single-digit month and day, a comma, and a
+    /// 12-hour clock — which no date-only pattern matches.
+    /// </summary>
+    private static readonly string[] DateTimeFormats =
+    [
+        "yyyy-M-d, h:mm tt", "yyyy-M-d h:mm tt", "yyyy-M-d, HH:mm", "yyyy-M-d HH:mm",
+        "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm", "yyyy-MM-ddTHH:mm:ss",
+        "dd/MM/yyyy HH:mm:ss", "dd/MM/yyyy HH:mm", "dd/MM/yyyy h:mm tt", "dd/MM/yyyy, h:mm tt",
+        "d/M/yyyy HH:mm", "d/M/yyyy h:mm tt",
+    ];
+
+    /// <summary>
+    /// Parses the date and, when the cell carries one, the time of day. Keeping the
+    /// hour matters for the movement detail: "18:12" is what the user recognises.
+    /// </summary>
+    public static bool TryParseLocal(string? raw, out DateTime date, out TimeSpan? timeOfDay)
+    {
+        date = default;
+        timeOfDay = null;
+
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return false;
+        }
+
+        if (DateTime.TryParseExact(
+                raw.Trim(),
+                DateTimeFormats,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var withTime))
+        {
+            date = withTime.Date;
+            timeOfDay = withTime.TimeOfDay;
+            return true;
+        }
+
+        return TryParseDate(raw, out date);
+    }
 
     /// <summary>Parses the calendar date only; the time-of-day is applied by the caller.</summary>
     public static bool TryParseDate(string? raw, out DateTime value)
@@ -236,6 +284,19 @@ public sealed class StatementDateInterpreter(string timeZoneId)
         var local = TimeZoneInfo.ConvertTime(instant, _timeZone);
         var previous = new DateTime(local.Year, local.Month, 1, 0, 0, 0, DateTimeKind.Unspecified).AddMonths(-1);
         return ToInstant(previous, TimeSpan.Zero);
+    }
+
+    /// <summary>
+    /// Entregable 16 ("Insights v1"): the instant the current local month rolls
+    /// over, used as the default <c>ValidUntil</c> for a month-scoped insight --
+    /// "tu mayor gasto este mes" stops being true the moment a new month starts,
+    /// whether or not the next recompute has run yet.
+    /// </summary>
+    public DateTimeOffset StartOfNextMonth(DateTimeOffset instant)
+    {
+        var local = TimeZoneInfo.ConvertTime(instant, _timeZone);
+        var next = new DateTime(local.Year, local.Month, 1, 0, 0, 0, DateTimeKind.Unspecified).AddMonths(1);
+        return ToInstant(next, TimeSpan.Zero);
     }
 
     private static TimeZoneInfo Resolve(string id)

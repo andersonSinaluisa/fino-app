@@ -36,6 +36,7 @@ public sealed class RefreshTokenConfiguration : IEntityTypeConfiguration<Refresh
         builder.Property(t => t.RevokedReason).HasMaxLength(64);
         builder.Property(t => t.DeviceLabel).HasMaxLength(120);
         builder.Property(t => t.CreatedFromIpHash).HasMaxLength(128);
+        builder.Property(t => t.UserAgent).HasMaxLength(200);
 
         builder.HasIndex(t => t.TokenHash).IsUnique();
         builder.HasIndex(t => new { t.UserId, t.RevokedAt });

@@ -1,17 +1,48 @@
-import { useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as DocumentPicker from 'expo-document-picker';
+import { File } from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../theme';
 import { Badge, Button, Card, Screen, SectionHeader, Typo } from '../../components/ui';
 import { api } from '../../services/endpoints';
 import { ApiError } from '../../services/apiClient';
-import { useRefreshAfterImport } from '../../hooks/queries';
+import { devLog, serializeError } from '../../services/devLog';
+import { useCancelImport, useRefreshAfterImport } from '../../hooks/queries';
 import { formatCurrency, formatDayHeading } from '../../utils/format';
-import type { ImportPreview, ImportResult } from '../../types/api';
+import type { ImportPreview, ImportResult, ManualColumnMapping } from '../../types/api';
 
-type Step = 'pick' | 'working' | 'preview' | 'done';
+const LOG_TAG = 'importar';
+
+type Step = 'pick' | 'working' | 'preview' | 'mapping' | 'done';
+
+type PickedAsset = { uri: string; name: string; mimeType: string; size: number | null };
+
+/** One raw column can carry at most one of these roles. */
+type ColumnRole = 'date' | 'description' | 'debit' | 'credit' | 'amount' | 'reference';
+
+const ROLE_LABELS: Record<ColumnRole, string> = {
+  date: 'Fecha',
+  description: 'Descripción',
+  debit: 'Débito',
+  credit: 'Crédito',
+  amount: 'Monto (+/-)',
+  reference: 'Referencia',
+};
+
+const ROLE_ORDER: ColumnRole[] = ['date', 'description', 'debit', 'credit', 'amount', 'reference'];
+
+type RoleColumns = Record<ColumnRole, number | null>;
+
+const EMPTY_ROLE_COLUMNS: RoleColumns = {
+  date: null,
+  description: null,
+  debit: null,
+  credit: null,
+  amount: null,
+  reference: null,
+};
 
 const ACCEPTED_TYPES = [
   'text/csv',
@@ -21,6 +52,122 @@ const ACCEPTED_TYPES = [
   'text/plain',
 ];
 
+// Some iOS file providers (Chrome's own among them -- confirmed on Anderson's
+// phone) don't respect the `type` filter passed to the picker and hand back
+// whatever `mimeType` they feel like, including a generic
+// 'application/octet-stream'. The extension is the one signal every provider
+// gets right, so it's the real gate for "is this a file we can parse" --
+// mimeType only decides what we tell the backend it is.
+const ACCEPTED_EXTENSIONS = ['csv', 'xls', 'xlsx', 'txt'];
+
+function extensionOf(fileName: string): string | null {
+  const dot = fileName.lastIndexOf('.');
+  return dot === -1 ? null : fileName.slice(dot + 1).toLowerCase();
+}
+
+type ResolvedPick =
+  | { ok: true; asset: PickedAsset }
+  | { ok: false; errorMessage: string };
+
+/**
+ * `copyToCacheDirectory: true` is supposed to hand back a plain local file,
+ * copied into the app's own sandbox, before the picker's promise resolves --
+ * so by this point `picked.assets[0].uri` should already point at real bytes
+ * on disk regardless of where the file came from (iCloud placeholder, another
+ * app's file provider, wherever). Some providers break that contract instead:
+ * they report success but the "copy" is empty or never lands, which upload()
+ * then can't tell apart from a plain network failure. Checking the copy here,
+ * synchronously, with the real filesystem (not just trusting the picker's own
+ * metadata) is what lets the error message name the actual problem.
+ *
+ * Web has no equivalent failure mode and no real `expo-file-system` File
+ * implementation to check against (its web build is a stub -- calling
+ * `.exists`/`.size` there would throw): the picker already hands back a
+ * ready-to-use `Blob`/`File` (`rawAsset.file`) and a `blob:`/`data:` uri with
+ * no separate native copy step, so web only validates size/extension.
+ */
+function resolvePickedFile(rawAsset: DocumentPicker.DocumentPickerAsset): ResolvedPick {
+  devLog(LOG_TAG, 'resolve_start', {
+    uri: rawAsset.uri,
+    name: rawAsset.name,
+    mimeType: rawAsset.mimeType,
+    reportedSize: rawAsset.size,
+    platform: Platform.OS,
+  });
+
+  const ext = extensionOf(rawAsset.name);
+  if (!ext || !ACCEPTED_EXTENSIONS.includes(ext)) {
+    devLog(LOG_TAG, 'resolve_failed', {
+      reason: 'unsupported_extension',
+      name: rawAsset.name,
+      ext,
+      mimeType: rawAsset.mimeType,
+    });
+    return { ok: false, errorMessage: 'Ese tipo de archivo no lo soportamos todavía. Sube un CSV o un XLSX.' };
+  }
+
+  if (Platform.OS === 'web') {
+    const size = rawAsset.size ?? null;
+    if (size === 0) {
+      devLog(LOG_TAG, 'resolve_failed', { reason: 'empty_file', name: rawAsset.name });
+      return {
+        ok: false,
+        errorMessage: 'Ese archivo está vacío. Descarga de nuevo el estado de cuenta e inténtalo otra vez.',
+      };
+    }
+    const asset: PickedAsset = { uri: rawAsset.uri, name: rawAsset.name, mimeType: rawAsset.mimeType ?? 'text/csv', size };
+    devLog(LOG_TAG, 'resolve_success', asset);
+    return { ok: true, asset };
+  }
+
+  let local: File;
+  try {
+    local = new File(rawAsset.uri);
+  } catch (constructError) {
+    devLog(LOG_TAG, 'resolve_failed', {
+      reason: 'local_file_handle_failed',
+      uri: rawAsset.uri,
+      name: rawAsset.name,
+      ...serializeError(constructError),
+    });
+    return {
+      ok: false,
+      errorMessage:
+        'No pudimos acceder a ese archivo. Pruébalo desde otra app (por ejemplo Safari, WhatsApp o tu correo) y vuelve a intentarlo.',
+    };
+  }
+
+  if (!local.exists) {
+    // The picker resolved but the sandbox copy never showed up -- the exact
+    // failure mode reproduced with files coming from Chrome's iOS file
+    // provider; picking the same file from WhatsApp instead worked fine, so
+    // this is named as a provider problem rather than a Fino/Expo one.
+    devLog(LOG_TAG, 'resolve_failed', {
+      reason: 'copy_missing',
+      originalUri: rawAsset.uri,
+      localUri: local.uri,
+      name: rawAsset.name,
+    });
+    return {
+      ok: false,
+      errorMessage:
+        'No pudimos copiar ese archivo a Fino. Esto pasa a veces con archivos que vienen de apps como Chrome; ábrelo con Safari, o compártelo por WhatsApp o correo y guárdalo en Archivos, y vuelve a intentarlo aquí.',
+    };
+  }
+
+  if (local.size === 0) {
+    devLog(LOG_TAG, 'resolve_failed', { reason: 'empty_file', localUri: local.uri, name: rawAsset.name });
+    return {
+      ok: false,
+      errorMessage: 'Ese archivo está vacío. Descarga de nuevo el estado de cuenta e inténtalo otra vez.',
+    };
+  }
+
+  const asset: PickedAsset = { uri: local.uri, name: rawAsset.name, mimeType: rawAsset.mimeType ?? 'text/csv', size: local.size };
+  devLog(LOG_TAG, 'resolve_success', asset);
+  return { ok: true, asset };
+}
+
 /**
  * Archivo → Validación → Preview → Importación → Resultado.
  * Nothing is written until the user confirms what they are looking at.
@@ -29,6 +176,7 @@ export default function ImportScreen() {
   const router = useRouter();
   const { accountId } = useLocalSearchParams<{ accountId: string }>();
   const refreshAfterImport = useRefreshAfterImport();
+  const cancelImport = useCancelImport();
 
   const [step, setStep] = useState<Step>('pick');
   const [preview, setPreview] = useState<ImportPreview | null>(null);
@@ -36,40 +184,212 @@ export default function ImportScreen() {
   const [error, setError] = useState<string | null>(null);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
 
+  // Entregable 10 (Generic CSV mapper): the same picked file is re-sent to
+  // /imports/manual once the person assigns columns by hand, so it has to
+  // stay around after the first (failed) upload -- DocumentPicker's asset,
+  // not the file's bytes, since `upload()` reads it lazily from its uri.
+  const [pickedAsset, setPickedAsset] = useState<PickedAsset | null>(null);
+  const [firstRowIsHeader, setFirstRowIsHeader] = useState(true);
+  const [saveMapping, setSaveMapping] = useState(true);
+  const [roleColumns, setRoleColumns] = useState<RoleColumns>(EMPTY_ROLE_COLUMNS);
+
+  // Entregable 8: "no imports huérfanos por salir de la pantalla" -- a preview
+  // is a real row in the backend (Received/PreviewReady) the moment upload()
+  // resolves. Leaving this screen any other way than confirming -- the close
+  // button, the ghost "Cancelar", the hardware back button, an edge swipe --
+  // all unmount this component the same way, so a single cleanup here covers
+  // every exit path instead of wiring each control by hand.
+  const previewRef = useRef<ImportPreview | null>(null);
+  const confirmedRef = useRef(false);
+  const cancelImportRef = useRef(cancelImport.mutate);
+
+  useEffect(() => {
+    previewRef.current = preview;
+  }, [preview]);
+
+  cancelImportRef.current = cancelImport.mutate;
+
+  useEffect(() => {
+    // Empty deps: this must register exactly once and fire only on unmount --
+    // not on every render, which is the only way the ref reads above stay
+    // current without re-running the cleanup early.
+    return () => {
+      const pending = previewRef.current;
+      if (pending && pending.status === 'PreviewReady' && !confirmedRef.current) {
+        cancelImportRef.current(pending.importId);
+      }
+    };
+  }, []);
+
   const pickAndUpload = async () => {
     setError(null);
 
-    const picked = await DocumentPicker.getDocumentAsync({
-      type: ACCEPTED_TYPES,
-      copyToCacheDirectory: true,
-      multiple: false,
-    });
+    // The root cause of the original "No pudimos abrir el archivo
+    // seleccionado. Descárgalo en este iPhone y vuelve a intentarlo." report
+    // (a string that exists nowhere in Fino's frontend or backend) was
+    // narrowed down on Anderson's own phone: files coming from Chrome's iOS
+    // file provider failed every time, while the identical file picked from
+    // WhatsApp instead opened fine -- ruling out Expo Go, iOS's document
+    // picker itself, and this component. copyToCacheDirectory: true is the
+    // correct setting regardless (upload() needs a plain local file it can
+    // read without security-scoped-resource handling); resolvePickedFile()
+    // below is what actually checks whether that copy produced a real file,
+    // so a broken provider gets a specific, actionable message instead of a
+    // generic upload failure three steps later.
+    devLog(LOG_TAG, 'picker_open', { acceptedTypes: ACCEPTED_TYPES, platform: Platform.OS });
 
-    if (picked.canceled || !picked.assets?.[0] || !accountId) {
+    let picked: DocumentPicker.DocumentPickerResult;
+    try {
+      picked = await DocumentPicker.getDocumentAsync({
+        type: ACCEPTED_TYPES,
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+    } catch (pickerError) {
+      devLog(LOG_TAG, 'picker_threw', serializeError(pickerError));
+      setError('No pudimos abrir el selector de archivos. Cierra la app por completo y vuelve a intentarlo.');
       return;
     }
 
-    const asset = picked.assets[0];
+    if (picked.canceled || !picked.assets?.[0]) {
+      devLog(LOG_TAG, 'picker_canceled', {});
+      return;
+    }
+
+    const rawAsset = picked.assets[0];
+    devLog(LOG_TAG, 'picker_success', {
+      uri: rawAsset.uri,
+      name: rawAsset.name,
+      mimeType: rawAsset.mimeType,
+      size: rawAsset.size,
+      hasFile: Boolean(rawAsset.file),
+    });
+
+    if (!accountId) {
+      return;
+    }
+
+    const resolved = resolvePickedFile(rawAsset);
+    if (!resolved.ok) {
+      setError(resolved.errorMessage);
+      return;
+    }
+
+    const asset = resolved.asset;
+    setPickedAsset(asset);
+    setFirstRowIsHeader(true);
+    setSaveMapping(true);
+    setRoleColumns(EMPTY_ROLE_COLUMNS);
     setStep('working');
 
     try {
-      const response = await api.imports.upload(accountId, {
-        uri: asset.uri,
-        name: asset.name,
-        mimeType: asset.mimeType ?? 'text/csv',
-      });
+      devLog(LOG_TAG, 'upload_start', { name: asset.name, mimeType: asset.mimeType, size: asset.size });
+      const response = await api.imports.upload(accountId, asset);
 
+      devLog(LOG_TAG, 'upload_done', { status: response.status });
       setPreview(response);
       setStep('preview');
 
       if (response.status === 'Failed') {
+        devLog(LOG_TAG, 'backend_reported_failed', { failureReason: response.failureReason });
         setError(response.failureReason ?? 'No pudimos leer el archivo.');
       }
     } catch (uploadError) {
-      setError(uploadError instanceof ApiError ? uploadError.message : 'No pudimos subir el archivo.');
+      devLog(LOG_TAG, 'upload_failed', {
+        isApiError: uploadError instanceof ApiError,
+        status: uploadError instanceof ApiError ? uploadError.status : null,
+        ...serializeError(uploadError),
+      });
+      setError(
+        uploadError instanceof ApiError
+          ? uploadError.message
+          : 'No pudimos subir el archivo. Si el problema sigue, prueba eligiéndolo de nuevo desde otra app.',
+      );
       setStep('pick');
     }
   };
+
+  const submitManualMapping = async () => {
+    if (!pickedAsset || !accountId || roleColumns.date === null || roleColumns.description === null) {
+      return;
+    }
+
+    // pickedAsset's uri points at the cache copy made back in pickAndUpload,
+    // possibly minutes ago (the person had to read the mapping screen and
+    // tap through columns in between). That copy is a plain sandbox file,
+    // not a security-scoped handle, so it does not expire the way the
+    // picker's original uri could -- but iOS is allowed to purge the whole
+    // Caches directory under storage pressure while the app is backgrounded,
+    // so it is worth confirming the file is still actually there rather than
+    // sending an upload that can only fail with a confusing network error.
+    // Skipped on web: there is no sandbox-copy/Caches-purge model there, and
+    // expo-file-system's File class has no real implementation on that
+    // platform to check against.
+    if (Platform.OS !== 'web') {
+      const stillThere = new File(pickedAsset.uri);
+      devLog(LOG_TAG, 'remapping_recheck', { uri: pickedAsset.uri, exists: stillThere.exists });
+      if (!stillThere.exists || stillThere.size === 0) {
+        setError('El archivo que elegiste ya no está disponible. Vuelve a elegirlo e inténtalo de nuevo.');
+        setPickedAsset(null);
+        setStep('pick');
+        return;
+      }
+    }
+
+    const mapping: ManualColumnMapping = {
+      firstRowIsHeader,
+      dateColumn: roleColumns.date!,
+      descriptionColumn: roleColumns.description!,
+      amountColumn: roleColumns.amount,
+      debitColumn: roleColumns.debit,
+      creditColumn: roleColumns.credit,
+      referenceColumn: roleColumns.reference,
+      saveMapping,
+    };
+
+    setStep('working');
+    setError(null);
+
+    try {
+      devLog(LOG_TAG, 'remapping_upload_start', { name: pickedAsset.name });
+      const response = await api.imports.uploadManual(accountId, pickedAsset, mapping);
+      devLog(LOG_TAG, 'remapping_upload_done', { status: response.status });
+      setPreview(response);
+      setStep('preview');
+
+      if (response.status === 'Failed') {
+        setError(response.failureReason ?? 'No pudimos leer el archivo con ese mapeo.');
+      }
+    } catch (mappingError) {
+      devLog(LOG_TAG, 'remapping_upload_failed', {
+        isApiError: mappingError instanceof ApiError,
+        status: mappingError instanceof ApiError ? mappingError.status : null,
+        ...serializeError(mappingError),
+      });
+      setError(mappingError instanceof ApiError ? mappingError.message : 'No pudimos procesar el mapeo.');
+      setStep('mapping');
+    }
+  };
+
+  const setRole = (role: ColumnRole, columnIndex: number) => {
+    setRoleColumns((current) => {
+      const next = { ...current };
+      // A column keeps at most one role, and a role belongs to at most one
+      // column -- tapping the same chip again clears it, tapping a different
+      // one moves the role there instead of duplicating it.
+      for (const key of ROLE_ORDER) {
+        if (next[key] === columnIndex && key !== role) {
+          next[key] = null;
+        }
+      }
+      next[role] = next[role] === columnIndex ? null : columnIndex;
+      return next;
+    });
+  };
+
+  const mappingIsValid = roleColumns.date !== null
+    && roleColumns.description !== null
+    && (roleColumns.amount !== null || roleColumns.debit !== null || roleColumns.credit !== null);
 
   const confirm = async () => {
     if (!preview) {
@@ -78,7 +398,15 @@ export default function ImportScreen() {
 
     setStep('working');
     try {
-      const confirmation = await api.imports.confirm(preview.importId, Array.from(excluded), false);
+      // Entregable: the statement itself declares its own closing balance (the
+      // bank's own number, right there in the file) -- applying it is what
+      // turns "estimado" into "verificado" and is what makes the balance match
+      // reality instead of just netting this batch's flows from zero. Was
+      // hardcoded false here, so a fresh account's balance never reflected an
+      // import even when it included income: RecalculateBalanceAsync had no
+      // verified anchor to add that income on top of.
+      const confirmation = await api.imports.confirm(preview.importId, Array.from(excluded), true);
+      confirmedRef.current = true;
       setResult(confirmation);
       refreshAfterImport();
       setStep('done');
@@ -163,7 +491,10 @@ export default function ImportScreen() {
                   {preview.failureReason ?? error}
                 </Typo>
               </View>
-              <Button label="Probar con otro archivo" onPress={() => setStep('pick')} />
+              {preview.unmappedColumns && preview.unmappedColumns.length > 0 ? (
+                <Button label="Elegir columnas a mano" variant="secondary" onPress={() => setStep('mapping')} />
+              ) : null}
+              <Button label="Probar con otro archivo" variant="ghost" onPress={() => setStep('pick')} />
             </>
           ) : (
             <>
@@ -257,6 +588,84 @@ export default function ImportScreen() {
         </View>
       ) : null}
 
+      {step === 'mapping' && preview?.unmappedColumns ? (
+        <View style={styles.block}>
+          <Typo variant="title">¿Qué es cada columna?</Typo>
+          <Typo variant="body" color={colors.textSecondary}>
+            No reconocimos el formato de {preview.fileName}. Dinos qué contiene cada columna
+            y usaremos exactamente las mismas reglas de duplicados y categorías que con
+            un banco que sí reconocemos.
+          </Typo>
+
+          <Pressable style={styles.toggleRow} onPress={() => setFirstRowIsHeader((current) => !current)}>
+            <Ionicons
+              name={firstRowIsHeader ? 'checkbox' : 'square-outline'}
+              size={20}
+              color={firstRowIsHeader ? colors.accent : colors.textSecondary}
+            />
+            <Typo variant="body" style={styles.flex}>
+              La primera fila es un encabezado, no un movimiento
+            </Typo>
+          </Pressable>
+
+          <ScrollView style={styles.mappingScroll} nestedScrollEnabled>
+            {preview.unmappedColumns.map((headerText, columnIndex) => {
+              const sample = preview.unmappedSampleRows?.[0]?.[columnIndex];
+              return (
+                <View key={columnIndex} style={styles.mappingColumn}>
+                  <View style={styles.flex}>
+                    <Typo variant="bodyStrong" numberOfLines={1}>
+                      {headerText || `Columna ${columnIndex + 1}`}
+                    </Typo>
+                    {sample ? (
+                      <Typo variant="caption" color={colors.textSecondary} numberOfLines={1}>
+                        ej. {sample}
+                      </Typo>
+                    ) : null}
+                  </View>
+                  <View style={styles.chipRow}>
+                    {ROLE_ORDER.map((role) => {
+                      const selected = roleColumns[role] === columnIndex;
+                      return (
+                        <Pressable
+                          key={role}
+                          onPress={() => setRole(role, columnIndex)}
+                          style={[styles.chip, selected ? styles.chipSelected : null]}
+                        >
+                          <Typo variant="caption" color={selected ? colors.onAccent : colors.textSecondary}>
+                            {ROLE_LABELS[role]}
+                          </Typo>
+                        </Pressable>
+                      );
+                    })}
+                  </View>
+                </View>
+              );
+            })}
+          </ScrollView>
+
+          <Pressable style={styles.toggleRow} onPress={() => setSaveMapping((current) => !current)}>
+            <Ionicons
+              name={saveMapping ? 'checkbox' : 'square-outline'}
+              size={20}
+              color={saveMapping ? colors.accent : colors.textSecondary}
+            />
+            <Typo variant="body" style={styles.flex}>
+              Recordar este mapeo para los próximos archivos de esta cuenta
+            </Typo>
+          </Pressable>
+
+          {!mappingIsValid ? (
+            <Typo variant="caption" color={colors.textSecondary}>
+              Falta asignar Fecha, Descripción y Monto (o Débito/Crédito).
+            </Typo>
+          ) : null}
+
+          <Button label="Continuar" onPress={() => void submitManualMapping()} disabled={!mappingIsValid} />
+          <Button label="Cancelar" variant="ghost" onPress={() => setStep('preview')} />
+        </View>
+      ) : null}
+
       {step === 'done' && result ? (
         <View style={styles.block}>
           <View style={styles.doneIcon}>
@@ -266,6 +675,9 @@ export default function ImportScreen() {
           <Typo variant="title">Listo</Typo>
           <Typo variant="body" color={colors.textSecondary}>
             Importamos {result.importedCount} movimiento(s).
+            {result.upgradedCount > 0
+              ? ` Actualizamos ${result.upgradedCount} que ya tenías detectado(s) por correo con el dato exacto del banco.`
+              : ''}
             {result.skippedDuplicates > 0 ? ` Omitimos ${result.skippedDuplicates} duplicado(s).` : ''}
             {result.flaggedForReview > 0 ? ` ${result.flaggedForReview} quedaron marcados para revisar.` : ''}
           </Typo>
@@ -388,6 +800,35 @@ const styles = StyleSheet.create({
   },
   rowMuted: {
     opacity: 0.45,
+  },
+  toggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+  },
+  mappingScroll: {
+    maxHeight: 420,
+  },
+  mappingColumn: {
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
+  },
+  chipRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  chip: {
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    backgroundColor: colors.surfaceSecondary,
+  },
+  chipSelected: {
+    backgroundColor: colors.accent,
   },
   doneIcon: {
     width: 56,

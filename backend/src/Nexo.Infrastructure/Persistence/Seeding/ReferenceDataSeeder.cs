@@ -80,8 +80,9 @@ public sealed class ReferenceDataSeeder(NexoDbContext db, IClock clock, ILogger<
             Category.Builtin(CategoryCodes.Shopping, "Compras", "shopping-bag", "#E8B4A0", now, false, 8),
             Category.Builtin(CategoryCodes.Subscriptions, "Suscripciones", "repeat", "#B6A0E8", now, false, 9),
             Category.Builtin(CategoryCodes.Transfers, "Transferencias", "arrow-left-right", "#ECE9E1", now, false, 10),
-            Category.Builtin(CategoryCodes.Income, "Ingresos", "trending-up", "#4E9F73", now, true, 11),
-            Category.Builtin(CategoryCodes.Other, "Otros", "circle", "#74766F", now, false, 12),
+            Category.Builtin(CategoryCodes.Fees, "Comisiones e impuestos", "percent", "#A67C52", now, false, 11),
+            Category.Builtin(CategoryCodes.Income, "Ingresos", "trending-up", "#4E9F73", now, true, 12),
+            Category.Builtin(CategoryCodes.Other, "Otros", "circle", "#74766F", now, false, 13),
         };
 
         var missing = catalogue.Where(c => !existing.Contains(c.Code)).ToArray();
@@ -94,10 +95,19 @@ public sealed class ReferenceDataSeeder(NexoDbContext db, IClock clock, ILogger<
 
     private async Task SeedRulesAsync(DateTimeOffset now, CancellationToken cancellationToken)
     {
-        if (await db.CategorizationRules.AnyAsync(r => r.IsSystem, cancellationToken))
-        {
-            return;
-        }
+        // Was "skip entirely once any system rule exists", which meant a rule added
+        // to the catalogue below (e.g. the 2026-09 batch for TRANSF/TRF, Fees, real
+        // bank names) would never reach a database that had already been seeded
+        // once -- exactly the gap that let Anderson's real statements keep missing
+        // rules this file already declared. Keyed like SeedCategoriesAsync/
+        // SeedProvidersAsync now: only what is actually missing gets inserted.
+        var existingKeys = await db.CategorizationRules
+            .Where(r => r.IsSystem)
+            .Select(r => new { r.Pattern, r.MerchantPattern })
+            .ToListAsync(cancellationToken);
+        var existing = existingKeys
+            .Select(r => (r.Pattern, MerchantPattern: r.MerchantPattern ?? string.Empty))
+            .ToHashSet();
 
         var categories = await db.Categories
             .Where(c => c.UserId == null)
@@ -150,7 +160,37 @@ public sealed class ReferenceDataSeeder(NexoDbContext db, IClock clock, ILogger<
             ("AMAZON", CategoryCodes.Shopping, null),
             ("CINEMARK", CategoryCodes.Entertainment, null),
             ("SUPERCINES", CategoryCodes.Entertainment, null),
+            // Real Guayaquil mall on Vía a Daule -- same rationale as DE PRATI/
+            // ETAFASHION above (a public retail brand, not personal data). The
+            // trailing "ING" is dropped because a real export truncated it to
+            // "SHOPP"; the pattern still matches the untruncated spelling too.
+            ("ISLA SHOPP", CategoryCodes.Shopping, null),
+            // "TRANSFERENCIA" alone missed the abbreviated form Ecuadorian banks
+            // actually print on most rows ("TRANSF. DIRECTA A ...", "TRF INTERBANCARIA
+            // ..."): normalization strips the period, leaving "TRANSF"/"TRF", neither of
+            // which contains the full 13-letter word. Both abbreviations are added
+            // explicitly rather than relying on the longer pattern's substring, since a
+            // description can just as easily read "TRANSF" only.
             ("TRANSFERENCIA", CategoryCodes.Transfers, null),
+            ("TRANSF", CategoryCodes.Transfers, null),
+            ("TRF", CategoryCodes.Transfers, null),
+            // A real export's "Detalle" sometimes names the receiving/sending bank
+            // itself instead of the word "Transferencia" -- e.g. a Guayaquil account
+            // paying a person who banks at Pichincha shows "Banco Pichincha" as the
+            // channel, with the actual counterparty only in "Beneficiario". None of
+            // the patterns above catch that shape.
+            ("BANCO PICHINCHA", CategoryCodes.Transfers, null),
+            ("BANCO GUAYAQUIL", CategoryCodes.Transfers, null),
+            ("BANCO PACIFICO", CategoryCodes.Transfers, null),
+            ("PRODUBANCO", CategoryCodes.Transfers, null),
+            ("BANCO BOLIVARIANO", CategoryCodes.Transfers, null),
+            ("BANCO INTERNACIONAL", CategoryCodes.Transfers, null),
+            // Pichincha's own mechanism for moving money to another bank's network
+            // ("Cobro Interbancario ... para <destino>"). The amount on these rows
+            // is a real transfer, not necessarily a fee -- when it IS the fee leg,
+            // the line also says "Comisión" and the Fees rule below wins on
+            // priority, so this is a safe default for the rest.
+            ("COBRO INTERBANCARIO", CategoryCodes.Transfers, null),
             ("ROL DE PAGOS", CategoryCodes.Income, TransactionDirection.Income),
             ("SUELDO", CategoryCodes.Income, TransactionDirection.Income),
             ("NOMINA", CategoryCodes.Income, TransactionDirection.Income),
@@ -158,16 +198,60 @@ public sealed class ReferenceDataSeeder(NexoDbContext db, IClock clock, ILogger<
         };
 
         var rules = new List<CategorizationRule>();
+
+        bool TryAdd(CategorizationRule rule)
+        {
+            var key = (rule.Pattern, MerchantPattern: rule.MerchantPattern ?? string.Empty);
+            if (!existing.Add(key))
+            {
+                return false;
+            }
+
+            rules.Add(rule);
+            return true;
+        }
+
         foreach (var (pattern, categoryCode, direction) in seeds)
         {
             if (categories.TryGetValue(categoryCode, out var categoryId))
             {
-                rules.Add(CategorizationRule.SystemRule(pattern, categoryId, now, RuleMatchKind.Contains, direction));
+                TryAdd(CategorizationRule.SystemRule(pattern, categoryId, now, RuleMatchKind.Contains, direction));
             }
         }
 
-        db.CategorizationRules.AddRange(rules);
-        await db.SaveChangesAsync(cancellationToken);
+        // Bank fees and taxes ride along on the very same transfer/payment movements
+        // ("COMISION TRANSFERENCIA INTERBANCARIA", "IVA COBRADO"), so a plain
+        // "TRANSFERENCIA" rule would otherwise claim them first. Priority 900 (lower
+        // runs first) makes these win that tie deterministically, without relying on
+        // Specificity/MatchTextLength to sort it out.
+        if (categories.TryGetValue(CategoryCodes.Fees, out var feesCategoryId))
+        {
+            foreach (var pattern in new[] { "COMISION", "IVA", "RETENCION" })
+            {
+                TryAdd(CategorizationRule.SystemRule(pattern, feesCategoryId, now, RuleMatchKind.Contains, priority: 900));
+            }
+        }
+
+        // Entregable 14 ("Categorización v2"): a merchant-pattern rule so "UBER EATS"
+        // wins over the plain "UBER" description rule above -- the spec's own
+        // example ("UBER EATS -> Comida ; UBER -> Transporte"). A merchant match is
+        // worth more Specificity than a bare description match, so this rule beats
+        // "UBER" for any movement whose merchant guess contains "UBER EATS", while
+        // a plain Uber ride (no "EATS" in the merchant) still falls to Transporte.
+        if (categories.TryGetValue(CategoryCodes.Food, out var foodCategoryId))
+        {
+            TryAdd(CategorizationRule.SystemRule(
+                pattern: string.Empty,
+                categoryId: foodCategoryId,
+                now: now,
+                merchantPattern: "UBER EATS"));
+        }
+
+        if (rules.Count > 0)
+        {
+            db.CategorizationRules.AddRange(rules);
+            await db.SaveChangesAsync(cancellationToken);
+        }
     }
 
     private async Task SeedTrustedSendersAsync(DateTimeOffset now, CancellationToken cancellationToken)

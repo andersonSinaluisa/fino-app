@@ -1,13 +1,30 @@
-import { Alert, Linking, StyleSheet, Switch, View } from 'react-native';
+import { Alert, Linking, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../theme';
 import { Button, Card, Screen, SectionHeader, Typo } from '../../components/ui';
 import { useAuthStore } from '../../store/authStore';
 import { usePreferencesStore } from '../../store/preferencesStore';
-import { useEmailConnections } from '../../hooks/queries';
+import {
+  useEmailConnections,
+  useDeleteTransactions,
+  useRevokeEmailConnection,
+} from '../../hooks/queries';
 import { api } from '../../services/endpoints';
 import { config } from '../../services/config';
+
+const providerLabel: Record<string, string> = {
+  Gmail: 'Gmail',
+  Outlook: 'Outlook',
+  Forwarding: 'Reenvío de correo',
+};
+
+const connectionStatusLabel: Record<string, string> = {
+  PendingAuthorization: 'Pendiente de autorizar',
+  Connected: 'Conectado',
+  NeedsReauthorization: 'Necesita reconectarse',
+  Revoked: 'Desconectado',
+};
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -16,10 +33,20 @@ export default function ProfileScreen() {
   const hidden = usePreferencesStore((state) => state.amountsHidden);
   const toggleAmounts = usePreferencesStore((state) => state.toggleAmounts);
   const { data: emailConnections } = useEmailConnections();
+  const deleteTransactions = useDeleteTransactions();
+  const revokeEmail = useRevokeEmailConnection();
+
+  /** Toda acción destructiva pasa por aquí: mismo tono, misma salida. */
+  const confirm = (title: string, body: string, action: string, onConfirm: () => void) => {
+    Alert.alert(title, body, [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: action, style: 'destructive', onPress: onConfirm },
+    ]);
+  };
 
   const confirmDeletion = () => {
     Alert.alert(
-      'Eliminar cuenta Nexo',
+      'Eliminar cuenta Fino',
       'Tus movimientos y cuentas se eliminarán de forma definitiva después del período de gracia. Esta acción no se puede deshacer.',
       [
         { text: 'Cancelar', style: 'cancel' },
@@ -53,26 +80,64 @@ export default function ProfileScreen() {
           hint="Oculta los montos en todas las pantallas."
           right={<Switch value={hidden} onValueChange={toggleAmounts} />}
         />
+        <Divider />
+        <Row
+          icon="notifications-outline"
+          label="Notificaciones"
+          hint="Historial y qué quieres que te avisemos."
+          onPress={() => router.push('/notificaciones')}
+        />
+        <Divider />
+        <Row
+          icon="phone-portrait-outline"
+          label="Sesiones"
+          hint="Dispositivos con acceso a tu cuenta ahora mismo."
+          onPress={() => router.push('/sesiones')}
+        />
+        <Divider />
+        <Row
+          icon="time-outline"
+          label="Actividad de la cuenta"
+          hint="Inicios de sesión, cambios y exportaciones."
+          onPress={() => router.push('/actividad')}
+        />
       </Card>
 
       <View style={styles.section}>
         <SectionHeader title="Conexiones de correo" />
         <Card>
+          <Row
+            icon="add-circle-outline"
+            label="Conectar correo"
+            hint="Reenvío de correo ya funciona hoy. Gmail y Outlook llegan en la fase 2."
+            onPress={() => router.push('/conectar-correo')}
+          />
           {emailConnections && emailConnections.length > 0 ? (
-            emailConnections.map((connection) => (
-              <Row
-                key={connection.id}
-                icon="mail-outline"
-                label={connection.emailAddress}
-                hint={`${connection.providerKind} · ${connection.status}`}
-              />
-            ))
-          ) : (
-            <Typo variant="caption" color={colors.textSecondary}>
-              Todavía no hay buzones conectados. La detección automática por correo llega en la fase 2,
-              cuando existan credenciales de Gmail y Outlook configuradas en el servidor.
-            </Typo>
-          )}
+            <>
+              <Divider />
+              {emailConnections.map((connection, index) => (
+                <View key={connection.id}>
+                  {index > 0 ? <Divider /> : null}
+                  <Row
+                    icon="mail-outline"
+                    label={connection.emailAddress}
+                    hint={`${providerLabel[connection.providerKind] ?? connection.providerKind} · ${
+                      connectionStatusLabel[connection.status] ?? connection.status
+                    }`}
+                    tone={colors.danger}
+                    onPress={() =>
+                      confirm(
+                        'Desconectar correo',
+                        `Dejaremos de leer notificaciones de ${connection.emailAddress} y borraremos el permiso guardado. Los movimientos ya detectados se quedan.`,
+                        'Desconectar',
+                        () => revokeEmail.mutate(connection.id),
+                      )
+                    }
+                  />
+                </View>
+              ))}
+            </>
+          ) : null}
         </Card>
       </View>
 
@@ -82,7 +147,7 @@ export default function ProfileScreen() {
           <Row
             icon="download-outline"
             label="Exportar mis datos"
-            hint="Descarga todo lo que Nexo guarda de ti."
+            hint="Descarga todo lo que Fino guarda de ti."
             onPress={() => {
               void Linking.openURL(`${config.apiBaseUrl}/api/v1/privacy/export`).catch(() =>
                 Alert.alert('No pudimos abrir la exportación', 'Intenta desde un navegador.'),
@@ -91,8 +156,32 @@ export default function ProfileScreen() {
           />
           <Divider />
           <Row
+            icon="receipt-outline"
+            label="Eliminar mis movimientos"
+            hint="Borra el historial y deja las cuentas en pie."
+            tone={colors.danger}
+            onPress={() =>
+              confirm(
+                'Eliminar mis movimientos',
+                'Se eliminarán todos tus movimientos en todas las cuentas. Las cuentas y sus saldos verificados se mantienen. Esta acción no se puede deshacer.',
+                'Eliminar',
+                () =>
+                  deleteTransactions.mutate(undefined, {
+                    onSuccess: (result) =>
+                      Alert.alert(
+                        'Listo',
+                        `Eliminamos ${result.transactionsDeleted} movimiento(s).`,
+                      ),
+                    onError: () =>
+                      Alert.alert('No pudimos eliminarlos', 'Inténtalo de nuevo más tarde.'),
+                  }),
+              )
+            }
+          />
+          <Divider />
+          <Row
             icon="trash-outline"
-            label="Eliminar mi cuenta Nexo"
+            label="Eliminar mi cuenta Fino"
             hint="Elimina cuentas, movimientos y conexiones."
             tone={colors.danger}
             onPress={confirmDeletion}
@@ -104,7 +193,7 @@ export default function ProfileScreen() {
         <SectionHeader title="Acerca de" />
         <Card>
           <Typo variant="caption" color={colors.textSecondary}>
-            Nexo no es un banco ni una billetera y no mueve dinero. Centraliza tus movimientos para
+            Fino no es un banco ni una billetera y no mueve dinero. Centraliza tus movimientos para
             que entiendas tus finanzas en un solo lugar. Los saldos calculados se muestran siempre
             como estimados.
           </Typo>
@@ -159,10 +248,17 @@ function Row({ icon, label, hint, right, tone = colors.text, onPress }: RowProps
     return content;
   }
 
+  // Pressable, not a View with onTouchEnd: this is what gives the row its press
+  // feedback and makes it a button to a screen reader.
   return (
-    <View onTouchEnd={onPress} accessibilityRole="button">
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      style={({ pressed }) => (pressed ? styles.rowPressed : undefined)}
+    >
       {content}
-    </View>
+    </Pressable>
   );
 }
 
@@ -177,6 +273,9 @@ const styles = StyleSheet.create({
   },
   section: {
     marginTop: spacing.xxl,
+  },
+  rowPressed: {
+    opacity: 0.6,
   },
   row: {
     flexDirection: 'row',

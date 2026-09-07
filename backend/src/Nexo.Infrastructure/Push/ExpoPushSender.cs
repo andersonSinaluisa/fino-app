@@ -14,6 +14,9 @@ public sealed class ExpoPushSender(HttpClient http, ILogger<ExpoPushSender> logg
 {
     private const int BatchSize = 100;
 
+    /// <summary>A token Expo will never accept again -- the app was uninstalled, or the token was revoked.</summary>
+    private const string DeviceNotRegistered = "DeviceNotRegistered";
+
     private sealed record ExpoMessage(
         [property: JsonPropertyName("to")] string To,
         [property: JsonPropertyName("title")] string Title,
@@ -22,14 +25,23 @@ public sealed class ExpoPushSender(HttpClient http, ILogger<ExpoPushSender> logg
         [property: JsonPropertyName("sound")] string Sound = "default",
         [property: JsonPropertyName("priority")] string Priority = "high");
 
-    public async Task<int> SendAsync(IReadOnlyList<PushMessage> messages, CancellationToken cancellationToken)
+    private sealed record ExpoTicket(
+        [property: JsonPropertyName("status")] string Status,
+        [property: JsonPropertyName("details")] ExpoTicketDetails? Details);
+
+    private sealed record ExpoTicketDetails([property: JsonPropertyName("error")] string? Error);
+
+    private sealed record ExpoResponse([property: JsonPropertyName("data")] IReadOnlyList<ExpoTicket>? Data);
+
+    public async Task<PushSendResult> SendAsync(IReadOnlyList<PushMessage> messages, CancellationToken cancellationToken)
     {
         if (messages.Count == 0)
         {
-            return 0;
+            return new PushSendResult(0, []);
         }
 
         var sent = 0;
+        var invalidTokens = new List<string>();
 
         foreach (var batch in messages.Chunk(BatchSize))
         {
@@ -49,19 +61,51 @@ public sealed class ExpoPushSender(HttpClient http, ILogger<ExpoPushSender> logg
                 continue;
             }
 
-            sent += payload.Length;
+            // Expo answers per-message: the batch itself can be a 200 while
+            // individual tickets still failed ("DeviceNotRegistered" chief among
+            // them). One ExpoResponse.Data entry per submitted message, same order.
+            var body = await response.Content.ReadFromJsonAsync<ExpoResponse>(cancellationToken: cancellationToken);
+            var tickets = body?.Data;
+
+            if (tickets is null || tickets.Count != batch.Length)
+            {
+                // Malformed or unexpected shape: assume the whole batch went
+                // through rather than silently losing count, and never guess at
+                // which token to retire without a ticket to back it up.
+                sent += payload.Length;
+                continue;
+            }
+
+            for (var i = 0; i < tickets.Count; i++)
+            {
+                var ticket = tickets[i];
+                if (string.Equals(ticket.Status, "ok", StringComparison.OrdinalIgnoreCase))
+                {
+                    sent++;
+                }
+                else if (string.Equals(ticket.Details?.Error, DeviceNotRegistered, StringComparison.Ordinal))
+                {
+                    invalidTokens.Add(batch[i].ExpoPushToken);
+                }
+                else
+                {
+                    logger.LogWarning(
+                        "Expo push ticket failed with error {Error}.",
+                        ticket.Details?.Error ?? "(unknown)");
+                }
+            }
         }
 
-        return sent;
+        return new PushSendResult(sent, invalidTokens);
     }
 }
 
 /// <summary>Used in development and tests so nothing leaves the machine.</summary>
 public sealed class NoOpPushSender(ILogger<NoOpPushSender> logger) : IPushSender
 {
-    public Task<int> SendAsync(IReadOnlyList<PushMessage> messages, CancellationToken cancellationToken)
+    public Task<PushSendResult> SendAsync(IReadOnlyList<PushMessage> messages, CancellationToken cancellationToken)
     {
         logger.LogInformation("Push disabled: {Count} notification(s) were not delivered.", messages.Count);
-        return Task.FromResult(0);
+        return Task.FromResult(new PushSendResult(0, []));
     }
 }

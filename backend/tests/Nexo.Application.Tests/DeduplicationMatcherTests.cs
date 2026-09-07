@@ -121,15 +121,29 @@ public class DeduplicationMatcherTests
     }
 
     [Fact]
-    public void The_same_reference_from_the_same_recipe_matches_on_the_fingerprint()
+    public void The_same_reference_and_amount_match_on_the_fingerprint()
     {
         var existing = Existing(48.20m, "COMPRA TARJETA", reference: "TRX-99881");
-        var incoming = Incoming(48.25m, "SUPERMAXI ALBORADA", reference: "TRX-99881");
+        var incoming = Incoming(48.20m, "SUPERMAXI ALBORADA", reference: "TRX-99881");
 
         var result = _matcher.Match(incoming, [existing]);
 
         Assert.Equal(DuplicateMatchType.ExactMatch, result.MatchType);
         Assert.Equal("same_fingerprint", result.Match!.Reason);
+    }
+
+    [Fact]
+    public void A_charge_that_shares_a_document_number_with_its_transfer_is_not_a_duplicate()
+    {
+        // Taken from a real Banco Pichincha statement: an interbank transfer, the
+        // commission and the tax on that commission all carry one "Nro. Documento".
+        // Treating the reference as an identity discarded two of the three.
+        var transfer = Existing(116.00m, "TRANSFERENCIA INTERBANCARIA A PROVEEDOR", reference: "90000001");
+        var commission = Incoming(0.36m, "COMISION TRANSFERENCIA INTERBANCARIA ENVIADA", reference: "90000001");
+        var tax = Incoming(0.05m, "IVA COBRADO", reference: "90000001");
+
+        Assert.Equal(DuplicateMatchType.NoMatch, _matcher.Match(commission, [transfer]).MatchType);
+        Assert.Equal(DuplicateMatchType.NoMatch, _matcher.Match(tax, [transfer]).MatchType);
     }
 
     [Fact]
@@ -219,4 +233,22 @@ public class DeduplicationMatcherTests
     [Fact]
     public void No_candidates_means_no_match() =>
         Assert.Equal(DuplicateMatchType.NoMatch, _matcher.Match(Incoming(), []).MatchType);
+
+    [Fact]
+    public void A_duplicate_near_the_UTC_day_boundary_is_still_caught_using_the_account_holders_calendar_day()
+    {
+        // Entregable 27: 10:00 local (Ecuador, UTC-5) on 1 March is 15:00 UTC the
+        // same day -- no boundary crossing. 23:30 local on 4 March is 04:30 UTC on
+        // 5 March -- it crosses midnight in UTC but not locally. Three local
+        // calendar days apart (within the default DateWindowDays=3), but four UTC
+        // calendar days apart. Comparing raw UTC dates would silently miss this as
+        // NoMatch -- an undetected duplicate, worse than an unnecessary flag.
+        var existing = Existing(48.20m, "SUPERMAXI ALBORADA", date: new DateTimeOffset(2026, 3, 1, 15, 0, 0, TimeSpan.Zero));
+        var incoming = Incoming(48.20m, "SUPERMAXI ALBORADA", date: new DateTimeOffset(2026, 3, 5, 4, 30, 0, TimeSpan.Zero));
+
+        var result = _matcher.Match(incoming, [existing]);
+
+        Assert.Equal(DuplicateMatchType.ProbableMatch, result.MatchType);
+        Assert.Equal(existing.Id, result.Match!.TransactionId);
+    }
 }

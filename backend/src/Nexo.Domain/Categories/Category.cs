@@ -89,12 +89,13 @@ public static class CategoryCodes
     public const string Shopping = "COMPRAS";
     public const string Subscriptions = "SUSCRIPCIONES";
     public const string Transfers = "TRANSFERENCIAS";
+    public const string Fees = "COMISIONES_IMPUESTOS";
     public const string Income = "INGRESOS";
     public const string Other = "OTROS";
 
     public static readonly string[] All =
     [
         Food, Groceries, Transport, Utilities, Entertainment, Health,
-        Education, Shopping, Subscriptions, Transfers, Income, Other,
+        Education, Shopping, Subscriptions, Transfers, Fees, Income, Other,
     ];
 }

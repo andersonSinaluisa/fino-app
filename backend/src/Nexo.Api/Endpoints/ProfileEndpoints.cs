@@ -49,6 +49,17 @@ public static class ProfileEndpoints
                 preferences,
                 cancellationToken)));
 
+        notifications.MapDelete("/devices/{token}", async (
+            string token,
+            INotificationService service,
+            ICurrentUser currentUser,
+            CancellationToken cancellationToken) =>
+        {
+            await service.UnregisterDeviceAsync(currentUser.RequireUserId(), token, cancellationToken);
+            return Results.NoContent();
+        })
+        .WithSummary("Deja de enviar push a este dispositivo (por ejemplo, al cerrar sesión).");
+
         var email = app.MapGroup("/api/v1/email-connections")
             .WithTags("EmailConnections")
             .RequireAuthorization();

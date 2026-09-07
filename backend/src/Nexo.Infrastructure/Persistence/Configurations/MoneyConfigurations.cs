@@ -75,6 +75,7 @@ public sealed class TransactionConfiguration : IEntityTypeConfiguration<Transact
         builder.Property(t => t.Description).HasMaxLength(400).IsRequired();
         builder.Property(t => t.NormalizedDescription).HasMaxLength(400).IsRequired();
         builder.Property(t => t.Merchant).HasMaxLength(120);
+        builder.Property(t => t.MerchantCorrected).HasMaxLength(120);
         builder.Property(t => t.AccountMask).HasMaxLength(8);
         builder.Property(t => t.Source).HasConversion<string>().HasMaxLength(16).IsRequired();
         builder.Property(t => t.SourceConfidence).HasConversion<string>().HasMaxLength(16).IsRequired();
@@ -84,6 +85,13 @@ public sealed class TransactionConfiguration : IEntityTypeConfiguration<Transact
 
         builder.Ignore(t => t.SignedAmount);
         builder.Ignore(t => t.CountsTowardsBalance);
+        builder.Ignore(t => t.EffectiveMerchant);
+
+        // Entregable 13: no FK, same as PossibleDuplicateOfId above -- just a plain
+        // nullable Guid pointing at another row in this same table, resolved by the
+        // application layer. A real FK here would fight the per-user query filter
+        // the same way ids.Contains(...) does (see ADR-009 / QueryableGuidExtensions).
+        builder.Property(t => t.IsInternalTransfer).IsRequired();
 
         // The movements feed: user + date is the ordering used by every list query.
         builder.HasIndex(t => new { t.UserId, t.TransactionDate });
