@@ -48,6 +48,7 @@
         }
       ],
       "@bacons/apple-targets",
+      "./plugins/withShareIntent.js",
       [
         "react-native-android-widget",
         {
@@ -142,7 +143,29 @@
       "apiBaseUrl": "http://localhost:5080",
       "router": {},
       "eas": {
-        "projectId": "50de163e-d814-4e8f-8105-8463c2c26cda"
+        "projectId": "50de163e-d814-4e8f-8105-8463c2c26cda",
+        "build": {
+          "experimental": {
+            "ios": {
+              "appExtensions": [
+                {
+                  "bundleIdentifier": "app.fino.mobile.widget",
+                  "targetName": "FinoWidgets",
+                  "entitlements": {
+                    "com.apple.security.application-groups": ["group.app.fino.mobile"]
+                  }
+                },
+                {
+                  "bundleIdentifier": "app.fino.mobile.share",
+                  "targetName": "FinoShare",
+                  "entitlements": {
+                    "com.apple.security.application-groups": ["group.app.fino.mobile"]
+                  }
+                }
+              ]
+            }
+          }
+        }
       }
     }
   }

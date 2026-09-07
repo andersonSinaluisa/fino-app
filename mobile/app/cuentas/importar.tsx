@@ -11,6 +11,7 @@ import { ApiError } from '../../services/apiClient';
 import { devLog, serializeError } from '../../services/devLog';
 import { useCancelImport, useRefreshAfterImport } from '../../hooks/queries';
 import { formatCurrency, formatDayHeading } from '../../utils/format';
+import { ACCEPTED_EXTENSIONS, extensionOf, guessMimeType } from '../../lib/importFileTypes';
 import type { ImportPreview, ImportResult, ManualColumnMapping } from '../../types/api';
 
 const LOG_TAG = 'importar';
@@ -52,19 +53,8 @@ const ACCEPTED_TYPES = [
   'text/plain',
 ];
 
-// Some iOS file providers (Chrome's own among them -- confirmed on Anderson's
-// phone) don't respect the `type` filter passed to the picker and hand back
-// whatever `mimeType` they feel like, including a generic
-// 'application/octet-stream'. The extension is the one signal every provider
-// gets right, so it's the real gate for "is this a file we can parse" --
-// mimeType only decides what we tell the backend it is.
-const ACCEPTED_EXTENSIONS = ['csv', 'xls', 'xlsx', 'txt'];
-
-function extensionOf(fileName: string): string | null {
-  const dot = fileName.lastIndexOf('.');
-  return dot === -1 ? null : fileName.slice(dot + 1).toLowerCase();
-}
-
+// ACCEPTED_EXTENSIONS (lib/importFileTypes.ts) is the real accept/reject
+// gate, not ACCEPTED_TYPES above -- see that file for why.
 type ResolvedPick =
   | { ok: true; asset: PickedAsset }
   | { ok: false; errorMessage: string };
@@ -174,11 +164,21 @@ function resolvePickedFile(rawAsset: DocumentPicker.DocumentPickerAsset): Resolv
  */
 export default function ImportScreen() {
   const router = useRouter();
-  const { accountId } = useLocalSearchParams<{ accountId: string }>();
+  // sharedUri/sharedName come from app/compartir.tsx (the fino:///compartir
+  // share-sheet hand-off) -- present only when this screen was reached by
+  // sharing a file into Fino instead of tapping "Elegir archivo" below.
+  const { accountId, sharedUri, sharedName } = useLocalSearchParams<{
+    accountId: string;
+    sharedUri?: string;
+    sharedName?: string;
+  }>();
   const refreshAfterImport = useRefreshAfterImport();
   const cancelImport = useCancelImport();
 
-  const [step, setStep] = useState<Step>('pick');
+  // Arriving with a shared file already known (sharedUri/sharedName) skips
+  // the "Elegir archivo" screen entirely -- starting on 'working' avoids a
+  // one-frame flash of that button before the effect below takes over.
+  const [step, setStep] = useState<Step>(sharedUri && sharedName ? 'working' : 'pick');
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -220,6 +220,85 @@ export default function ImportScreen() {
       }
     };
   }, []);
+
+  /**
+   * Shared by the manual "Elegir archivo" flow and the share-sheet hand-off
+   * below -- both end up with a validated PickedAsset and differ only in
+   * how they got one.
+   */
+  const uploadAsset = async (asset: PickedAsset) => {
+    if (!accountId) {
+      return;
+    }
+
+    setPickedAsset(asset);
+    setFirstRowIsHeader(true);
+    setSaveMapping(true);
+    setRoleColumns(EMPTY_ROLE_COLUMNS);
+    setStep('working');
+
+    try {
+      devLog(LOG_TAG, 'upload_start', { name: asset.name, mimeType: asset.mimeType, size: asset.size });
+      const response = await api.imports.upload(accountId, asset);
+
+      devLog(LOG_TAG, 'upload_done', { status: response.status });
+      setPreview(response);
+      setStep('preview');
+
+      if (response.status === 'Failed') {
+        devLog(LOG_TAG, 'backend_reported_failed', { failureReason: response.failureReason });
+        setError(response.failureReason ?? 'No pudimos leer el archivo.');
+      }
+    } catch (uploadError) {
+      devLog(LOG_TAG, 'upload_failed', {
+        isApiError: uploadError instanceof ApiError,
+        status: uploadError instanceof ApiError ? uploadError.status : null,
+        ...serializeError(uploadError),
+      });
+      setError(
+        uploadError instanceof ApiError
+          ? uploadError.message
+          : 'No pudimos subir el archivo. Si el problema sigue, prueba eligiéndolo de nuevo desde otra app.',
+      );
+      setStep('pick');
+    }
+  };
+
+  // Entregable "Compartir hacia Fino": a shared file arrives as route params
+  // instead of a DocumentPicker result, so this runs once on mount (guarded
+  // by the ref, not by `step`, since a failed resolve leaves step at 'pick'
+  // and must not retry itself on the next render) and pushes it through the
+  // exact same resolvePickedFile() gate a manual pick goes through -- same
+  // extension whitelist, same "did the copy actually land" check.
+  const sharedHandledRef = useRef(false);
+
+  useEffect(() => {
+    if (sharedHandledRef.current || !sharedUri || !sharedName || !accountId) {
+      return;
+    }
+    sharedHandledRef.current = true;
+
+    devLog(LOG_TAG, 'shared_file_received', { uri: sharedUri, name: sharedName });
+
+    const rawAsset: DocumentPicker.DocumentPickerAsset = {
+      uri: sharedUri,
+      name: sharedName,
+      mimeType: guessMimeType(sharedName),
+      lastModified: Date.now(),
+    };
+
+    const resolved = resolvePickedFile(rawAsset);
+    if (!resolved.ok) {
+      setError(resolved.errorMessage);
+      return;
+    }
+
+    void uploadAsset(resolved.asset);
+    // uploadAsset intentionally omitted: it closes over accountId (already
+    // in the guard above) and every setter it calls is stable -- adding it
+    // would re-run this effect on every render instead of once per share.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sharedUri, sharedName, accountId]);
 
   const pickAndUpload = async () => {
     setError(null);
@@ -275,38 +354,7 @@ export default function ImportScreen() {
       return;
     }
 
-    const asset = resolved.asset;
-    setPickedAsset(asset);
-    setFirstRowIsHeader(true);
-    setSaveMapping(true);
-    setRoleColumns(EMPTY_ROLE_COLUMNS);
-    setStep('working');
-
-    try {
-      devLog(LOG_TAG, 'upload_start', { name: asset.name, mimeType: asset.mimeType, size: asset.size });
-      const response = await api.imports.upload(accountId, asset);
-
-      devLog(LOG_TAG, 'upload_done', { status: response.status });
-      setPreview(response);
-      setStep('preview');
-
-      if (response.status === 'Failed') {
-        devLog(LOG_TAG, 'backend_reported_failed', { failureReason: response.failureReason });
-        setError(response.failureReason ?? 'No pudimos leer el archivo.');
-      }
-    } catch (uploadError) {
-      devLog(LOG_TAG, 'upload_failed', {
-        isApiError: uploadError instanceof ApiError,
-        status: uploadError instanceof ApiError ? uploadError.status : null,
-        ...serializeError(uploadError),
-      });
-      setError(
-        uploadError instanceof ApiError
-          ? uploadError.message
-          : 'No pudimos subir el archivo. Si el problema sigue, prueba eligiéndolo de nuevo desde otra app.',
-      );
-      setStep('pick');
-    }
+    await uploadAsset(resolved.asset);
   };
 
   const submitManualMapping = async () => {
