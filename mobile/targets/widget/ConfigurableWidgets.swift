@@ -68,15 +68,16 @@ struct CategorySpendWidgetView: View {
             if let snapshot = entry.snapshot, snapshot.isAuthenticated {
                 if let item = selected(in: snapshot) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Label(item.categoryName, systemImage: "tag")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 6) {
+                            WidgetMark(initials: widgetInitials(of: item.categoryName), brandHex: item.categoryColor)
+                            WidgetEyebrow(text: "Presupuesto")
+                        }
+                        Text(item.categoryName)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color("textPrimary"))
                             .lineLimit(1)
-                        Text(FinoFormat.money(item.amount, currency: item.currency, hidden: snapshot.amountsHidden))
-                            .font(.title2.bold())
-                        Text("Gastado este mes")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                        WidgetValue(text: FinoFormat.money(item.amount, currency: item.currency, hidden: snapshot.amountsHidden))
+                        WidgetSubtitle(text: "Gastado este mes")
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
@@ -90,7 +91,7 @@ struct CategorySpendWidgetView: View {
                 FinoEmptyState(title: "Inicia sesión en Fino", systemImage: "lock")
             }
         }
-        .containerBackground(.background, for: .widget)
+        .containerBackground(Color("surface"), for: .widget)
     }
 
     /// The person's chosen category if it had spend this month, otherwise the
@@ -184,15 +185,16 @@ struct AccountWidgetView: View {
             if let snapshot = entry.snapshot, snapshot.isAuthenticated {
                 if let item = selected(in: snapshot) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Label(item.alias, systemImage: "creditcard")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 6) {
+                            WidgetMark(initials: widgetInitials(of: item.providerName ?? item.alias), brandHex: item.brandColor)
+                            WidgetEyebrow(text: "Cuenta")
+                        }
+                        Text(item.alias)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color("textPrimary"))
                             .lineLimit(1)
-                        Text(FinoFormat.money(item.amount, currency: item.currency, hidden: snapshot.amountsHidden))
-                            .font(.title2.bold())
-                        Text(item.isEstimated ? "Saldo estimado" : "Saldo verificado")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                        WidgetValue(text: FinoFormat.money(item.amount, currency: item.currency, hidden: snapshot.amountsHidden))
+                        WidgetSubtitle(text: item.isEstimated ? "Saldo estimado" : "Saldo verificado")
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
@@ -206,7 +208,7 @@ struct AccountWidgetView: View {
                 FinoEmptyState(title: "Inicia sesión en Fino", systemImage: "lock")
             }
         }
-        .containerBackground(.background, for: .widget)
+        .containerBackground(Color("surface"), for: .widget)
     }
 
     private func selected(in snapshot: FinoWidgetSnapshot) -> FinoWidgetSnapshot.AccountEntry? {

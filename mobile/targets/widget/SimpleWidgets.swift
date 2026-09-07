@@ -3,7 +3,7 @@ import WidgetKit
 
 /// Shared timeline entry for every widget that has no per-instance
 /// configuration (5 of the 7: Dinero disponible, Saldo total, Próximo pago,
-/// Gastos del mes, Proyección). "Presupuesto" and "Cuenta" are configurable
+/// Gastos del mes, Proyección). "Presupuesto" y "Cuenta" son configurables
 /// (a category / an account to show) and live in ConfigurableWidgets.swift.
 struct FinoEntry: TimelineEntry {
     let date: Date
@@ -32,19 +32,18 @@ struct FinoProvider: TimelineProvider {
 }
 
 /// Small, centered label used by every "no data yet" / "logged out" state so
-/// they read the same way across all 7 widgets.
+/// they read the same way across all 7 widgets -- styled with Fino's own
+/// muted mark + textSecondary instead of the system's default secondary style.
 struct FinoEmptyState: View {
     let title: String
     let systemImage: String
 
     var body: some View {
         VStack(spacing: 6) {
-            Image(systemName: systemImage)
-                .font(.title2)
-                .foregroundStyle(.secondary)
+            WidgetMark(systemImage: systemImage, fallbackTint: Color("surfaceSecondary"))
             Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(Color("textSecondary"))
                 .multilineTextAlignment(.center)
         }
         .padding()
@@ -67,7 +66,26 @@ private struct WidgetChrome<Content: View>: View {
             }
         }
         .widgetURL(link.flatMap { URL(string: $0.uri) })
-        .containerBackground(.background, for: .widget)
+        // Fino's actual card surface (theme/tokens.ts colors.surface), not the
+        // system's default widget background -- so the card reads the same
+        // white-on-paper look the rest of the app uses.
+        .containerBackground(Color("surface"), for: .widget)
+    }
+}
+
+/// Every fixed widget's header row: a colored mark (SF Symbol in a soft-tint
+/// circle) + the eyebrow label, laid out identically across all 5 so the
+/// family reads as one system.
+private struct WidgetHeader: View {
+    let systemImage: String
+    let tint: Color
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            WidgetMark(systemImage: systemImage, fallbackTint: tint)
+            WidgetEyebrow(text: label)
+        }
     }
 }
 
@@ -79,21 +97,14 @@ struct AvailableMoneyWidgetView: View {
     var body: some View {
         let data = snapshot.availableMoney
         VStack(alignment: .leading, spacing: 4) {
-            Label("Dinero disponible", systemImage: "wallet.pass")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            WidgetHeader(systemImage: "wallet.pass.fill", tint: Color("accentLime"), label: "Dinero disponible")
             if data.hasData {
-                Text(FinoFormat.money(data.amount, currency: data.currency, hidden: snapshot.amountsHidden))
-                    .font(.title2.bold())
+                WidgetValue(text: FinoFormat.money(data.amount, currency: data.currency, hidden: snapshot.amountsHidden))
                 if data.isEstimated {
-                    Text("Incluye saldos estimados")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    WidgetSubtitle(text: "Incluye saldos estimados")
                 }
             } else {
-                Text("Sin cuentas todavía")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                WidgetSubtitle(text: "Sin cuentas todavía")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -124,19 +135,12 @@ struct TotalBalanceWidgetView: View {
     var body: some View {
         let data = snapshot.totalBalance
         VStack(alignment: .leading, spacing: 4) {
-            Label("Saldo total", systemImage: "banknote")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            WidgetHeader(systemImage: "banknote.fill", tint: Color("accentMint"), label: "Saldo total")
             if data.hasData {
-                Text(FinoFormat.money(data.amount, currency: data.currency, hidden: snapshot.amountsHidden))
-                    .font(.title2.bold())
-                Text(data.accountCount == 1 ? "1 cuenta" : "\(data.accountCount) cuentas")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                WidgetValue(text: FinoFormat.money(data.amount, currency: data.currency, hidden: snapshot.amountsHidden))
+                WidgetSubtitle(text: data.accountCount == 1 ? "1 cuenta" : "\(data.accountCount) cuentas")
             } else {
-                Text("Sin cuentas todavía")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                WidgetSubtitle(text: "Sin cuentas todavía")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -167,22 +171,16 @@ struct NextPaymentWidgetView: View {
     var body: some View {
         let data = snapshot.nextPayment
         VStack(alignment: .leading, spacing: 4) {
-            Label("Próximo pago", systemImage: "calendar")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            WidgetHeader(systemImage: "calendar", tint: Color("accentMint"), label: "Próximo pago")
             if data.hasData {
                 Text(data.concept)
-                    .font(.headline)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color("textPrimary"))
                     .lineLimit(1)
-                Text(FinoFormat.money(data.amount, currency: data.currency, hidden: snapshot.amountsHidden))
-                    .font(.title3.bold())
-                Text("Estimado: \(FinoFormat.shortDate(data.estimatedDate))")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                WidgetValue(text: FinoFormat.money(data.amount, currency: data.currency, hidden: snapshot.amountsHidden))
+                WidgetSubtitle(text: "Estimado: \(FinoFormat.shortDate(data.estimatedDate))")
             } else {
-                Text("No detectamos pagos recurrentes todavía")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                WidgetSubtitle(text: "No detectamos pagos recurrentes todavía")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -213,21 +211,14 @@ struct MonthExpensesWidgetView: View {
     var body: some View {
         let data = snapshot.monthExpenses
         VStack(alignment: .leading, spacing: 4) {
-            Label("Gastos del mes", systemImage: "chart.line.downtrend.xyaxis")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            WidgetHeader(systemImage: "chart.line.downtrend.xyaxis", tint: Color("accentMint"), label: "Gastos del mes")
             if data.hasData {
-                Text(FinoFormat.money(data.amount, currency: data.currency, hidden: snapshot.amountsHidden))
-                    .font(.title2.bold())
+                WidgetValue(text: FinoFormat.money(data.amount, currency: data.currency, hidden: snapshot.amountsHidden))
                 if let percent = FinoFormat.percent(data.changePercent) {
-                    Text("\(percent) vs. mes pasado")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    WidgetSubtitle(text: "\(percent) vs. mes pasado")
                 }
             } else {
-                Text("Sin movimientos este mes")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                WidgetSubtitle(text: "Sin movimientos este mes")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -258,19 +249,12 @@ struct ProjectionWidgetView: View {
     var body: some View {
         let data = snapshot.projection
         VStack(alignment: .leading, spacing: 4) {
-            Label("Proyección", systemImage: "chart.line.uptrend.xyaxis")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            WidgetHeader(systemImage: "chart.line.uptrend.xyaxis", tint: Color("accentLime"), label: "Proyección")
             if data.hasData {
-                Text(FinoFormat.money(data.projectedBalance, currency: data.currency, hidden: snapshot.amountsHidden))
-                    .font(.title2.bold())
-                Text("Estimado a fin de mes")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                WidgetValue(text: FinoFormat.money(data.projectedBalance, currency: data.currency, hidden: snapshot.amountsHidden))
+                WidgetSubtitle(text: "Estimado a fin de mes")
             } else {
-                Text("Sin datos suficientes todavía")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+                WidgetSubtitle(text: "Sin datos suficientes todavía")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

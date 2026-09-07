@@ -2,7 +2,7 @@ import React from 'react';
 import { formatCurrency, formatShortDate } from '../../../utils/format';
 import { ANDROID_WIDGET_NAMES, type AndroidWidgetName } from '../constants';
 import type { WidgetSnapshot } from '../types';
-import { WidgetCard, WidgetEmptyState } from './WidgetCard';
+import { ACCENT_LIME, ACCENT_MINT, WidgetCard, WidgetEmptyState } from './WidgetCard';
 
 /**
  * One render function per widget kind -- the Android equivalent of the 7
@@ -34,6 +34,7 @@ export function renderAvailableMoney(snapshot: WidgetSnapshot): React.JSX.Elemen
       value={formatCurrency(data.amount, { hidden: snapshot.amountsHidden })}
       subtitle={data.isEstimated ? 'Incluye saldos estimados' : undefined}
       clickUri={data.link?.uri ?? null}
+      accent={ACCENT_LIME}
     />
   );
 }
@@ -53,6 +54,7 @@ export function renderTotalBalance(snapshot: WidgetSnapshot): React.JSX.Element 
       value={formatCurrency(data.amount, { hidden: snapshot.amountsHidden })}
       subtitle={data.accountCount === 1 ? '1 cuenta' : `${data.accountCount} cuentas`}
       clickUri={data.link?.uri ?? null}
+      accent={ACCENT_MINT}
     />
   );
 }
@@ -73,6 +75,7 @@ export function renderNextPayment(snapshot: WidgetSnapshot): React.JSX.Element {
       value={formatCurrency(data.amount, { hidden: snapshot.amountsHidden })}
       subtitle={`Estimado: ${formatShortDate(data.estimatedDate)}`}
       clickUri={data.link?.uri ?? null}
+      accent={ACCENT_MINT}
     />
   );
 }
@@ -97,6 +100,7 @@ export function renderMonthExpenses(snapshot: WidgetSnapshot): React.JSX.Element
       value={formatCurrency(data.amount, { hidden: snapshot.amountsHidden })}
       subtitle={percent}
       clickUri={data.link?.uri ?? null}
+      accent={ACCENT_MINT}
     />
   );
 }
@@ -116,6 +120,7 @@ export function renderProjection(snapshot: WidgetSnapshot): React.JSX.Element {
       value={formatCurrency(data.projectedBalance, { hidden: snapshot.amountsHidden })}
       subtitle="Estimado a fin de mes"
       clickUri={data.link?.uri ?? null}
+      accent={ACCENT_LIME}
     />
   );
 }
@@ -140,6 +145,8 @@ export function renderCategorySpend(snapshot: WidgetSnapshot, selectedCategoryId
       value={formatCurrency(item.amount, { hidden: snapshot.amountsHidden })}
       subtitle="Gastado este mes"
       clickUri={item.link?.uri ?? null}
+      accent={item.categoryColor}
+      markLabel={item.categoryName}
     />
   );
 }
@@ -163,6 +170,8 @@ export function renderAccount(snapshot: WidgetSnapshot, selectedAccountId: strin
       value={formatCurrency(item.amount, { hidden: snapshot.amountsHidden })}
       subtitle={item.isEstimated ? 'Saldo estimado' : 'Saldo verificado'}
       clickUri={item.link?.uri ?? null}
+      accent={item.brandColor}
+      markLabel={item.providerName ?? item.alias}
     />
   );
 }
