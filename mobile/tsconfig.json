@@ -5,6 +5,12 @@
     "noUncheckedIndexedAccess": false,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
+    // Lets `tsc` resolve React Native's platform-specific files (sync.ios.ts /
+    // sync.android.ts, matching Metro's own built-in bundling behavior) when
+    // something imports the bare `./sync` -- added for the home-screen
+    // widgets feature (lib/widgets/sync.ts), harmless for every other import
+    // in the project since no other file uses a platform suffix today.
+    "moduleSuffixes": [".ios", ".android", ".native", ""],
     "paths": {
       "@/*": [
         "./*"

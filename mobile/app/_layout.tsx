@@ -5,9 +5,24 @@ import { StatusBar } from 'expo-status-bar';
 import { Stack } from 'expo-router';
 import { colors } from '../theme';
 import { useAuthStore } from '../store/authStore';
+import { useOnboardingStore } from '../store/onboardingStore';
+import { useWidgetSync } from '../hooks/useWidgetSync';
+
+/**
+ * Home-screen widgets (iOS/Android) need to be kept in sync for the whole
+ * app lifetime, not just while a particular screen is mounted -- rendered
+ * once inside QueryClientProvider (it needs TanStack Query) so it can react
+ * to every login/logout and every mutation that already invalidates
+ * `queryKeys.summary`. Renders nothing.
+ */
+function WidgetSync() {
+  useWidgetSync();
+  return null;
+}
 
 export default function RootLayout() {
   const restore = useAuthStore((state) => state.restore);
+  const restoreOnboarding = useOnboardingStore((state) => state.restore);
 
   const [client] = useState(
     () =>
@@ -25,11 +40,13 @@ export default function RootLayout() {
 
   useEffect(() => {
     void restore();
-  }, [restore]);
+    void restoreOnboarding();
+  }, [restore, restoreOnboarding]);
 
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={client}>
+        <WidgetSync />
         <StatusBar style="dark" />
         <Stack
           screenOptions={{

@@ -32,6 +32,8 @@ export default function ProfileScreen() {
   const logout = useAuthStore((state) => state.logout);
   const hidden = usePreferencesStore((state) => state.amountsHidden);
   const toggleAmounts = usePreferencesStore((state) => state.toggleAmounts);
+  const hideAmountsInWidgets = usePreferencesStore((state) => state.hideAmountsInWidgets);
+  const toggleHideAmountsInWidgets = usePreferencesStore((state) => state.toggleHideAmountsInWidgets);
   const { data: emailConnections } = useEmailConnections();
   const deleteTransactions = useDeleteTransactions();
   const revokeEmail = useRevokeEmailConnection();
@@ -82,10 +84,24 @@ export default function ProfileScreen() {
         />
         <Divider />
         <Row
+          icon="apps-outline"
+          label="Ocultar montos en widgets"
+          hint="Los widgets de la pantalla de inicio muestran ••••• en vez del monto."
+          right={<Switch value={hideAmountsInWidgets} onValueChange={toggleHideAmountsInWidgets} />}
+        />
+        <Divider />
+        <Row
           icon="notifications-outline"
           label="Notificaciones"
           hint="Historial y qué quieres que te avisemos."
           onPress={() => router.push('/notificaciones')}
+        />
+        <Divider />
+        <Row
+          icon="pricetags-outline"
+          label="Reglas de categorización"
+          hint="Lo que aprendimos de tus correcciones -- edítalo o bórralo."
+          onPress={() => router.push('/reglas-categorizacion')}
         />
         <Divider />
         <Row

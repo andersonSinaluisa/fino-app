@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, ScrollView, StyleSheet, TextInput, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing, typography } from '../../theme';
@@ -19,10 +19,17 @@ export default function TransactionsScreen() {
   const insets = useSafeAreaInsets();
   const hidden = usePreferencesStore((state) => state.amountsHidden);
 
+  // A home-screen widget tap (see lib/widgets/deepLinks.ts) opens this same
+  // tab with `?accountId=` or `?categoryId=` -- read once as the initial
+  // filter so the person lands already filtered. Only ever an initial value:
+  // the in-app chips below still drive the filter normally afterwards, and
+  // navigating here any other way (tapping the tab) leaves both params unset.
+  const params = useLocalSearchParams<{ accountId?: string; categoryId?: string }>();
+
   const [search, setSearch] = useState('');
   const [direction, setDirection] = useState<DirectionFilter>('all');
-  const [accountId, setAccountId] = useState<string | undefined>();
-  const [categoryId, setCategoryId] = useState<string | undefined>();
+  const [accountId, setAccountId] = useState<string | undefined>(params.accountId);
+  const [categoryId, setCategoryId] = useState<string | undefined>(params.categoryId);
   const [providerCode, setProviderCode] = useState<string | undefined>();
   const [amountFilterOpen, setAmountFilterOpen] = useState(false);
   const [minAmountText, setMinAmountText] = useState('');

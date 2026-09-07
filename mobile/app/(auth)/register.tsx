@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors, spacing } from '../../theme';
 import { Button, Input, Screen, Typo } from '../../components/ui';
 import { useAuthStore } from '../../store/authStore';
@@ -9,6 +9,7 @@ const MIN_PASSWORD_LENGTH = 10;
 
 export default function RegisterScreen() {
   const router = useRouter();
+  const { intent } = useLocalSearchParams<{ intent?: string }>();
   const register = useAuthStore((state) => state.register);
   const error = useAuthStore((state) => state.error);
   const clearError = useAuthStore((state) => state.clearError);
@@ -25,7 +26,10 @@ export default function RegisterScreen() {
     setBusy(true);
     try {
       await register(email, password, displayName);
-      router.replace('/(tabs)');
+      // Coming from onboarding's "¿Qué quieres conectar?" step means the
+      // person already intends to connect an account -- send them straight
+      // into the real add-account flow instead of an empty home screen.
+      router.replace(intent === 'connect' ? '/cuentas/agregar' : '/(tabs)');
     } catch {
       // Message is in the store.
     } finally {

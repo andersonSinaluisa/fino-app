@@ -3,12 +3,15 @@ import { Redirect } from 'expo-router';
 import { colors } from '../theme';
 import { Typo } from '../components/ui/Typo';
 import { useAuthStore } from '../store/authStore';
+import { useOnboardingStore } from '../store/onboardingStore';
 
 /** Decides where a cold start lands, once the stored session has been read. */
 export default function Index() {
-  const status = useAuthStore((state) => state.status);
+  const authStatus = useAuthStore((state) => state.status);
+  const onboardingStatus = useOnboardingStore((state) => state.status);
+  const hasSeenOnboarding = useOnboardingStore((state) => state.hasSeenOnboarding);
 
-  if (status === 'loading') {
+  if (authStatus === 'loading' || onboardingStatus === 'loading') {
     return (
       <View style={styles.splash}>
         <Typo variant="title">Fino</Typo>
@@ -20,7 +23,14 @@ export default function Index() {
     );
   }
 
-  return <Redirect href={status === 'authenticated' ? '/(tabs)' : '/(auth)/login'} />;
+  if (authStatus === 'authenticated') {
+    return <Redirect href="/(tabs)" />;
+  }
+
+  // First-time anonymous visit goes through onboarding; a returning
+  // anonymous user (already saw it once, e.g. right after logging out)
+  // goes straight to login.
+  return <Redirect href={hasSeenOnboarding ? '/(auth)/login' : '/(auth)/onboarding'} />;
 }
 
 const styles = StyleSheet.create({

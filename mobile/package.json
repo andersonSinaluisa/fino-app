@@ -8,16 +8,17 @@
   "volta": {
     "node": "22.22.3"
   },
-  "main": "expo-router/entry",
+  "main": "./index.js",
   "scripts": {
     "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
     "typecheck": "tsc --noEmit",
     "lint": "expo lint",
     "test": "jest --passWithNoTests"
   },
   "dependencies": {
+    "@bacons/apple-targets": "^5.0.0",
     "@expo/vector-icons": "^15.1.1",
     "@microsoft/signalr": "^10.0.11",
     "@tanstack/react-query": "^5.102.8",
@@ -37,6 +38,7 @@
     "react": "19.2.3",
     "react-dom": "^19.2.3",
     "react-native": "0.86.3",
+    "react-native-android-widget": "^0.22.1",
     "react-native-gesture-handler": "~3.2.1",
     "react-native-safe-area-context": "~5.9.1",
     "react-native-screens": "~4.27.0",

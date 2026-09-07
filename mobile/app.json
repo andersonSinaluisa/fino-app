@@ -21,6 +21,9 @@
       "bundleIdentifier": "app.fino.mobile",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
+      },
+      "entitlements": {
+        "com.apple.security.application-groups": ["group.app.fino.mobile"]
       }
     },
     "android": {
@@ -42,6 +45,93 @@
         "expo-notifications",
         {
           "color": "#1D1D1B"
+        }
+      ],
+      "@bacons/apple-targets",
+      [
+        "react-native-android-widget",
+        {
+          "widgets": [
+            {
+              "name": "DineroDisponible",
+              "label": "Fino: Dinero disponible",
+              "description": "Cuánto puedes gastar ahora mismo.",
+              "minWidth": "180dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 3,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            },
+            {
+              "name": "SaldoTotal",
+              "label": "Fino: Saldo total",
+              "description": "La suma de todas tus cuentas.",
+              "minWidth": "180dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 3,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            },
+            {
+              "name": "ProximoPago",
+              "label": "Fino: Próximo pago",
+              "description": "El pago recurrente más reciente que Fino detectó.",
+              "minWidth": "180dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 3,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            },
+            {
+              "name": "GastosDelMes",
+              "label": "Fino: Gastos del mes",
+              "description": "Cuánto llevas gastado este mes.",
+              "minWidth": "180dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 3,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            },
+            {
+              "name": "Presupuesto",
+              "label": "Fino: Presupuesto",
+              "description": "Lo gastado este mes en una categoría que elijas.",
+              "minWidth": "180dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 3,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "widgetFeatures": "reconfigurable|configuration_optional",
+              "updatePeriodMillis": 1800000
+            },
+            {
+              "name": "Proyeccion",
+              "label": "Fino: Proyección",
+              "description": "Saldo estimado a fin de mes.",
+              "minWidth": "180dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 3,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            },
+            {
+              "name": "Cuenta",
+              "label": "Fino: Cuenta",
+              "description": "El saldo de una cuenta que elijas.",
+              "minWidth": "180dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 3,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "widgetFeatures": "reconfigurable|configuration_optional",
+              "updatePeriodMillis": 1800000
+            }
+          ]
         }
       ]
     ],
