@@ -13,5 +13,14 @@ public static class ProviderCodes
     public const string Deuna = "DEUNA";
     public const string PayPhone = "PAYPHONE";
     public const string PeiGo = "PEIGO";
+
+    /// <summary>
+    /// Registro rápido de efectivo: el dinero en el bolsillo también es una
+    /// cuenta real dentro del modelo financiero. No es una institución, así que
+    /// no tiene parser de estados de cuenta ni conexión automática -- su único
+    /// modo es <see cref="ConnectionMode.Manual"/>, y por eso nunca aparece en
+    /// los flujos de "importar estado de cuenta" ni de "conectar correo".
+    /// </summary>
+    public const string Cash = "EFECTIVO";
     public const string Other = "OTRO";
 }

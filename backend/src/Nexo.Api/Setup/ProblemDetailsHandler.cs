@@ -20,6 +20,7 @@ public sealed class ProblemDetailsHandler(
         CancellationToken cancellationToken)
     {
         var correlationId = httpContext.TraceIdentifier;
+        var request = $"{httpContext.Request.Method} {httpContext.Request.Path}";
 
         var (status, title, code, detail) = exception switch
         {
@@ -33,15 +34,26 @@ public sealed class ProblemDetailsHandler(
 
         if (status >= 500)
         {
-            logger.LogError(exception, "Unhandled exception. CorrelationId={CorrelationId}", correlationId);
+            logger.LogError(
+                exception,
+                "Unhandled exception. Request={Request} CorrelationId={CorrelationId}",
+                request,
+                correlationId);
         }
         else
         {
-            logger.LogInformation(
-                "Request failed with {StatusCode} ({Code}). CorrelationId={CorrelationId}",
-                status,
-                code,
-                correlationId);
+            if (logger.IsEnabled(LogLevel.Information))
+            {
+                var errorType = exception.GetType().Name;
+
+                logger.LogInformation(
+                    "Request failed with {StatusCode} ({Code}). Request={Request} ErrorType={ErrorType} CorrelationId={CorrelationId}",
+                    status,
+                    code,
+                    request,
+                    errorType,
+                    correlationId);
+            }
         }
 
         httpContext.Response.StatusCode = status;

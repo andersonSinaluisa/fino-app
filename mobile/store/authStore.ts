@@ -3,7 +3,8 @@ import { api } from '../services/endpoints';
 import { configureAuth, ApiError, type AuthTokens } from '../services/apiClient';
 import { clearSession, readSession, saveSession } from '../services/secureStorage';
 import { useDeviceStore } from './deviceStore';
-import type { AuthenticatedUser } from '../types/api';
+import { AnalyticsEvent, ErrorReason, analytics, track } from '../services/analytics';
+import type { AuthenticatedUser, OnboardingStatus } from '../types/api';
 
 interface AuthState {
   status: 'loading' | 'authenticated' | 'anonymous';
@@ -22,6 +23,13 @@ interface AuthState {
   /** Entregable 19: same local cleanup as logout(), plus revokes every other device too. */
   logoutAllDevices: () => Promise<void>;
   clearError: () => void;
+  /**
+   * Onboarding funcional: aplica el snapshot que devuelve cualquier llamada a
+   * /api/v1/onboarding/* al usuario en memoria Y a la sesión persistida, para
+   * que un cierre de la app a medio onboarding retome exactamente donde se
+   * quedó sin depender de una llamada extra a /auth/refresh.
+   */
+  setOnboarding: (onboarding: OnboardingStatus) => void;
 }
 
 /**
@@ -58,11 +66,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   login: async (email, password) => {
     set({ error: null });
+    track(AnalyticsEvent.LoginStarted);
     try {
       const result = await api.auth.login(email.trim(), password);
       await persist(result, set);
+      track(AnalyticsEvent.LoginSucceeded);
       return result.accountDeletionCancelled;
     } catch (error) {
+      // §19: solo la razón, de un conjunto cerrado. El mensaje del servidor
+      // puede incluir el correo que se intentó y no tiene por qué salir.
+      track(AnalyticsEvent.LoginFailed, { reason: authFailureReason(error) });
       set({ error: messageOf(error) });
       throw error;
     }
@@ -70,10 +83,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   register: async (email, password, displayName) => {
     set({ error: null });
+    track(AnalyticsEvent.SignupStarted);
     try {
       const result = await api.auth.register(email.trim(), password, displayName.trim());
       await persist(result, set);
+
+      // §4: el dispositivo ya venía generando eventos anónimos (instalación,
+      // pantalla de registro). `alias` los cose al id interno para no perder
+      // el tramo install -> signup del embudo de activación.
+      analytics.aliasToCurrentUser(result.user.id);
+      track(AnalyticsEvent.SignupSucceeded);
     } catch (error) {
+      track(AnalyticsEvent.SignupFailed, { reason: authFailureReason(error) });
       set({ error: messageOf(error) });
       throw error;
     }
@@ -96,6 +117,25 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  setOnboarding: (onboarding) => {
+    const current = get().user;
+    if (!current) {
+      return;
+    }
+
+    const updated: AuthenticatedUser = { ...current, onboarding };
+    set({ user: updated });
+
+    const tokens = get().tokens;
+    if (tokens) {
+      void saveSession({
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
+        user: JSON.stringify(updated),
+      }).catch(() => undefined);
+    }
+  },
 }));
 
 /**
@@ -115,8 +155,41 @@ async function finishLocalLogout(set: Setter): Promise<void> {
   }
   useDeviceStore.getState().reset();
 
+  // §3: cortar el hilo ANTES de limpiar la sesión. En un teléfono compartido,
+  // los eventos de quien entre después no pueden quedar colgando del usuario
+  // que acaba de salir.
+  track(AnalyticsEvent.Logout);
+  analytics.reset();
+
   await clearSession();
   set({ status: 'anonymous', user: null, tokens: null, error: null });
+}
+
+/**
+ * §19: por qué falló una autenticación, en un conjunto cerrado.
+ *
+ * El mensaje del backend puede repetir el correo que se intentó y no tiene
+ * por qué salir de aquí; el código de estado responde igual de bien "¿la
+ * gente falla por credenciales o porque no hay red?".
+ */
+function authFailureReason(error: unknown): string {
+  if (!(error instanceof ApiError)) {
+    return ErrorReason.Unknown;
+  }
+
+  if (error.status === 0) {
+    return ErrorReason.NetworkError;
+  }
+
+  if (error.status === 401 || error.status === 403) {
+    return ErrorReason.PermissionDenied;
+  }
+
+  if (error.status >= 500) {
+    return ErrorReason.ServerError;
+  }
+
+  return ErrorReason.Unknown;
 }
 
 type Setter = (partial: Partial<AuthState>) => void;
@@ -167,9 +240,26 @@ configureAuth(
       const tokens = { accessToken: refreshed.accessToken, refreshToken: refreshed.refreshToken };
       useAuthStore.setState({ status: 'authenticated', user: refreshed.user, tokens });
       return tokens;
-    } catch {
-      await clearSession();
-      useAuthStore.setState({ status: 'anonymous', user: null, tokens: null });
+    } catch (error) {
+      // BUG (reported: "cuando el teléfono pierde conexión y la recupera,
+      // pide iniciar sesión"): a dropped connection right as the app tries
+      // to refresh is a *network* failure (ApiError status 0 -- see
+      // apiClient.ts's networkProblem/timeout handling), not proof the
+      // refresh token is invalid. The old code wiped SecureStore on ANY
+      // failure here, so a plain connectivity hiccup logged the user out
+      // even though their 30-day refresh token was still perfectly good.
+      // Only a genuine rejection *from the server* means the session is
+      // really over: 401 (token missing/expired/revoked/reused) or 403
+      // (account no longer active) -- see AuthService.RefreshAsync, the
+      // only two exceptions it ever throws. Everything else (no response,
+      // timeout, a transient 5xx) leaves the stored session untouched so
+      // the next request -- once connectivity is actually back -- simply
+      // tries the refresh again instead of forcing a fresh login.
+      const isRealRejection = error instanceof ApiError && (error.status === 401 || error.status === 403);
+      if (isRealRejection) {
+        await clearSession();
+        useAuthStore.setState({ status: 'anonymous', user: null, tokens: null });
+      }
       return null;
     }
   },

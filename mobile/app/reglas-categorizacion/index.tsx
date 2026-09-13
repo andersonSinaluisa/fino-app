@@ -3,14 +3,19 @@ import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, Switch, View 
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { colors, radius, spacing } from '../../theme';
+import { colors, spacing } from '../../theme';
 import { Badge, Card, EmptyState, SkeletonCard, Typo } from '../../components/ui';
 import {
   useCategories,
   useCategorizationRules,
+  useCreateCategory,
   useDeleteCategorizationRule,
   useUpdateCategorizationRule,
+  useUpdateCategory,
 } from '../../hooks/queries';
+import { ApiError } from '../../services/apiClient';
+import { CategoryChipList } from '../../components/categories/CategoryChipList';
+import { CategoryFormSheet } from '../../components/categories/CategoryFormSheet';
 import { formatRelativeTime } from '../../utils/format';
 import type { CategorizationRule, Category } from '../../types/api';
 
@@ -38,6 +43,16 @@ export default function CategorizationRulesScreen() {
   const deleteRule = useDeleteCategorizationRule();
 
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+
+  // Categorías personalizadas: crear/editar una categoría propia sin salir
+  // de "Cambiar categoría" de una regla. `categoryFormForRule` recuerda para
+  // qué regla era el "+ Nueva" que abrió la hoja (null si se abrió para editar).
+  const [categoryFormVisible, setCategoryFormVisible] = useState(false);
+  const [categoryFormTarget, setCategoryFormTarget] = useState<Category | null>(null);
+  const [categoryFormForRule, setCategoryFormForRule] = useState<CategorizationRule | null>(null);
+  const [categoryFormError, setCategoryFormError] = useState<string | null>(null);
+  const createCategory = useCreateCategory();
+  const updateCategory = useUpdateCategory();
 
   const confirmDelete = (rule: CategorizationRule) => {
     Alert.alert(
@@ -90,7 +105,53 @@ export default function CategorizationRulesScreen() {
     updateRule.mutate({ id: rule.id, categoryId: rule.categoryId, isActive: !rule.isActive });
   };
 
+  const openCreateCategory = (rule: CategorizationRule) => {
+    setCategoryFormError(null);
+    setCategoryFormTarget(null);
+    setCategoryFormForRule(rule);
+    setCategoryFormVisible(true);
+  };
+
+  const openEditCategory = (category: Category) => {
+    setCategoryFormError(null);
+    setCategoryFormTarget(category);
+    setCategoryFormForRule(null);
+    setCategoryFormVisible(true);
+  };
+
+  const submitCategoryForm = (input: { name: string; icon: string; color: string }) => {
+    setCategoryFormError(null);
+
+    if (categoryFormTarget) {
+      updateCategory.mutate(
+        { id: categoryFormTarget.id, ...input },
+        {
+          onSuccess: () => setCategoryFormVisible(false),
+          onError: (error) => {
+            setCategoryFormError(error instanceof ApiError ? error.message : 'No se pudo guardar la categoría.');
+          },
+        },
+      );
+      return;
+    }
+
+    createCategory.mutate(input, {
+      onSuccess: (created) => {
+        setCategoryFormVisible(false);
+        // Reutiliza el mismo flujo que elegir una categoría existente --
+        // sigue preguntando el alcance (solo futuros / también anteriores).
+        if (categoryFormForRule) {
+          changeCategory(categoryFormForRule, created);
+        }
+      },
+      onError: (error) => {
+        setCategoryFormError(error instanceof ApiError ? error.message : 'No se pudo crear la categoría.');
+      },
+    });
+  };
+
   return (
+    <>
     <View style={[styles.root, { paddingTop: insets.top + spacing.sm }]}>
       <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back}>
         <Ionicons name="close" size={20} color={colors.text} />
@@ -166,35 +227,29 @@ export default function CategorizationRulesScreen() {
                 </View>
 
                 {editingRuleId === rule.id ? (
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={styles.categoryList}
-                  >
-                    {(categories ?? []).map((category) => (
-                      <Pressable
-                        key={category.id}
-                        onPress={() => changeCategory(rule, category)}
-                        style={[
-                          styles.categoryChip,
-                          rule.categoryId === category.id ? styles.categoryChipSelected : null,
-                        ]}
-                      >
-                        <Typo
-                          variant="caption"
-                          color={rule.categoryId === category.id ? colors.onPrimary : colors.text}
-                        >
-                          {category.name}
-                        </Typo>
-                      </Pressable>
-                    ))}
-                  </ScrollView>
+                  <CategoryChipList
+                    categories={categories ?? []}
+                    selectedId={rule.categoryId}
+                    onSelect={(category) => changeCategory(rule, category)}
+                    onCreateNew={() => openCreateCategory(rule)}
+                    onEdit={openEditCategory}
+                  />
                 ) : null}
               </Card>
             ))
           )}
       </ScrollView>
     </View>
+
+    <CategoryFormSheet
+      visible={categoryFormVisible}
+      category={categoryFormTarget}
+      onClose={() => setCategoryFormVisible(false)}
+      onSubmit={submitCategoryForm}
+      submitting={createCategory.isPending || updateCategory.isPending}
+      errorMessage={categoryFormError}
+    />
+    </>
   );
 }
 
@@ -254,22 +309,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
-  },
-  categoryList: {
-    gap: spacing.sm,
-    paddingTop: spacing.sm,
-    paddingRight: spacing.lg,
-  },
-  categoryChip: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  categoryChipSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
   },
 });

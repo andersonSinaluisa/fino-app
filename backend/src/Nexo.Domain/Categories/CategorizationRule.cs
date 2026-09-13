@@ -135,13 +135,21 @@ public sealed class CategorizationRule : Entity
     /// (CategorizationRuleService, the "Reglas de categorización" screen) uses it too,
     /// with a caller-chosen <paramref name="matchKind"/>.
     /// </summary>
+    /// <param name="providerCode">
+    /// Retiros (§14): limita la regla a un banco. "RETINJ" significa retiro en
+    /// Pichincha y puede no significar nada en otro banco, así que una regla
+    /// aprendida de un retiro se ata a la institución donde se aprendió. Null deja
+    /// la regla válida para cualquier cuenta, que es el comportamiento que ya tenían
+    /// las reglas aprendidas de una corrección de categoría.
+    /// </param>
     public static CategorizationRule LearnedFromCorrection(
         Guid userId,
         string pattern,
         Guid categoryId,
         TransactionDirection? direction,
         DateTimeOffset now,
-        RuleMatchKind matchKind = RuleMatchKind.Contains)
+        RuleMatchKind matchKind = RuleMatchKind.Contains,
+        string? providerCode = null)
     {
         var rule = new CategorizationRule
         {
@@ -150,6 +158,7 @@ public sealed class CategorizationRule : Entity
             MatchKind = matchKind,
             CategoryId = categoryId,
             Direction = direction,
+            ProviderCode = NormalizeProviderCode(providerCode),
             Priority = 100,
             IsSystem = false,
         };

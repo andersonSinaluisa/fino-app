@@ -23,6 +23,7 @@ sistema contable. **En el MVP no mueve ni custodia dinero.**
 | Deduplicación (exacta / probable / sin coincidencia) | Implementado |
 | Categorización por reglas + aprendizaje de correcciones | Implementado |
 | Motor de insights por reglas | Implementado |
+| Registro rápido de efectivo (teclado, texto natural, voz, frecuentes) | Implementado |
 | App móvil Expo + Expo Router (todas las pantallas del MVP) | Implementado |
 | Notificaciones push (Expo) y tiempo real (SignalR + refetch) | Implementado |
 | Privacidad completa con interfaz en la app | Implementado |

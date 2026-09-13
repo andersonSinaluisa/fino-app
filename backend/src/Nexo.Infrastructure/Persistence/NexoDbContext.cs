@@ -11,6 +11,7 @@ using Nexo.Domain.Imports;
 using Nexo.Domain.Insights;
 using Nexo.Domain.Notifications;
 using Nexo.Domain.Providers;
+using Nexo.Domain.Pulses;
 using Nexo.Domain.Transactions;
 using Nexo.Domain.Users;
 
@@ -68,6 +69,8 @@ public sealed class NexoDbContext : DbContext, INexoDbContext
     public DbSet<Device> Devices => Set<Device>();
 
     public DbSet<Notification> Notifications => Set<Notification>();
+
+    public DbSet<FinancialPulse> Pulses => Set<FinancialPulse>();
 
     public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();
 

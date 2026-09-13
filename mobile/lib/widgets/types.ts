@@ -26,7 +26,8 @@ export type WidgetKind =
   | 'month-expenses'
   | 'category-spend'
   | 'projection'
-  | 'account';
+  | 'account'
+  | 'pulse';
 
 /** Every widget's tap target is a real, existing Fino screen -- see deepLinks.ts. */
 export interface WidgetLink {
@@ -118,6 +119,21 @@ export interface AccountWidgetData extends WidgetBase {
   isEstimated: boolean;
 }
 
+/**
+ * "Pulso" -- the most relevant `FinancialPulse` right now (PulseEngine,
+ * already fully built and surfaced in-app via the Home card + /pulso
+ * history + detail screens -- this is the first time it reaches a
+ * home-screen widget). Reuses `title`/`body`/`severity` verbatim; the
+ * longer `explanation` stays in-app only (that's what the detail screen,
+ * behind the widget's tap target, is for).
+ */
+export interface PulseWidgetData extends WidgetBase {
+  kind: 'pulse';
+  title: string;
+  body: string;
+  severity: 'Neutral' | 'Positive' | 'Attention' | 'Risk';
+}
+
 export type AnyWidgetData =
   | AvailableMoneyWidgetData
   | TotalBalanceWidgetData
@@ -125,7 +141,8 @@ export type AnyWidgetData =
   | MonthExpensesWidgetData
   | CategorySpendWidgetData
   | ProjectionWidgetData
-  | AccountWidgetData;
+  | AccountWidgetData
+  | PulseWidgetData;
 
 /**
  * Lightweight, widget-friendly copies of the pickable options (categories,
@@ -165,6 +182,8 @@ export interface WidgetSnapshot {
   nextPayment: NextPaymentWidgetData;
   monthExpenses: MonthExpensesWidgetData;
   projection: ProjectionWidgetData;
+  /** The most relevant open pulse right now, or hasData:false when there are none. */
+  pulse: PulseWidgetData;
   /** Every category with spend this month, for the "Presupuesto" widget's category picker + display. */
   categorySpend: CategorySpendWidgetData[];
   /** Every non-archived account, for the "Cuenta" widget's account picker + display. */
@@ -197,6 +216,7 @@ export function emptySnapshot(now: Date = new Date()): WidgetSnapshot {
     },
     monthExpenses: { kind: 'month-expenses', hasData: false, link: noLink, amount: 0, currency: 'USD', previousAmount: 0, changePercent: null },
     projection: { kind: 'projection', hasData: false, link: noLink, projectedBalance: 0, currentBalance: 0, currency: 'USD', daysRemaining: 0 },
+    pulse: { kind: 'pulse', hasData: false, link: noLink, title: '', body: '', severity: 'Neutral' },
     categorySpend: [],
     accounts: [],
     selectableCategories: [],

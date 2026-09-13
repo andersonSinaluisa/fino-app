@@ -66,6 +66,7 @@ describe('buildWidgetSnapshot', () => {
   it('returns a logged-out snapshot when there is no session, regardless of any cached data', () => {
     const snapshot = buildWidgetSnapshot({
       isAuthenticated: false,
+      pulses: null,
       summary: summary(),
       recurringPayments: [recurring()],
       amountsHidden: false,
@@ -80,6 +81,7 @@ describe('buildWidgetSnapshot', () => {
   it('returns an authenticated-but-empty snapshot before the summary has loaded', () => {
     const snapshot = buildWidgetSnapshot({
       isAuthenticated: true,
+      pulses: null,
       summary: null,
       recurringPayments: null,
       amountsHidden: false,
@@ -93,6 +95,7 @@ describe('buildWidgetSnapshot', () => {
   it('excludes credit card balances from "dinero disponible" but includes them in "saldo total"', () => {
     const snapshot = buildWidgetSnapshot({
       isAuthenticated: true,
+      pulses: null,
       summary: summary(),
       recurringPayments: [],
       amountsHidden: false,
@@ -106,6 +109,7 @@ describe('buildWidgetSnapshot', () => {
   it('flags "dinero disponible" as estimated only when one of the liquid accounts is', () => {
     const snapshot = buildWidgetSnapshot({
       isAuthenticated: true,
+      pulses: null,
       summary: summary({ accounts: [account({ balanceType: 'Estimated' })] }),
       recurringPayments: [],
       amountsHidden: false,
@@ -118,6 +122,7 @@ describe('buildWidgetSnapshot', () => {
   it('picks the most recently seen recurring payment for "próximo pago" and estimates a date 30 days after last seen', () => {
     const snapshot = buildWidgetSnapshot({
       isAuthenticated: true,
+      pulses: null,
       summary: summary(),
       recurringPayments: [
         recurring({ merchant: 'Older', lastSeenAt: '2026-07-01T00:00:00Z' }),
@@ -135,6 +140,7 @@ describe('buildWidgetSnapshot', () => {
   it('has no data for "próximo pago" when there are no recurring payments, without crashing', () => {
     const snapshot = buildWidgetSnapshot({
       isAuthenticated: true,
+      pulses: null,
       summary: summary(),
       recurringPayments: [],
       amountsHidden: false,
@@ -147,6 +153,7 @@ describe('buildWidgetSnapshot', () => {
   it('treats a null recurringPayments (analytics not loaded yet) the same as empty, not an error', () => {
     const snapshot = buildWidgetSnapshot({
       isAuthenticated: true,
+      pulses: null,
       summary: summary(),
       recurringPayments: null,
       amountsHidden: false,
@@ -159,6 +166,7 @@ describe('buildWidgetSnapshot', () => {
   it('sorts category spend by amount so the top category is first (the "Presupuesto" default)', () => {
     const snapshot = buildWidgetSnapshot({
       isAuthenticated: true,
+      pulses: null,
       summary: summary(),
       recurringPayments: [],
       amountsHidden: false,
@@ -172,6 +180,7 @@ describe('buildWidgetSnapshot', () => {
   it('carries the month expense comparison through unchanged', () => {
     const snapshot = buildWidgetSnapshot({
       isAuthenticated: true,
+      pulses: null,
       summary: summary(),
       recurringPayments: [],
       amountsHidden: false,
@@ -186,6 +195,7 @@ describe('buildWidgetSnapshot', () => {
   it('propagates amountsHidden through to the snapshot verbatim', () => {
     const snapshot = buildWidgetSnapshot({
       isAuthenticated: true,
+      pulses: null,
       summary: summary(),
       recurringPayments: [],
       amountsHidden: true,
@@ -198,6 +208,7 @@ describe('buildWidgetSnapshot', () => {
   it('builds a matching deep link for every account and category widget entry', () => {
     const snapshot = buildWidgetSnapshot({
       isAuthenticated: true,
+      pulses: null,
       summary: summary(),
       recurringPayments: [],
       amountsHidden: false,
@@ -215,6 +226,7 @@ describe('buildWidgetSnapshot', () => {
   it('never includes an archived account in the selectable/account lists', () => {
     const snapshot = buildWidgetSnapshot({
       isAuthenticated: true,
+      pulses: null,
       summary: summary({ accounts: [account(), account({ id: 'acc-old', isArchived: true })] }),
       recurringPayments: [],
       amountsHidden: false,

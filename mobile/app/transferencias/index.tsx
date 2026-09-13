@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../theme';
 import { Badge, Button, Card, EmptyState, Screen, SkeletonCard, Typo } from '../../components/ui';
-import { useConfirmInternalTransfer, useInternalTransferCandidates } from '../../hooks/queries';
+import { useConfirmInternalTransfer, useInternalTransferCandidates, useWithdrawalCandidates } from '../../hooks/queries';
+import { WithdrawalCard } from '../../components/transactions/WithdrawalCard';
 import { formatCurrency, formatFullDateTime } from '../../utils/format';
 import type { InternalTransferCandidate } from '../../types/api';
+import { AnalyticsEvent, AnalyticsSource, toCountBucket, track } from '../../services/analytics';
 
 function pairKey(candidate: InternalTransferCandidate): string {
   return `${candidate.outgoingTransactionId}:${candidate.incomingTransactionId}`;
@@ -15,11 +17,43 @@ function pairKey(candidate: InternalTransferCandidate): string {
 export default function TransfersScreen() {
   const router = useRouter();
   const { data, isLoading, refetch, isRefetching } = useInternalTransferCandidates();
+  const { data: withdrawals, isLoading: withdrawalsLoading } = useWithdrawalCandidates();
   const confirm = useConfirmInternalTransfer();
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   const visible = (data ?? []).filter((candidate) => !dismissed.has(pairKey(candidate)));
   const primary = visible[0];
+
+  // §9: una sola bandeja "Por revisar" para todo lo que espera una decisión. Los
+  // retiros no tienen pantalla propia porque son transferencias internas: separarlos
+  // obligaría a la persona a saber de antemano qué tipo de duda tiene Fino.
+  const pendingWithdrawals = withdrawals ?? [];
+  const pendingCount = visible.length + pendingWithdrawals.length;
+  const loading = isLoading || withdrawalsLoading;
+
+  // §25 (Dashboard 6): el denominador del embudo de conciliación. Sin saber
+  // cuántas sugerencias vio la persona, "confirmó 3" no significa nada.
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+
+    track(AnalyticsEvent.ReconciliationViewed, {
+      source: AnalyticsSource.Accounts,
+      suggestionCountBucket: toCountBucket(pendingCount),
+    });
+
+    if (primary) {
+      // El backend todavía no devuelve una confianza para los pares de
+      // transferencia (InternalTransferCandidate no la tiene, a diferencia de
+      // WithdrawalCandidate). El evento se manda igual: el embudo
+      // mostrada -> confirmada/rechazada se puede calcular sin esa dimensión,
+      // y el día que el backend la exponga se añade aquí sin tocar el resto.
+      track(AnalyticsEvent.TransferSuggestionShown);
+    }
+    // Solo cuando cambia lo que hay por revisar, no en cada render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, pendingCount]);
 
   return (
     <Screen refreshing={isRefetching} onRefresh={() => void refetch()}>
@@ -31,24 +65,40 @@ export default function TransfersScreen() {
       </Pressable>
 
       <View style={styles.header}>
-        <Badge label="Detección inteligente Nexo" tone="accent" />
-        <Typo variant="title">Transferencias entre tus cuentas</Typo>
+        <Badge
+          label={pendingCount > 0 ? `Por revisar · ${pendingCount}` : 'Por revisar'}
+          tone="accent"
+        />
+        <Typo variant="title">Movimientos por revisar</Typo>
         <Typo variant="body" color={colors.textSecondary}>
-          Confirmamos movimientos gemelos para que tus métricas reales de gasto e ingreso no se dupliquen.
+          Mover dinero entre tus propias cuentas no es gastarlo. Confirma estos movimientos para que
+          tus gastos reales no se inflen.
         </Typo>
       </View>
 
-      {isLoading ? (
+      {/* Los retiros van primero: son la duda más frecuente y la que más distorsiona
+          las estadísticas si se deja sin resolver. */}
+      {pendingWithdrawals.length > 0 ? (
+        <View style={styles.stack}>
+          {pendingWithdrawals.map((candidate) => (
+            <WithdrawalCard key={candidate.transactionId} candidate={candidate} />
+          ))}
+        </View>
+      ) : null}
+
+      {loading ? (
         <View style={styles.stack}>
           <SkeletonCard />
           <SkeletonCard />
         </View>
       ) : !primary ? (
-        <EmptyState
-          icon="swap-horizontal-outline"
-          title="Sin transferencias por conciliar"
-          body="Cuando Nexo encuentre dos movimientos con monto opuesto y fechas cercanas, aparecerán aquí."
-        />
+        pendingWithdrawals.length > 0 ? null : (
+          <EmptyState
+            icon="checkmark-done-outline"
+            title="Nada por revisar"
+            body="Cuando Fino detecte un retiro en efectivo o dos movimientos gemelos entre tus cuentas, aparecerán aquí."
+          />
+        )
       ) : (
         <>
           <TransferCard candidate={primary} />
@@ -67,17 +117,21 @@ export default function TransfersScreen() {
             <Button
               label="Sí, es una transferencia"
               loading={confirm.isPending}
-              onPress={() =>
+              onPress={() => {
+                track(AnalyticsEvent.TransferConfirmed, { source: AnalyticsSource.Accounts });
                 confirm.mutate({
                   outgoingTransactionId: primary.outgoingTransactionId,
                   incomingTransactionId: primary.incomingTransactionId,
-                })
-              }
+                });
+              }}
             />
             <Button
               label="No, son movimientos independientes"
               variant="secondary"
-              onPress={() => setDismissed((current) => new Set(current).add(pairKey(primary)))}
+              onPress={() => {
+                track(AnalyticsEvent.TransferRejected, { source: AnalyticsSource.Accounts });
+                setDismissed((current) => new Set(current).add(pairKey(primary)));
+              }}
             />
           </View>
 

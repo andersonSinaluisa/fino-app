@@ -7,6 +7,24 @@ export type BalanceType = 'Verified' | 'Estimated';
 export type ConnectionMode = 'ManualImport' | 'Email' | 'Api' | 'Webhook';
 export type AccountType = 'Checking' | 'Savings' | 'CreditCard' | 'Wallet' | 'Other';
 
+/**
+ * Onboarding funcional (rediseño post-login): the five independent milestones
+ * -- never a single boolean, since "saw the tutorial" and "has an account"
+ * and "has imported something" are distinct facts that can be out of sync
+ * (someone can skip the tutorial and still add an account later from
+ * Cuentas). `hasImportedData` mirrors the backend's own computed field so
+ * Home's "show the empty state or not" decision never has to be
+ * reimplemented on this side.
+ */
+export interface OnboardingStatus {
+  startedAt: string | null;
+  tutorialCompletedAt: string | null;
+  skippedAt: string | null;
+  firstAccountAddedAt: string | null;
+  firstImportCompletedAt: string | null;
+  hasImportedData: boolean;
+}
+
 export interface AuthenticatedUser {
   id: string;
   email: string;
@@ -14,6 +32,7 @@ export interface AuthenticatedUser {
   timeZoneId: string;
   currency: string;
   locale: string;
+  onboarding: OnboardingStatus;
 }
 
 export interface AuthResult {
@@ -234,6 +253,20 @@ export interface Category {
   isIncome: boolean;
 }
 
+/** Categorías personalizadas: icon/color deben ser uno de los valores de CATEGORY_ICON_KEYS/CATEGORY_COLORS -- el backend los valida igual, nunca confíes solo en el picker. */
+export interface CreateCategoryRequest {
+  name: string;
+  icon: string;
+  color: string;
+  isIncome?: boolean;
+}
+
+export interface UpdateCategoryRequest {
+  name: string;
+  icon: string;
+  color: string;
+}
+
 export interface CategoryBreakdownItem {
   categoryId: string;
   name: string;
@@ -261,6 +294,42 @@ export interface Insight {
    * along for API-shape completeness (e.g. a client that caches this response).
    */
   validUntil: string;
+}
+
+/**
+ * PULSO: a proactive, explainable observation from PulseEngine. Unlike
+ * Insight (a replaceable dashboard snapshot), a pulse is a permanent event --
+ * it has an id and stays in history once created.
+ */
+export interface Pulse {
+  id: string;
+  type:
+    | 'SpendingPace'
+    | 'UnusualExpense'
+    | 'BalanceChange'
+    | 'UpcomingCommitment'
+    | 'MonthEndProjection'
+    | 'SpendingImprovement'
+    | 'CategorySpike'
+    | 'NewIncome'
+    | 'DailyClose'
+    | 'AccountOutdated';
+  severity: 'Neutral' | 'Positive' | 'Attention' | 'Risk';
+  title: string;
+  body: string;
+  /** "¿Por qué veo esto?" -- the detail screen's reasoning section. */
+  explanation: string;
+  value: number | null;
+  comparisonValue: number | null;
+  percentChange: number | null;
+  referenceId: string | null;
+  relevanceScore: number;
+  periodStart: string;
+  periodEnd: string;
+  occurredAt: string;
+  createdAt: string;
+  /** PULSO FASE 4: 👍/👎 left on the detail screen, or null if nobody has yet. */
+  feedbackHelpful: boolean | null;
 }
 
 /**
@@ -319,6 +388,14 @@ export interface ImportPreview {
   financialAccountId: string;
   fileName: string;
   parserCode: string | null;
+  /**
+   * El código de banco (Provider.code, sin sufijo de versión) que el parser
+   * de verdad reconoció -- null para el parser genérico/mapeo manual, que no
+   * afirman reconocer ningún banco. Se usa para avisar "este archivo parece
+   * ser de otro banco" comparando contra la cuenta seleccionada, sin adivinar
+   * el mapeo `parserCode` (p. ej. "GUAYAQUIL_V1") -> código de proveedor.
+   */
+  detectedProviderCode: string | null;
   status: 'Received' | 'PreviewReady' | 'Completed' | 'Failed' | 'Cancelled';
   totalRows: number;
   newRows: number;
@@ -405,7 +482,9 @@ export interface EmailConnection {
  * Ingresos, Insights, Seguridad, Recordatorios. `pushEnabled` y
  * `showAmountsInPreview` no son categorías: el primero apaga el push del todo
  * en este dispositivo, el segundo es la privacidad de la vista previa
- * (Entregable 18).
+ * (Entregable 18). PULSO FASE 3 agrega la sexta categoría (`notifyOnPulses`)
+ * y el horario "no molestar" (`quietHoursStartHour`/`quietHoursEndHour`,
+ * ambos null cuando está apagado, o una hora 0-23 en hora de Ecuador).
  */
 export interface NotificationPreferences {
   pushEnabled: boolean;
@@ -415,6 +494,9 @@ export interface NotificationPreferences {
   notifyOnInsights: boolean;
   notifyOnSecurity: boolean;
   notifyOnReminders: boolean;
+  notifyOnPulses: boolean;
+  quietHoursStartHour: number | null;
+  quietHoursEndHour: number | null;
 }
 
 /** Entregable 17: one row of the in-app notification list. */
@@ -589,4 +671,131 @@ export interface ApiProblem {
   existingRuleId?: string;
   existingCategoryId?: string;
   existingCategoryName?: string;
+}
+
+/* -------------------------------------------------------------------------
+   Registro rápido de efectivo
+   ------------------------------------------------------------------------- */
+
+/**
+ * §36: el identificador lo genera el CLIENTE antes de mandar la petición. Si el
+ * usuario toca Guardar dos veces, las dos peticiones llevan el mismo valor y el
+ * servidor devuelve el movimiento ya creado en lugar de crear otro.
+ */
+export interface CreateQuickTransactionRequest {
+  amount: number;
+  direction?: TransactionDirection;
+  description?: string | null;
+  financialAccountId?: string | null;
+  /**
+   * Ojo con la diferencia: `undefined` significa "decide tú" y deja que el motor
+   * de reglas del servidor categorice; `leaveUncategorized: true` significa "la
+   * persona quitó la categoría a propósito", y entonces ninguna regla se la
+   * vuelve a poner.
+   */
+  categoryId?: string | null;
+  leaveUncategorized?: boolean;
+  occurredAt?: string | null;
+  clientRequestId?: string;
+  note?: string | null;
+}
+
+export interface UpdateQuickTransactionRequest {
+  amount: number;
+  direction?: TransactionDirection;
+  description?: string | null;
+  categoryId?: string | null;
+  leaveUncategorized?: boolean;
+  occurredAt?: string | null;
+}
+
+/** §24-25: "Anchor" ancla el saldo; "Adjustment" registra la diferencia como movimiento. */
+export interface SetCashBalanceRequest {
+  balance: number;
+  mode?: 'Anchor' | 'Adjustment';
+}
+
+/**
+ * §16-19: un gasto que la persona repite. Se deriva del historial en el servidor;
+ * no hay tabla detrás, así que nunca queda desincronizado de los movimientos.
+ */
+export interface QuickEntrySuggestion {
+  label: string;
+  direction: TransactionDirection;
+  categoryId: string | null;
+  categoryName: string | null;
+  categoryIcon: string | null;
+  categoryColor: string | null;
+  financialAccountId: string;
+  typicalAmount: number;
+  /** §17: false cuando los montos varían tanto que proponer uno sería adivinar. */
+  amountIsReliable: boolean;
+  frequency: number;
+  lastUsedAt: string;
+}
+
+export interface QuickEntryBootstrap {
+  /** Guid vacío mientras la cuenta de efectivo todavía no existe: se crea al guardar. */
+  cashAccountId: string;
+  cashBalance: number;
+  cashBalanceEverSet: boolean;
+  currency: string;
+  frequent: QuickEntrySuggestion[];
+  recent: QuickEntrySuggestion[];
+}
+
+/* -------------------------------------------------------------------------
+   Retiros de efectivo
+   ------------------------------------------------------------------------- */
+
+/** "High" se sugiere con fuerza; "Medium" se pregunta de forma neutra. */
+export type WithdrawalConfidence = 'High' | 'Medium';
+
+/**
+ * Un movimiento bancario que parece un retiro. Un retiro conciliado NO es un tipo
+ * nuevo de movimiento: se convierte en una transferencia interna normal, la misma
+ * que ya excluye Fino de todas sus métricas de gasto.
+ */
+export interface WithdrawalCandidate {
+  transactionId: string;
+  financialAccountId: string;
+  accountAlias: string;
+  providerCode: string;
+  transactionDate: string;
+  description: string;
+  amount: number;
+  currency: string;
+  confidence: WithdrawalConfidence;
+  matchedTerm: string | null;
+  /** El ingreso de efectivo ya registrado que probablemente ES este retiro. */
+  suggestedCashTransactionId: string | null;
+  suggestedCashDate: string | null;
+  /** 2 o más significa que hay coincidencias pero Fino no puede elegir por su cuenta. */
+  ambiguousMatchCount: number;
+  /** False cuando el texto del banco es demasiado genérico para anclar una regla. */
+  canLearnPattern: boolean;
+  timesConfirmedBefore: number;
+}
+
+export interface ConfirmWithdrawalRequest {
+  /** Sin esto, Fino CREA la entrada de efectivo que falta. */
+  cashTransactionId?: string | null;
+  rememberPattern?: boolean;
+}
+
+export interface WithdrawalConfirmation {
+  bankTransactionId: string;
+  cashTransactionId: string;
+  cashAccountId: string;
+  cashAccountAlias: string;
+  amount: number;
+  currency: string;
+  cashAccountCreated: boolean;
+  matchedExistingCashMovement: boolean;
+  patternRemembered: boolean;
+}
+
+export interface WithdrawalScan {
+  candidateCount: number;
+  highConfidenceCount: number;
 }

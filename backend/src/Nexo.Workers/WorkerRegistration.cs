@@ -9,6 +9,7 @@ public static class WorkerRegistration
     {
         services.Configure<WorkerOptions>(configuration.GetSection(WorkerOptions.SectionName));
         services.AddHostedService<InsightRefreshWorker>();
+        services.AddHostedService<PulseEvaluationWorker>();
         services.AddHostedService<AccountDeletionWorker>();
         return services;
     }

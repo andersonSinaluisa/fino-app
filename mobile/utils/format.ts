@@ -305,6 +305,25 @@ export function formatPeriodChange(
   };
 }
 
+/**
+ * "99.8%", "0.2%", "<0.1%" -- el desglose por categoría (Estadísticas §6) puede
+ * tener una categoría dominante y varias residuales; redondear al entero más
+ * cercano convierte "99.8% / 0.2% / <0.1%" en el engañoso "100% / 0% / 0%",
+ * como si las categorías chicas no existieran. Un decimal fijo evita ese
+ * redondeo, y "<0.1%" evita mostrar "0.0%" para algo que sí ocurrió.
+ */
+export function formatCategoryShare(percentage: number): string {
+  if (percentage <= 0) {
+    return '0%';
+  }
+
+  if (percentage < 0.1) {
+    return '<0.1%';
+  }
+
+  return `${percentage.toFixed(1)}%`;
+}
+
 /** "6 sep" -- fecha corta absoluta, usada en rankings donde una etiqueta relativa (HOY/AYER) no tendría sentido. */
 export function formatShortDate(value: string | Date): string {
   const date = typeof value === 'string' ? parseDate(value) : value;

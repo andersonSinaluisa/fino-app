@@ -31,6 +31,14 @@ public enum NotificationType
 
     /// <summary>Seguridad: a suspicious/unauthenticated bank email was rejected.</summary>
     SecurityAlert = 6,
+
+    /// <summary>
+    /// PULSO FASE 3, categoría propia "Pulso": a new <see cref="Nexo.Domain.Pulses.FinancialPulse"/>
+    /// cleared <see cref="Nexo.Application.Pulses.PulseNotificationDecisionService"/>'s
+    /// severity gate. Dispatched by that service, not by the detection engine itself --
+    /// see its docs for why financial detection and notification policy stay separate.
+    /// </summary>
+    PulseReady = 7,
 }
 
 /// <summary>

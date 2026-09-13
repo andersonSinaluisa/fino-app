@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [
+    "hooks/queries.ts",
+    "hooks/useReduceMotion.ts",
+    "store/authStore.ts",
+    "services/endpoints.ts",
+    "types/api.ts",
+    "lib/bankTutorials/**/*.ts",
+    "components/onboarding/tutorial/**/*.tsx",
+    "components/onboarding/tutorial/**/*.ts"
+  ]
+}

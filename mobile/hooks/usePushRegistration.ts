@@ -6,6 +6,7 @@ import Constants from 'expo-constants';
 import { api } from '../services/endpoints';
 import { useAuthStore } from '../store/authStore';
 import { useDeviceStore } from '../store/deviceStore';
+import { AnalyticsEvent, AnalyticsSource, track } from '../services/analytics';
 
 type NotificationsModule = typeof import('expo-notifications');
 
@@ -73,8 +74,19 @@ export function usePushRegistration(): void {
       let granted = existing.granted;
 
       if (!granted && existing.canAskAgain) {
+        // §16: la tasa de opt-in a notificaciones es una métrica de producto
+        // por sí sola, y sin el evento "se mostró" el denominador no existe:
+        // no se podría distinguir "nadie acepta" de "casi nunca se pregunta".
+        track(AnalyticsEvent.NotificationPermissionShown, { source: AnalyticsSource.Home });
         const requested = await Notifications.requestPermissionsAsync();
         granted = requested.granted;
+
+        track(
+          granted
+            ? AnalyticsEvent.NotificationPermissionAccepted
+            : AnalyticsEvent.NotificationPermissionRejected,
+          { source: AnalyticsSource.Home },
+        );
       }
 
       if (!granted || cancelled) {
@@ -118,7 +130,9 @@ export function usePushRegistration(): void {
     // rides along (see NotificationDispatcher.BuildPushData) and is enough to
     // mark it read; `transactionId` is only present for movement/income
     // pushes and, when there, deep-links straight to that movement instead of
-    // just opening the notification list.
+    // just opening the notification list. PULSO FASE 3: `pulseId` rides along
+    // on PulseReady pushes (see PulseNotificationDecisionService) and
+    // deep-links to that pulse's detail instead.
     let cancelled = false;
     let subscription: { remove: () => void } | null = null;
 
@@ -131,6 +145,14 @@ export function usePushRegistration(): void {
         const data = response.notification.request.content.data as Record<string, string> | undefined;
         const notificationId = data?.notificationId;
         const transactionId = data?.transactionId;
+        const pulseId = data?.pulseId;
+
+        // §25 (Dashboard 5): sin este evento no hay PULSE_OPEN_RATE. Viaja el
+        // TIPO de notificación, nunca su título ni su cuerpo -- el cuerpo de
+        // un push de FINO puede llevar un monto.
+        track(AnalyticsEvent.NotificationOpened, {
+          notificationKind: transactionId ? 'movement' : pulseId ? 'pulse' : 'other',
+        });
 
         if (notificationId) {
           api.notifications.markRead(notificationId).catch(() => undefined);
@@ -138,6 +160,8 @@ export function usePushRegistration(): void {
 
         if (transactionId) {
           router.push(`/movimiento/${transactionId}`);
+        } else if (pulseId) {
+          router.push(`/pulso/${pulseId}`);
         } else {
           router.push('/notificaciones');
         }

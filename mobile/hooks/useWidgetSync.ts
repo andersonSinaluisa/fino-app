@@ -47,6 +47,14 @@ export function useWidgetSync(): void {
     staleTime: 5 * 60 * 1000,
   });
 
+  // "Pulso" widget: shares usePulses()'s exact query key, so this dedupes
+  // with the Home card / /pulso history screen instead of doubling the request.
+  const pulsesQuery = useQuery({
+    queryKey: queryKeys.pulses,
+    queryFn: api.pulses.list,
+    enabled: isAuthenticated,
+  });
+
   useEffect(() => {
     if (status === 'loading') {
       // Session restore hasn't resolved yet -- avoid a spurious "logged out" push.
@@ -57,9 +65,10 @@ export function useWidgetSync(): void {
       isAuthenticated,
       summary: isAuthenticated ? (summaryQuery.data ?? null) : null,
       recurringPayments: isAuthenticated ? (analyticsQuery.data?.recurringPayments ?? null) : null,
+      pulses: isAuthenticated ? (pulsesQuery.data ?? null) : null,
       amountsHidden: hideAmountsInWidgets,
     });
 
     pushWidgetSnapshot(snapshot);
-  }, [status, isAuthenticated, summaryQuery.data, analyticsQuery.data, hideAmountsInWidgets]);
+  }, [status, isAuthenticated, summaryQuery.data, analyticsQuery.data, pulsesQuery.data, hideAmountsInWidgets]);
 }

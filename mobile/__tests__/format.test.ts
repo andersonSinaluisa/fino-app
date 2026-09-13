@@ -3,6 +3,7 @@ import {
   balanceStatusLabel,
   balanceStatusTone,
   balanceTypeLabel,
+  formatCategoryShare,
   formatCompactCurrency,
   formatCurrency,
   formatDateInput,
@@ -229,5 +230,23 @@ describe('formatMonthComparison (Entregable 15)', () => {
 
   it('rounds to the nearest whole percent', () => {
     expect(formatMonthComparison(12.6)).toEqual({ label: '13% más que el mes pasado', up: true });
+  });
+});
+
+describe('formatCategoryShare', () => {
+  it('shows one decimal so a dominant category does not round up to a misleading 100%', () => {
+    expect(formatCategoryShare(99.8)).toBe('99.8%');
+  });
+
+  it('shows one decimal for a small but real category instead of rounding it to 0%', () => {
+    expect(formatCategoryShare(0.2)).toBe('0.2%');
+  });
+
+  it('uses "<0.1%" for a nonzero share too small for one decimal to show', () => {
+    expect(formatCategoryShare(0.05)).toBe('<0.1%');
+  });
+
+  it('shows a plain 0% only when the share truly is zero', () => {
+    expect(formatCategoryShare(0)).toBe('0%');
   });
 });

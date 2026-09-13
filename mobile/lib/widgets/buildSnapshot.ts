@@ -1,14 +1,14 @@
-import type { Account, HomeSummary, RecurringPayment } from '../../types/api';
+import type { Account, HomeSummary, Pulse, RecurringPayment } from '../../types/api';
+import { pickNextPayment } from '../../utils/recurringPayments';
 import { widgetDeepLinks } from './deepLinks';
 import { estimateMonthEndBalance } from './projection';
 import {
   emptySnapshot,
   type AccountWidgetData,
   type CategorySpendWidgetData,
+  type PulseWidgetData,
   type WidgetSnapshot,
 } from './types';
-
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface BuildSnapshotInput {
   isAuthenticated: boolean;
@@ -16,6 +16,8 @@ export interface BuildSnapshotInput {
   summary: HomeSummary | null;
   /** null while the analytics dashboard hasn't loaded yet -- only "Próximo pago" depends on this. */
   recurringPayments: RecurringPayment[] | null;
+  /** null while /api/v1/pulses hasn't loaded yet -- only the "Pulso" widget depends on this. */
+  pulses: Pulse[] | null;
   amountsHidden: boolean;
   now?: Date;
 }
@@ -46,6 +48,27 @@ function mapAccount(account: Account): AccountWidgetData {
     amount: account.balance,
     currency: account.currency,
     isEstimated: account.balanceType === 'Estimated',
+  };
+}
+
+/**
+ * `pulses` already arrives sorted most-relevant-first -- the same order
+ * `usePulses()` renders in the Home card and the /pulso history list (see
+ * PulseEngine's relevance scoring server-side) -- so index 0 is always the
+ * right pick, no re-sorting needed here.
+ */
+function mapTopPulse(pulses: Pulse[] | null): PulseWidgetData {
+  const top = pulses?.[0];
+  if (!top) {
+    return { kind: 'pulse', hasData: false, link: null, title: '', body: '', severity: 'Neutral' };
+  }
+  return {
+    kind: 'pulse',
+    hasData: true,
+    link: { uri: widgetDeepLinks.pulso(top.id) },
+    title: top.title,
+    body: top.body,
+    severity: top.severity,
   };
 }
 
@@ -82,7 +105,12 @@ export function buildWidgetSnapshot(input: BuildSnapshotInput): WidgetSnapshot {
 
   if (!input.summary) {
     // Signed in, but nothing fetched yet (cold start, offline first launch).
-    return { ...base, isAuthenticated: true, amountsHidden: input.amountsHidden };
+    return {
+      ...base,
+      isAuthenticated: true,
+      amountsHidden: input.amountsHidden,
+      pulse: mapTopPulse(input.pulses),
+    };
   }
 
   const { summary } = input;
@@ -100,10 +128,7 @@ export function buildWidgetSnapshot(input: BuildSnapshotInput): WidgetSnapshot {
     daysInMonth: daysInMonth(now.getFullYear(), now.getMonth()),
   });
 
-  const sortedRecurring = [...(input.recurringPayments ?? [])].sort(
-    (a, b) => new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime(),
-  );
-  const topRecurring = sortedRecurring[0] ?? null;
+  const nextPaymentEstimate = pickNextPayment(input.recurringPayments, now);
 
   // Sorted by amount so index 0 is always "top category this month" -- the
   // default the "Presupuesto" widget shows before native per-instance
@@ -138,17 +163,17 @@ export function buildWidgetSnapshot(input: BuildSnapshotInput): WidgetSnapshot {
       accountCount: summary.accountCount,
       isEstimated: summary.anyEstimatedBalance,
     },
-    nextPayment: topRecurring
+    nextPayment: nextPaymentEstimate
       ? {
           kind: 'next-payment',
           hasData: true,
           link: { uri: widgetDeepLinks.statistics() },
-          concept: topRecurring.merchant,
-          categoryName: topRecurring.categoryName,
-          amount: topRecurring.averageAmount,
+          concept: nextPaymentEstimate.payment.merchant,
+          categoryName: nextPaymentEstimate.payment.categoryName,
+          amount: nextPaymentEstimate.payment.averageAmount,
           currency,
-          estimatedDate: new Date(new Date(topRecurring.lastSeenAt).getTime() + THIRTY_DAYS_MS).toISOString(),
-          occurrences: topRecurring.occurrencesLast6Months,
+          estimatedDate: nextPaymentEstimate.estimatedDate.toISOString(),
+          occurrences: nextPaymentEstimate.payment.occurrencesLast6Months,
         }
       : { ...base.nextPayment, hasData: false, link: { uri: widgetDeepLinks.statistics() } },
     monthExpenses: {
@@ -169,6 +194,7 @@ export function buildWidgetSnapshot(input: BuildSnapshotInput): WidgetSnapshot {
       currency,
       daysRemaining: projection.daysRemaining,
     },
+    pulse: mapTopPulse(input.pulses),
     categorySpend,
     accounts,
     selectableCategories: categorySpend.map((c) => ({

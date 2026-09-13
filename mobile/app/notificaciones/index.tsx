@@ -4,14 +4,21 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing } from '../../theme';
-import { Card, EmptyState, SectionHeader, SkeletonCard, Typo } from '../../components/ui';
+import { Card, EmptyState, SectionHeader, SelectSheet, SkeletonCard, Typo } from '../../components/ui';
+import type { SelectSheetOption } from '../../components/ui';
 import { useDeviceStore } from '../../store/deviceStore';
 import { useMarkNotificationRead, useNotifications, useUpdateNotificationPreferences } from '../../hooks/queries';
 import { formatRelativeTime } from '../../utils/format';
 import type { AppNotification, NotificationPreferences } from '../../types/api';
 
 const CATEGORIES: Array<{
-  key: 'notifyOnMovements' | 'notifyOnIncome' | 'notifyOnInsights' | 'notifyOnSecurity' | 'notifyOnReminders';
+  key:
+    | 'notifyOnMovements'
+    | 'notifyOnIncome'
+    | 'notifyOnInsights'
+    | 'notifyOnSecurity'
+    | 'notifyOnReminders'
+    | 'notifyOnPulses';
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   hint: string;
@@ -31,15 +38,34 @@ const CATEGORIES: Array<{
     label: 'Recordatorios',
     hint: 'Resumen periódico y cuentas desactualizadas.',
   },
+  {
+    key: 'notifyOnPulses',
+    icon: 'pulse-outline',
+    label: 'Pulso',
+    hint: 'Novedades sobre tus finanzas detectadas automáticamente.',
+  },
 ];
 
+/** Horas 0-23 para el selector de horario "no molestar", en hora de Ecuador. */
+const HOUR_OPTIONS: SelectSheetOption<string | undefined>[] = Array.from({ length: 24 }, (_, hour) => ({
+  value: String(hour),
+  label: `${String(hour).padStart(2, '0')}:00`,
+}));
+
+const DEFAULT_QUIET_START = 22;
+const DEFAULT_QUIET_END = 7;
+
 /**
- * Entregable 17 ("Notificaciones"): historial de avisos + las cinco categorías
+ * Entregable 17 ("Notificaciones"): historial de avisos + las categorías
  * de preferencia que el backend gatilla de forma independiente (ver
  * NotificationDispatcher.ShouldNotify). No hay un GET para las preferencias de
  * este dispositivo por sí solas -- se siembran de lo último que devolvió el
  * registro o un cambio previo (useDeviceStore), y cada guardado envía el
- * objeto completo para no pisar el resto de campos.
+ * objeto completo para no pisar el resto de campos. PULSO FASE 3 agrega la
+ * categoría "Pulso" (arriba, vía CATEGORIES) y el horario "no molestar":
+ * mientras está prendido, el backend sigue guardando cada notificación en el
+ * historial -- solo silencia el push de ese dispositivo
+ * (NotificationDispatcher.IsWithinQuietHours).
  */
 export default function NotificationsScreen() {
   const router = useRouter();
@@ -54,17 +80,14 @@ export default function NotificationsScreen() {
   const updatePreferences = useUpdateNotificationPreferences(expoPushToken);
 
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(storedPreferences);
+  const [activeHourField, setActiveHourField] = useState<'start' | 'end' | null>(null);
 
   useEffect(() => {
     setPreferences(storedPreferences);
   }, [storedPreferences]);
 
-  const togglePreference = (key: keyof NotificationPreferences) => {
-    if (!preferences) {
-      return;
-    }
-
-    const next: NotificationPreferences = { ...preferences, [key]: !preferences[key] };
+  const savePreferences = (next: NotificationPreferences) => {
+    const previous = preferences;
     setPreferences(next);
 
     updatePreferences.mutate(next, {
@@ -73,11 +96,45 @@ export default function NotificationsScreen() {
       },
       onError: () => {
         // Revert: the UI must never claim a preference stuck when it didn't.
-        setPreferences(preferences);
+        setPreferences(previous);
         Alert.alert('No pudimos guardar el cambio', 'Inténtalo de nuevo en un momento.');
       },
     });
   };
+
+  const togglePreference = (key: keyof NotificationPreferences) => {
+    if (!preferences) {
+      return;
+    }
+
+    savePreferences({ ...preferences, [key]: !preferences[key] });
+  };
+
+  const toggleQuietHours = (enabled: boolean) => {
+    if (!preferences) {
+      return;
+    }
+
+    savePreferences({
+      ...preferences,
+      quietHoursStartHour: enabled ? DEFAULT_QUIET_START : null,
+      quietHoursEndHour: enabled ? DEFAULT_QUIET_END : null,
+    });
+  };
+
+  const setQuietHour = (field: 'start' | 'end', hour: string | undefined) => {
+    if (!preferences || hour === undefined) {
+      return;
+    }
+
+    savePreferences({
+      ...preferences,
+      quietHoursStartHour: field === 'start' ? Number(hour) : preferences.quietHoursStartHour,
+      quietHoursEndHour: field === 'end' ? Number(hour) : preferences.quietHoursEndHour,
+    });
+  };
+
+  const quietHoursEnabled = preferences?.quietHoursStartHour !== null && preferences?.quietHoursEndHour !== null;
 
   return (
     <View style={[styles.root, { paddingTop: insets.top + spacing.sm }]}>
@@ -139,6 +196,50 @@ export default function NotificationsScreen() {
                     ))}
                   </Card>
                 </View>
+
+                <View style={styles.section}>
+                  <SectionHeader title="Horario sin avisos" />
+                  <Card>
+                    <CategoryRow
+                      icon="moon-outline"
+                      label="No molestar"
+                      hint="El push se silencia en este horario; el historial se sigue guardando igual."
+                      value={quietHoursEnabled}
+                      onValueChange={() => toggleQuietHours(!quietHoursEnabled)}
+                    />
+                    {quietHoursEnabled ? (
+                      <>
+                        <View style={styles.divider} />
+                        <View style={styles.hourRow}>
+                          <Pressable
+                            style={styles.hourButton}
+                            onPress={() => setActiveHourField('start')}
+                            accessibilityRole="button"
+                          >
+                            <Typo variant="caption" color={colors.textSecondary}>
+                              Desde
+                            </Typo>
+                            <Typo variant="body">
+                              {String(preferences.quietHoursStartHour).padStart(2, '0')}:00
+                            </Typo>
+                          </Pressable>
+                          <Pressable
+                            style={styles.hourButton}
+                            onPress={() => setActiveHourField('end')}
+                            accessibilityRole="button"
+                          >
+                            <Typo variant="caption" color={colors.textSecondary}>
+                              Hasta
+                            </Typo>
+                            <Typo variant="body">
+                              {String(preferences.quietHoursEndHour).padStart(2, '0')}:00
+                            </Typo>
+                          </Pressable>
+                        </View>
+                      </>
+                    ) : null}
+                  </Card>
+                </View>
               </>
             ) : (
               <Card>
@@ -170,6 +271,24 @@ export default function NotificationsScreen() {
             />
           )
         }
+      />
+
+      <SelectSheet
+        visible={activeHourField !== null}
+        title={activeHourField === 'start' ? 'Desde qué hora' : 'Hasta qué hora'}
+        options={HOUR_OPTIONS}
+        selectedValue={
+          activeHourField === 'start'
+            ? preferences?.quietHoursStartHour?.toString()
+            : preferences?.quietHoursEndHour?.toString()
+        }
+        onSelect={(value) => {
+          if (activeHourField) {
+            setQuietHour(activeHourField, value);
+          }
+          setActiveHourField(null);
+        }}
+        onClose={() => setActiveHourField(null)}
       />
     </View>
   );
@@ -278,6 +397,18 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: colors.border,
     marginVertical: spacing.md,
+  },
+  hourRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  hourButton: {
+    flex: 1,
+    gap: 2,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceSecondary,
   },
   notification: {
     gap: spacing.sm,

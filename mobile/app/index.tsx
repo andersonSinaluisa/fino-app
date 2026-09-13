@@ -8,6 +8,7 @@ import { useOnboardingStore } from '../store/onboardingStore';
 /** Decides where a cold start lands, once the stored session has been read. */
 export default function Index() {
   const authStatus = useAuthStore((state) => state.status);
+  const user = useAuthStore((state) => state.user);
   const onboardingStatus = useOnboardingStore((state) => state.status);
   const hasSeenOnboarding = useOnboardingStore((state) => state.hasSeenOnboarding);
 
@@ -24,7 +25,14 @@ export default function Index() {
   }
 
   if (authStatus === 'authenticated') {
-    return <Redirect href="/(tabs)" />;
+    // Onboarding funcional: `onboarding` viene persistido en el backend
+    // (User.OnboardingStartedAt/SkippedAt/etc, Fase 1) -- nunca una bandera
+    // local. "Ya no necesita el onboarding" es exactamente "lo saltó" o "ya
+    // tiene datos importados"; cualquier otro caso (nunca entró, o entró y
+    // cerró la app a medio camino) vuelve a Bienvenida en vez de perderse.
+    const onboarding = user?.onboarding;
+    const onboardingDone = !onboarding || Boolean(onboarding.skippedAt) || onboarding.hasImportedData;
+    return <Redirect href={onboardingDone ? '/(tabs)' : '/(onboarding)/bienvenida'} />;
   }
 
   // First-time anonymous visit goes through onboarding; a returning

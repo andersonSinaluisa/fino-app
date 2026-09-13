@@ -82,6 +82,14 @@ struct FinoWidgetSnapshot: Decodable {
         let isEstimated: Bool
     }
 
+    struct PulseData: Decodable {
+        let hasData: Bool
+        let link: Link?
+        let title: String
+        let body: String
+        let severity: String
+    }
+
     struct SelectableCategory: Decodable {
         let id: String
         let name: String
@@ -106,6 +114,7 @@ struct FinoWidgetSnapshot: Decodable {
     let nextPayment: NextPayment
     let monthExpenses: MonthExpenses
     let projection: Projection
+    let pulse: PulseData
     let categorySpend: [CategorySpend]
     let accounts: [AccountEntry]
     let selectableCategories: [SelectableCategory]

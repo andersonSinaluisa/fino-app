@@ -52,7 +52,13 @@ public sealed class Category : Entity
         return category;
     }
 
-    public static Category ForUser(Guid userId, string name, string icon, string color, DateTimeOffset now)
+    public static Category ForUser(
+        Guid userId,
+        string name,
+        string icon,
+        string color,
+        DateTimeOffset now,
+        bool isIncome = false)
     {
         var category = new Category
         {
@@ -62,9 +68,28 @@ public sealed class Category : Entity
             Icon = icon,
             Color = color,
             IsSystem = false,
+            IsIncome = isIncome,
         };
         category.Stamp(now);
         return category;
+    }
+
+    /// <summary>
+    /// Categorías personalizadas: rename/re-icon/re-color a category the person
+    /// made themselves. Never touches <see cref="Code"/>'s role as a stable id for
+    /// system categories because this can only ever run on a non-system one
+    /// (<see cref="IsSystem"/> guard below) -- nothing outside this entity looks a
+    /// user category up by its Code, so recomputing it on rename is purely cosmetic.
+    /// </summary>
+    public void UpdateAppearance(string name, string icon, string color, DateTimeOffset now)
+    {
+        DomainException.Require(!IsSystem, "No se puede editar una categoría del sistema.");
+
+        Name = DomainException.RequireText(name, nameof(name), 60);
+        Code = TransactionsCodeFrom(Name);
+        Icon = icon;
+        Color = color;
+        Stamp(now);
     }
 
     private static string TransactionsCodeFrom(string name)
@@ -74,6 +99,34 @@ public sealed class Category : Entity
         var chars = normalized.Select(c => char.IsAsciiLetterOrDigit(c) ? c : '_').ToArray();
         return new string(chars);
     }
+}
+
+/// <summary>
+/// Categorías personalizadas: the curated appearance options a person can pick
+/// when creating or editing their own category. Icons are a small, font-
+/// independent vocabulary (mobile resolves them via utils/categoryIcons.ts's
+/// Ionicons map, the same one built-in categories already use -- see
+/// ReferenceDataSeeder.SeedCategoriesAsync for the 13 already in use there).
+/// Colors are exactly that seed's palette, so a user-made category can never
+/// clash with FINO's deliberately-not-blue-fintech look. Both lists are
+/// enforced server-side (CategoryService) -- never trust the client's icon/color
+/// string just because it looks like a hex code or a known word.
+/// </summary>
+public static class CategoryAppearance
+{
+    public static readonly string[] Icons =
+    [
+        "utensils", "shopping-cart", "car", "zap", "film", "heart", "book",
+        "shopping-bag", "repeat", "arrow-left-right", "percent", "trending-up", "circle",
+        "home", "gift", "briefcase", "paw", "airplane", "cafe", "fitness",
+        "musical-notes", "game-controller", "cash", "people", "construct",
+    ];
+
+    public static readonly string[] Colors =
+    [
+        "#E4A853", "#8DD9B6", "#7FB3E8", "#C7F36B", "#D8A0E8", "#D8665B",
+        "#9AA8E8", "#E8B4A0", "#B6A0E8", "#ECE9E1", "#A67C52", "#4E9F73", "#74766F",
+    ];
 }
 
 /// <summary>Well-known system category codes, referenced by the rules engine and the seed.</summary>

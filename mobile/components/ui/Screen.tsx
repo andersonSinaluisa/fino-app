@@ -1,5 +1,13 @@
 import type { ReactNode } from 'react';
-import { ScrollView, StyleSheet, View, type ViewStyle, RefreshControl } from 'react-native';
+import {
+  Keyboard,
+  ScrollView,
+  StyleSheet,
+  TouchableWithoutFeedback,
+  View,
+  type ViewStyle,
+  RefreshControl,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing } from '../../theme';
 
@@ -12,6 +20,8 @@ interface ScreenProps {
   contentStyle?: ViewStyle;
   /** Set when a screen renders its own header and should not inset the top. */
   edgeToEdgeTop?: boolean;
+  /** Toca fuera de un campo de texto para cerrar el teclado (pantallas de formulario). */
+  dismissKeyboardOnTap?: boolean;
 }
 
 export function Screen({
@@ -22,6 +32,7 @@ export function Screen({
   onRefresh,
   contentStyle,
   edgeToEdgeTop = false,
+  dismissKeyboardOnTap = false,
 }: ScreenProps) {
   const insets = useSafeAreaInsets();
 
@@ -31,11 +42,20 @@ export function Screen({
     paddingHorizontal: padded ? spacing.xl : 0,
   };
 
+  const wrap = (node: ReactNode) =>
+    dismissKeyboardOnTap ? (
+      <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+        {node}
+      </TouchableWithoutFeedback>
+    ) : (
+      node
+    );
+
   if (!scroll) {
-    return <View style={[styles.root, padding, contentStyle]}>{children}</View>;
+    return wrap(<View style={[styles.root, padding, contentStyle]}>{children}</View>);
   }
 
-  return (
+  return wrap(
     <ScrollView
       style={styles.root}
       contentContainerStyle={[padding, contentStyle]}
@@ -48,7 +68,7 @@ export function Screen({
       }
     >
       {children}
-    </ScrollView>
+    </ScrollView>,
   );
 }
 

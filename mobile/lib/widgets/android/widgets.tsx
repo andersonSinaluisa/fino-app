@@ -1,8 +1,39 @@
 import React from 'react';
 import { formatCurrency, formatShortDate } from '../../../utils/format';
 import { ANDROID_WIDGET_NAMES, type AndroidWidgetName } from '../constants';
-import type { WidgetSnapshot } from '../types';
-import { ACCENT_LIME, ACCENT_MINT, WidgetCard, WidgetEmptyState } from './WidgetCard';
+import type { PulseWidgetData, WidgetSnapshot } from '../types';
+import { FlexWidget, TextWidget } from 'react-native-android-widget';
+import {
+  ACCENT_LIME,
+  ACCENT_MINT,
+  CARD_BACKGROUND,
+  CARD_RADIUS,
+  SURFACE_SECONDARY,
+  TEXT_PRIMARY,
+  TEXT_SECONDARY,
+  WidgetCard,
+  WidgetEmptyState,
+} from './WidgetCard';
+import { widgetDeepLinks } from '../deepLinks';
+
+// Literal copies of theme/tokens.ts colors.warning/colors.danger -- same
+// reasoning as ACCENT_LIME/ACCENT_MINT above (ColorProp wants a
+// `#${string}` literal, not an imported constant).
+const ACCENT_WARNING = '#E4A853';
+const ACCENT_DANGER = '#D8665B';
+
+function accentForSeverity(severity: PulseWidgetData['severity']): `#${string}` {
+  switch (severity) {
+    case 'Positive':
+      return ACCENT_MINT;
+    case 'Attention':
+      return ACCENT_WARNING;
+    case 'Risk':
+      return ACCENT_DANGER;
+    default:
+      return ACCENT_LIME;
+  }
+}
 
 /**
  * One render function per widget kind -- the Android equivalent of the 7
@@ -177,10 +208,98 @@ export function renderAccount(snapshot: WidgetSnapshot, selectedAccountId: strin
 }
 
 /**
+ * "Pulso" -- the most relevant `FinancialPulse` right now (see
+ * buildSnapshot.ts's `mapTopPulse`). No per-instance configuration, like
+ * the other 5 fixed widgets -- there's exactly one "most relevant" pulse.
+ */
+export function renderPulse(snapshot: WidgetSnapshot): React.JSX.Element {
+  const data = snapshot.pulse;
+  const loggedOut = loggedOutOrEmpty(snapshot, data.link?.uri ?? null);
+  if (loggedOut) return loggedOut;
+
+  if (!data.hasData) {
+    return <WidgetEmptyState message="Nada nuevo que contarte todavía" clickUri={data.link?.uri ?? null} />;
+  }
+
+  return (
+    <WidgetCard
+      eyebrow="Fino"
+      title={data.title}
+      subtitle={data.body}
+      subtitleMaxLines={2}
+      clickUri={data.link?.uri ?? null}
+      accent={accentForSeverity(data.severity)}
+    />
+  );
+}
+
+/**
  * Dispatches by `widgetName` (the AppWidgetProvider identity react-native-
  * android-widget's config plugin registers -- see ANDROID_WIDGET_NAMES).
  * `selectedId` only applies to the two configurable widgets; ignored by the others.
  */
+/**
+ * §28: el equivalente Android del QuickEntryWidget de iOS. No lee el snapshot: no
+ * muestra ningún dato, así que ni el saldo ni la sesión cambian lo que dibuja. Abre
+ * el mismo `fino:///registrar` que el widget de iOS y que los atajos del icono.
+ *
+ * Un widget de Android solo admite una acción de clic por elemento, así que aquí el
+ * botón grande escribe y la fila de abajo dicta -- dos FlexWidget con su propio
+ * clickAction, no uno solo.
+ */
+export function renderQuickEntry(): React.JSX.Element {
+  return (
+    <FlexWidget
+      style={{
+        height: 'match_parent',
+        width: 'match_parent',
+        backgroundColor: CARD_BACKGROUND,
+        borderRadius: CARD_RADIUS,
+        padding: 12,
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        flexGap: 8,
+      }}
+    >
+      <FlexWidget
+        clickAction="OPEN_URI"
+        clickActionData={{ uri: widgetDeepLinks.quickEntry() }}
+        style={{
+          width: 'match_parent',
+          backgroundColor: ACCENT_LIME,
+          borderRadius: 999,
+          paddingVertical: 12,
+          flexDirection: 'row',
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}
+      >
+        <TextWidget
+          text="+ Registrar"
+          style={{ fontSize: 15, color: TEXT_PRIMARY, fontWeight: '700' }}
+        />
+      </FlexWidget>
+
+      <FlexWidget
+        clickAction="OPEN_URI"
+        clickActionData={{ uri: widgetDeepLinks.quickEntryByVoice() }}
+        style={{
+          width: 'match_parent',
+          backgroundColor: SURFACE_SECONDARY,
+          borderRadius: 999,
+          paddingVertical: 8,
+          flexDirection: 'row',
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}
+      >
+        <TextWidget text="Dictar" style={{ fontSize: 13, color: TEXT_SECONDARY, fontWeight: '600' }} />
+      </FlexWidget>
+    </FlexWidget>
+  );
+}
+
 export function renderAndroidWidget(
   widgetName: AndroidWidgetName,
   snapshot: WidgetSnapshot,
@@ -201,6 +320,10 @@ export function renderAndroidWidget(
       return renderCategorySpend(snapshot, selectedId);
     case ANDROID_WIDGET_NAMES.account:
       return renderAccount(snapshot, selectedId);
+    case ANDROID_WIDGET_NAMES.pulse:
+      return renderPulse(snapshot);
+    case ANDROID_WIDGET_NAMES.quickEntry:
+      return renderQuickEntry();
     default:
       return <WidgetEmptyState message="Sin datos todavía" clickUri={null} />;
   }

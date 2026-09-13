@@ -98,6 +98,10 @@ public class NotificationsTests(NexoApiFactory factory) : IClassFixture<NexoApiF
         Assert.True(prefs.GetProperty("notifyOnInsights").GetBoolean());
         Assert.True(prefs.GetProperty("notifyOnSecurity").GetBoolean());
         Assert.True(prefs.GetProperty("notifyOnReminders").GetBoolean());
+        // PULSO FASE 3: Pulso defaults on like the other five; quiet hours off.
+        Assert.True(prefs.GetProperty("notifyOnPulses").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, prefs.GetProperty("quietHoursStartHour").ValueKind);
+        Assert.Equal(JsonValueKind.Null, prefs.GetProperty("quietHoursEndHour").ValueKind);
     }
 
     [Fact]
@@ -125,6 +129,9 @@ public class NotificationsTests(NexoApiFactory factory) : IClassFixture<NexoApiF
                 notifyOnInsights = false,
                 notifyOnSecurity = true,
                 notifyOnReminders = false,
+                notifyOnPulses = false,
+                quietHoursStartHour = 22,
+                quietHoursEndHour = 7,
             });
         await updateResponse.EnsureOkAsync();
 
@@ -135,6 +142,9 @@ public class NotificationsTests(NexoApiFactory factory) : IClassFixture<NexoApiF
         Assert.False(updated.GetProperty("notifyOnInsights").GetBoolean());
         Assert.True(updated.GetProperty("notifyOnSecurity").GetBoolean());
         Assert.False(updated.GetProperty("notifyOnReminders").GetBoolean());
+        Assert.False(updated.GetProperty("notifyOnPulses").GetBoolean());
+        Assert.Equal(22, updated.GetProperty("quietHoursStartHour").GetInt32());
+        Assert.Equal(7, updated.GetProperty("quietHoursEndHour").GetInt32());
 
         var notFound = await user.Client.PutAsJsonAsync(
             "/api/v1/notifications/devices/ExponentPushToken%5Bnever-registered%5D/preferences",
@@ -149,6 +159,40 @@ public class NotificationsTests(NexoApiFactory factory) : IClassFixture<NexoApiF
                 notifyOnReminders = true,
             });
         Assert.Equal(HttpStatusCode.NotFound, notFound.StatusCode);
+    }
+
+    [Fact]
+    public async Task An_invalid_quiet_hours_window_is_rejected_with_422()
+    {
+        var user = await factory.RegisterUserAsync();
+        const string token = "ExponentPushToken[bad-quiet-hours]";
+
+        await (await user.Client.PostAsJsonAsync("/api/v1/notifications/devices", new
+        {
+            expoPushToken = token,
+            platform = "Android",
+            deviceName = (string?)null,
+            appVersion = (string?)null,
+        })).EnsureOkAsync();
+
+        // Only a start hour, no end -- Device.UpdatePreferences requires both or neither.
+        var response = await user.Client.PutAsJsonAsync(
+            $"/api/v1/notifications/devices/{Uri.EscapeDataString(token)}/preferences",
+            new
+            {
+                pushEnabled = true,
+                showAmountsInPreview = true,
+                notifyOnMovements = true,
+                notifyOnIncome = true,
+                notifyOnInsights = true,
+                notifyOnSecurity = true,
+                notifyOnReminders = true,
+                notifyOnPulses = true,
+                quietHoursStartHour = 22,
+                quietHoursEndHour = (int?)null,
+            });
+
+        Assert.Equal((HttpStatusCode)422, response.StatusCode);
     }
 
     [Fact]
@@ -308,6 +352,116 @@ public class NotificationsTests(NexoApiFactory factory) : IClassFixture<NexoApiF
         var inApp = await client.GetAsync("/api/v1/notifications");
         var listed = await inApp.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(1, listed.GetArrayLength());
+    }
+
+    /// <summary>
+    /// PULSO FASE 3 ("no molestar"). NexoApiFactory's fixed clock is
+    /// 2026-03-10 17:00 UTC -- noon in Ecuador (UTC-5, no DST) -- so a window
+    /// that contains hour 12 must mute the push, while the in-app record still
+    /// gets written exactly like the pushEnabled-off case above.
+    /// </summary>
+    [Fact]
+    public async Task Quiet_hours_mute_the_push_but_not_the_in_app_notification()
+    {
+        var spy = new SpyPushSender();
+        await using var gated = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<IPushSender>();
+                services.AddSingleton<IPushSender>(spy);
+            }));
+
+        var (userId, client) = await RegisterAsync(gated);
+        const string token = "ExponentPushToken[quiet-hours-device]";
+
+        await (await client.PostAsJsonAsync("/api/v1/notifications/devices", new
+        {
+            expoPushToken = token,
+            platform = "Android",
+            deviceName = (string?)null,
+            appVersion = (string?)null,
+        })).EnsureOkAsync();
+
+        // 09:00-17:00 local -- covers noon, the fixed clock's local hour.
+        await (await client.PutAsJsonAsync(
+            $"/api/v1/notifications/devices/{Uri.EscapeDataString(token)}/preferences",
+            new
+            {
+                pushEnabled = true,
+                showAmountsInPreview = true,
+                notifyOnMovements = true,
+                notifyOnIncome = true,
+                notifyOnInsights = true,
+                notifyOnSecurity = true,
+                notifyOnReminders = true,
+                notifyOnPulses = true,
+                quietHoursStartHour = 9,
+                quietHoursEndHour = 17,
+            })).EnsureOkAsync();
+
+        using (var scope = gated.Services.CreateScope())
+        {
+            var dispatcher = scope.ServiceProvider.GetRequiredService<INotificationDispatcher>();
+            await dispatcher.DispatchAsync(
+                Notification.Create(userId, NotificationType.ExpenseDetected, "Compra detectada", "Gastaste $12.00 en KFC.", NexoApiFactory.Now),
+                CancellationToken.None);
+        }
+
+        Assert.Empty(spy.Sent);
+
+        var inApp = await client.GetAsync("/api/v1/notifications");
+        var listed = await inApp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(1, listed.GetArrayLength());
+    }
+
+    /// <summary>An overnight window (22-7) that does not contain the fixed clock's local noon must not affect the push -- also exercises the midnight-crossing branch.</summary>
+    [Fact]
+    public async Task A_quiet_hours_window_that_does_not_contain_the_current_hour_does_not_mute_the_push()
+    {
+        var spy = new SpyPushSender();
+        await using var gated = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<IPushSender>();
+                services.AddSingleton<IPushSender>(spy);
+            }));
+
+        var (userId, client) = await RegisterAsync(gated);
+        const string token = "ExponentPushToken[quiet-hours-overnight-device]";
+
+        await (await client.PostAsJsonAsync("/api/v1/notifications/devices", new
+        {
+            expoPushToken = token,
+            platform = "Android",
+            deviceName = (string?)null,
+            appVersion = (string?)null,
+        })).EnsureOkAsync();
+
+        await (await client.PutAsJsonAsync(
+            $"/api/v1/notifications/devices/{Uri.EscapeDataString(token)}/preferences",
+            new
+            {
+                pushEnabled = true,
+                showAmountsInPreview = true,
+                notifyOnMovements = true,
+                notifyOnIncome = true,
+                notifyOnInsights = true,
+                notifyOnSecurity = true,
+                notifyOnReminders = true,
+                notifyOnPulses = true,
+                quietHoursStartHour = 22,
+                quietHoursEndHour = 7,
+            })).EnsureOkAsync();
+
+        using (var scope = gated.Services.CreateScope())
+        {
+            var dispatcher = scope.ServiceProvider.GetRequiredService<INotificationDispatcher>();
+            await dispatcher.DispatchAsync(
+                Notification.Create(userId, NotificationType.ExpenseDetected, "Compra detectada", "Gastaste $12.00 en KFC.", NexoApiFactory.Now),
+                CancellationToken.None);
+        }
+
+        Assert.Single(spy.Sent);
     }
 
     [Fact]

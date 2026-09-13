@@ -79,6 +79,20 @@ public static class AuditActions
     public const string UserLoggedOut = "user.logged_out";
     public const string AccountCreated = "financial_account.created";
     public const string AccountArchived = "financial_account.archived";
+
+    /// <summary>
+    /// §24: la persona declaró cuánto efectivo tiene y el saldo quedó anclado a
+    /// esa cifra, sin movimiento de por medio (no había historial que explicar).
+    /// </summary>
+    public const string CashBalanceAnchored = "cash.balance_anchored";
+
+    /// <summary>
+    /// §25: la persona corrigió su efectivo y la diferencia quedó registrada como
+    /// un movimiento de ajuste visible. Queda en la auditoría porque es la única
+    /// operación que cambia un saldo sin que la persona haya gastado ni recibido
+    /// nada -- tiene que poder rastrearse después.
+    /// </summary>
+    public const string CashBalanceAdjusted = "cash.balance_adjusted";
     public const string AccountDeleted = "financial_account.deleted";
     public const string ImportUploaded = "import.uploaded";
     public const string ImportConfirmed = "import.confirmed";

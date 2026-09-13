@@ -41,6 +41,39 @@ public sealed class User : Entity
     public DateTimeOffset? DeletionRequestedAt { get; private set; }
 
     /// <summary>
+    /// Onboarding funcional (rediseño post-login): cuándo esta persona llegó al
+    /// flujo por primera vez. Cinco marcas independientes en vez de un solo
+    /// booleano -- "vio el tutorial", "ya tiene una cuenta" y "ya importó algo"
+    /// son hechos distintos que pueden desalinearse (alguien puede saltar el
+    /// tutorial y agregar una cuenta después desde Cuentas), y el cliente
+    /// necesita saber exactamente dónde retomar si cerró la app a medias.
+    /// Cada una se escribe una sola vez -- ver los métodos Record*/Complete*/Skip*
+    /// más abajo, todos idempotentes.
+    /// </summary>
+    public DateTimeOffset? OnboardingStartedAt { get; private set; }
+
+    /// <summary>Terminó el tutorial animado de "cómo descargar tu estado de cuenta" (sin saltarlo).</summary>
+    public DateTimeOffset? OnboardingTutorialCompletedAt { get; private set; }
+
+    /// <summary>Tocó "Ahora no" y confirmó "Configurar después" en el bottom sheet.</summary>
+    public DateTimeOffset? OnboardingSkippedAt { get; private set; }
+
+    /// <summary>
+    /// Primera cuenta agregada -- se registra desde AccountService.CreateAsync,
+    /// no desde una llamada explícita del onboarding, así que también queda
+    /// marcada si la persona la agrega después desde Cuentas → Agregar cuenta
+    /// en vez de durante el onboarding.
+    /// </summary>
+    public DateTimeOffset? FirstAccountAddedAt { get; private set; }
+
+    /// <summary>
+    /// Primera importación confirmada -- se registra desde ImportService.ConfirmAsync
+    /// por la misma razón: el "primer import" es un hecho sobre la cuenta, no
+    /// sobre qué pantalla lo disparó.
+    /// </summary>
+    public DateTimeOffset? FirstImportCompletedAt { get; private set; }
+
+    /// <summary>
     /// Entregable 20 ("Hardening de seguridad"): consecutive wrong-password
     /// attempts since the last successful login or the last lockout. Reset to
     /// zero the moment a lockout starts, so the next window starts clean.
@@ -152,5 +185,55 @@ public sealed class User : Entity
         Status = UserStatus.Active;
         DeletionRequestedAt = null;
         Stamp(now);
+    }
+
+    /// <summary>Reached the post-login onboarding flow. Idempotent: only the first arrival counts.</summary>
+    public void StartOnboarding(DateTimeOffset now)
+    {
+        if (OnboardingStartedAt is null)
+        {
+            OnboardingStartedAt = now;
+            Stamp(now);
+        }
+    }
+
+    /// <summary>Finished the bank-tutorial animation (as opposed to skipping it). Idempotent.</summary>
+    public void CompleteOnboardingTutorial(DateTimeOffset now)
+    {
+        if (OnboardingTutorialCompletedAt is null)
+        {
+            OnboardingTutorialCompletedAt = now;
+            Stamp(now);
+        }
+    }
+
+    /// <summary>Chose "Configurar después" instead of continuing. Idempotent -- changing your mind later and finishing the flow does not need to unset this; it is a historical fact, not a current state.</summary>
+    public void SkipOnboarding(DateTimeOffset now)
+    {
+        if (OnboardingSkippedAt is null)
+        {
+            OnboardingSkippedAt = now;
+            Stamp(now);
+        }
+    }
+
+    /// <summary>Idempotent: called on every account creation, only ever sets this once.</summary>
+    public void RecordFirstAccountAdded(DateTimeOffset now)
+    {
+        if (FirstAccountAddedAt is null)
+        {
+            FirstAccountAddedAt = now;
+            Stamp(now);
+        }
+    }
+
+    /// <summary>Idempotent: called on every confirmed import, only ever sets this once. This is PULSO's north star metric ("first successful import rate") made queryable straight off the user row.</summary>
+    public void RecordFirstImportCompleted(DateTimeOffset now)
+    {
+        if (FirstImportCompletedAt is null)
+        {
+            FirstImportCompletedAt = now;
+            Stamp(now);
+        }
     }
 }

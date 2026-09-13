@@ -6,7 +6,9 @@ import { colors, radius, spacing } from '../../theme';
 import { Badge, Button, Card, Input, Screen, SectionHeader, Typo } from '../../components/ui';
 import { ProviderAvatar } from '../../components/ui/ProviderAvatar';
 import { useCreateAccount, useProviders } from '../../hooks/queries';
+import { getBankImportConfig } from '../../lib/bankTutorials';
 import type { Provider } from '../../types/api';
+import { AnalyticsEvent, AnalyticsSource, toAnalyticsSymbol, track } from '../../services/analytics';
 
 const accountTypes = [
   { code: 'Savings', label: 'Ahorros' },
@@ -21,6 +23,7 @@ export default function AddAccountScreen() {
   const createAccount = useCreateAccount();
 
   const [selected, setSelected] = useState<Provider | null>(null);
+  const [importing, setImporting] = useState(false);
   const [alias, setAlias] = useState('');
   const [mask, setMask] = useState('');
   const [accountType, setAccountType] = useState<string>('Savings');
@@ -29,12 +32,54 @@ export default function AddAccountScreen() {
   const banks = useMemo(() => (providers ?? []).filter((p) => p.kind === 'Bank'), [providers]);
   const wallets = useMemo(() => (providers ?? []).filter((p) => p.kind === 'Wallet'), [providers]);
 
+  // BankImportFlow reutilizable (tutorial + tipo de archivo + importar):
+  // la MISMA pantalla que usa el onboarding inicial, aquí con onboarding
+  // omitido -- crea la cuenta con lo mínimo (el alias del banco, sin saldo
+  // manual porque el import mismo lo va a calcular) y entra directo al
+  // tutorial en vez del formulario de saldo manual de abajo.
+  const importAutomatically = async () => {
+    if (!selected) {
+      return;
+    }
+
+    setImporting(true);
+    try {
+      const account = await createAccount.mutateAsync({
+        providerCode: selected.code,
+        alias: selected.name,
+        accountType: 'Savings',
+        connectionMode: selected.defaultMode,
+        mask: null,
+        openingVerifiedBalance: null,
+        currency: 'USD',
+      });
+      // §16: adopción de "agregar cuenta". Viaja el TIPO de proveedor
+      // (banco/billetera) y el contexto, nunca el alias que escribió la
+      // persona ni la máscara de la cuenta.
+      track(AnalyticsEvent.AccountAdded, {
+        accountKind: toAnalyticsSymbol(selected.kind),
+        source: AnalyticsSource.Onboarding,
+      });
+
+      router.push(`/cuentas/tutorial?bankId=${selected.code}&accountId=${account.id}`);
+    } catch {
+      Alert.alert('No pudimos crear la cuenta', 'Revisa los datos e inténtalo de nuevo.');
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const submit = () => {
     if (!selected) {
       return;
     }
 
     const parsedBalance = balance.trim().length > 0 ? Number(balance.replace(',', '.')) : null;
+
+    track(AnalyticsEvent.AccountAdded, {
+      accountKind: toAnalyticsSymbol(selected.kind),
+      source: AnalyticsSource.Accounts,
+    });
 
     createAccount.mutate(
       {
@@ -73,6 +118,19 @@ export default function AddAccountScreen() {
             </Typo>
           </View>
         </View>
+
+        {getBankImportConfig(selected.code) ? (
+          <View style={styles.importOption}>
+            <Button
+              label="Importar mis movimientos automáticamente"
+              onPress={() => void importAutomatically()}
+              loading={importing}
+            />
+            <Typo variant="caption" color={colors.textSecondary} align="center">
+              Sube el archivo de tu banco y Fino calcula el saldo por ti. O ingresa los datos a mano abajo.
+            </Typo>
+          </View>
+        ) : null}
 
         <View style={styles.form}>
           <Input
@@ -235,6 +293,10 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: spacing.lg,
+  },
+  importOption: {
+    gap: spacing.sm,
+    marginBottom: spacing.xl,
   },
   typeRow: {
     gap: spacing.sm,

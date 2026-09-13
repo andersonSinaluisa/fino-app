@@ -5,6 +5,7 @@ using Nexo.Domain.EmailIngestion;
 using Nexo.Domain.Imports;
 using Nexo.Domain.Insights;
 using Nexo.Domain.Notifications;
+using Nexo.Domain.Pulses;
 using Nexo.Domain.Users;
 
 namespace Nexo.Infrastructure.Persistence.Configurations;
@@ -105,6 +106,11 @@ public sealed class ImportConfiguration : IEntityTypeConfiguration<Import>
         builder.Property(i => i.ContentType).HasMaxLength(120).IsRequired();
         builder.Property(i => i.ContentHash).HasMaxLength(64).IsRequired();
         builder.Property(i => i.ParserCode).HasMaxLength(40);
+        // Onboarding funcional: se agregó la propiedad y el snapshot a mano
+        // (ver 20260909150000_AddImportDetectedProviderCode) pero se olvidó esta
+        // línea -- sin ella el modelo que EF calcula en vivo no coincidía con
+        // el snapshot congelado y el contenedor no arrancaba (PendingModelChangesWarning).
+        builder.Property(i => i.DetectedProviderCode).HasMaxLength(40);
         builder.Property(i => i.Status).HasConversion<string>().HasMaxLength(24).IsRequired();
         builder.Property(i => i.FailureReason).HasMaxLength(500);
         builder.Property(i => i.IncomeTotal).HasPrecision(18, 2);
@@ -272,6 +278,40 @@ public sealed class NotificationConfiguration : IEntityTypeConfiguration<Notific
         builder.HasOne<User>()
             .WithMany()
             .HasForeignKey(n => n.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+/// <summary>PULSO.</summary>
+public sealed class FinancialPulseConfiguration : IEntityTypeConfiguration<FinancialPulse>
+{
+    public void Configure(EntityTypeBuilder<FinancialPulse> builder)
+    {
+        builder.ToTable("financial_pulses");
+        builder.HasKey(p => p.Id);
+
+        builder.Property(p => p.Type).HasConversion<string>().HasMaxLength(24).IsRequired();
+        builder.Property(p => p.Severity).HasConversion<string>().HasMaxLength(16).IsRequired();
+        builder.Property(p => p.Title).HasMaxLength(140).IsRequired();
+        builder.Property(p => p.Body).HasMaxLength(400).IsRequired();
+        builder.Property(p => p.Explanation).HasMaxLength(500).IsRequired();
+        builder.Property(p => p.Value).HasPrecision(18, 2);
+        builder.Property(p => p.ComparisonValue).HasPrecision(18, 2);
+        builder.Property(p => p.PercentChange).HasPrecision(9, 2);
+        builder.Property(p => p.ReferenceId).HasMaxLength(64);
+        builder.Property(p => p.RelevanceScore).HasPrecision(5, 2);
+        builder.Property(p => p.DedupKey).HasMaxLength(160).IsRequired();
+
+        // PulseEngine's every-call dedup/cooldown check is exactly this shape:
+        // "does a row with this UserId + DedupKey already exist (optionally
+        // within a window)".
+        builder.HasIndex(p => new { p.UserId, p.DedupKey });
+        // Read side: PulseService.ListAsync orders by relevance within a user.
+        builder.HasIndex(p => new { p.UserId, p.RelevanceScore });
+
+        builder.HasOne<User>()
+            .WithMany()
+            .HasForeignKey(p => p.UserId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }

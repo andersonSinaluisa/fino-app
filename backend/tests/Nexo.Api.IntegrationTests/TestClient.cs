@@ -124,6 +124,14 @@ public static class TestClientExtensions
         return await response.Content.ReadFromJsonAsync<JsonElement>(Json);
     }
 
+    /// <summary>POST with no request body, returning the parsed JSON response -- PULSO's POST /pulses/evaluate and similar action endpoints.</summary>
+    public static async Task<JsonElement> PostForJsonAsync(this TestUser user, string url)
+    {
+        var response = await user.Client.PostAsync(url, content: null);
+        await response.EnsureOkAsync();
+        return await response.Content.ReadFromJsonAsync<JsonElement>(Json);
+    }
+
     /// <summary>
     /// Uploads a statement, confirms it, then returns the resulting "items" array
     /// from GET /transactions -- the common "give me a posted transaction to act

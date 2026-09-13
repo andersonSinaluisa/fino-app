@@ -276,3 +276,52 @@ struct ProjectionWidget: Widget {
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
+
+// MARK: - 9. Pulso
+
+struct PulseWidgetView: View {
+    let snapshot: FinoWidgetSnapshot
+
+    private func severityColor(_ severity: String) -> Color {
+        switch severity {
+        case "Positive": return FinoWidgetColor.solid(of: "8DD9B6")
+        case "Attention": return FinoWidgetColor.solid(of: "E4A853")
+        case "Risk": return FinoWidgetColor.solid(of: "D8665B")
+        default: return Color("accentLime")
+        }
+    }
+
+    var body: some View {
+        let data = snapshot.pulse
+        VStack(alignment: .leading, spacing: 4) {
+            WidgetHeader(systemImage: "waveform.path.ecg", tint: severityColor(data.severity), label: "Fino")
+            if data.hasData {
+                Text(data.title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color("textPrimary"))
+                    .lineLimit(1)
+                WidgetSubtitle(text: data.body)
+                    .lineLimit(2)
+            } else {
+                WidgetSubtitle(text: "Nada nuevo que contarte todavía")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding()
+    }
+}
+
+struct PulseWidget: Widget {
+    let kind = "PulseWidget"
+
+    var body: some WidgetConfiguration {
+        StaticConfiguration(kind: kind, provider: FinoProvider()) { entry in
+            WidgetChrome(snapshot: entry.snapshot, link: entry.snapshot?.pulse.link) {
+                PulseWidgetView(snapshot: entry.snapshot!)
+            }
+        }
+        .configurationDisplayName("Pulso")
+        .description("Lo más relevante que Fino ha notado en tus finanzas.")
+        .supportedFamilies([.systemSmall, .systemMedium])
+    }
+}

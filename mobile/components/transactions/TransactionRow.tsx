@@ -62,7 +62,10 @@ export function TransactionRow({ transaction, hidden = false, onPress }: Transac
       <Typo
         variant="bodyStrong"
         tabular
-        color={income ? colors.success : colors.text}
+        // §22: un retiro conciliado no es un gasto ni un ingreso, es dinero
+        // cambiando de sitio. La pata de efectivo se pintaba en verde de ingreso,
+        // que hacía parecer que había entrado dinero nuevo al patrimonio.
+        color={isTransfer ? colors.textSecondary : income ? colors.success : colors.text}
       >
         {hidden ? '••••' : formatCurrency(transaction.signedAmount, { signed: true })}
       </Typo>

@@ -1,19 +1,26 @@
-import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { WithdrawalCard } from '../../components/transactions/WithdrawalCard';
 import { colors, radius, spacing, typography } from '../../theme';
 import { Badge, Button, Card, EmptyState, Screen, SectionHeader, SkeletonCard, Typo } from '../../components/ui';
 import {
   useCategories,
   useClearInternalTransfer,
+  useCreateCategory,
   useResolveDuplicate,
   useRulePreview,
   useSetCategory,
   useSetMerchant,
   useSetNote,
   useTransaction,
+  useUpdateCategory,
+  useWithdrawalCandidates,
 } from '../../hooks/queries';
+import { CategoryChipList } from '../../components/categories/CategoryChipList';
+import { CategoryFormSheet } from '../../components/categories/CategoryFormSheet';
+import { ApiError } from '../../services/apiClient';
 import { formatCurrency, formatFullDateTime, maskLabel } from '../../utils/format';
 import type { Category, RulePreview } from '../../types/api';
 
@@ -59,9 +66,26 @@ export default function TransactionDetailScreen() {
   const clearTransfer = useClearInternalTransfer();
   const resolveDuplicate = useResolveDuplicate(id ?? '');
 
+  // §10: el retiro se busca en la lista de candidatos que la bandeja ya consulta, en
+  // vez de pedirle al servidor que evalúe este movimiento suelto. Una petición menos,
+  // y una sola fuente de verdad sobre qué es candidato y qué no.
+  const { data: withdrawalCandidates } = useWithdrawalCandidates();
+  const withdrawalCandidate = useMemo(
+    () => (withdrawalCandidates ?? []).find((candidate) => candidate.transactionId === id) ?? null,
+    [withdrawalCandidates, id],
+  );
+
   const [note, setNoteValue] = useState('');
   const [editingCategory, setEditingCategory] = useState(false);
   const [merchantText, setMerchantValue] = useState('');
+
+  // Categorías personalizadas: crear/editar una categoría propia sin salir
+  // de "Cambiar categoría". `categoryFormTarget` null => crear, category => editar.
+  const [categoryFormVisible, setCategoryFormVisible] = useState(false);
+  const [categoryFormTarget, setCategoryFormTarget] = useState<Category | null>(null);
+  const [categoryFormError, setCategoryFormError] = useState<string | null>(null);
+  const createCategory = useCreateCategory();
+  const updateCategory = useUpdateCategory();
 
   useEffect(() => {
     setNoteValue(data?.note ?? '');
@@ -122,7 +146,15 @@ export default function TransactionDetailScreen() {
 
     rulePreview.mutate(
       { transactionId: data.id, categoryId: category.id },
-      { onSuccess: (preview) => presentScopeChoice(category, preview) },
+      {
+        onSuccess: (preview) => presentScopeChoice(category, preview),
+        onError: (error) => {
+          Alert.alert(
+            'No pudimos evaluar la categoría',
+            error instanceof ApiError ? error.message : 'Inténtalo de nuevo en un momento.',
+          );
+        },
+      },
     );
   };
 
@@ -138,6 +170,12 @@ export default function TransactionDetailScreen() {
               `Se actualizaron ${detail.recategorizedCount} movimiento${detail.recategorizedCount === 1 ? '' : 's'} anterior${detail.recategorizedCount === 1 ? '' : 'es'} a "${detail.categoryName ?? ''}".`,
             );
           }
+        },
+        onError: (error) => {
+          Alert.alert(
+            'No pudimos guardar la categoría',
+            error instanceof ApiError ? error.message : 'Inténtalo de nuevo en un momento.',
+          );
         },
       },
     );
@@ -177,9 +215,53 @@ export default function TransactionDetailScreen() {
     Alert.alert(`Aplicar automáticamente: "${preview.pattern}" → ${category.name}`, message, buttons);
   };
 
+  // Categorías personalizadas: "+ Nueva" abre la hoja en modo crear; el
+  // lápiz de una categoría propia la abre en modo editar. Una vez creada,
+  // se elige de inmediato para este movimiento -- reutiliza chooseCategory,
+  // así que sigue pasando por el mismo preview/confirmación de siempre.
+  const openCreateCategory = () => {
+    setCategoryFormError(null);
+    setCategoryFormTarget(null);
+    setCategoryFormVisible(true);
+  };
+
+  const openEditCategory = (category: Category) => {
+    setCategoryFormError(null);
+    setCategoryFormTarget(category);
+    setCategoryFormVisible(true);
+  };
+
+  const submitCategoryForm = (input: { name: string; icon: string; color: string }) => {
+    setCategoryFormError(null);
+
+    if (categoryFormTarget) {
+      updateCategory.mutate(
+        { id: categoryFormTarget.id, ...input },
+        {
+          onSuccess: () => setCategoryFormVisible(false),
+          onError: (error) => {
+            setCategoryFormError(error instanceof ApiError ? error.message : 'No se pudo guardar la categoría.');
+          },
+        },
+      );
+      return;
+    }
+
+    createCategory.mutate(input, {
+      onSuccess: (created) => {
+        setCategoryFormVisible(false);
+        chooseCategory(created);
+      },
+      onError: (error) => {
+        setCategoryFormError(error instanceof ApiError ? error.message : 'No se pudo crear la categoría.');
+      },
+    });
+  };
+
   const categorySourceHint = categorySourceLabel[data.categorySource];
 
   return (
+    <>
     <Screen>
       <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back}>
         <Ionicons name="chevron-back" size={20} color={colors.text} />
@@ -226,6 +308,16 @@ export default function TransactionDetailScreen() {
               onPress={() => resolveDuplicate.mutate(false)}
             />
           </View>
+        </View>
+      ) : null}
+
+      {/* §10: "¿Qué pasó con estos $100?" -- solo cuando el detector cree que es un
+          retiro y todavía nadie ha decidido. La tarjeta es la MISMA que la bandeja
+          "Por revisar", para que la pregunta se vea igual la encuentre donde la
+          encuentre. */}
+      {withdrawalCandidate ? (
+        <View style={styles.withdrawalBlock}>
+          <WithdrawalCard candidate={withdrawalCandidate} />
         </View>
       ) : null}
 
@@ -284,24 +376,15 @@ export default function TransactionDetailScreen() {
             ) : null}
           </Card>
         ) : (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryList}>
-            {rulePreview.isPending ? <ActivityIndicator color={colors.textSecondary} style={styles.categoryLoading} /> : null}
-            {(categories ?? []).map((category) => (
-              <Pressable
-                key={category.id}
-                disabled={rulePreview.isPending || setCategory.isPending}
-                onPress={() => chooseCategory(category)}
-                style={[
-                  styles.categoryChip,
-                  data.categoryId === category.id ? styles.categoryChipSelected : null,
-                ]}
-              >
-                <Typo variant="caption" color={data.categoryId === category.id ? colors.onPrimary : colors.text}>
-                  {category.name}
-                </Typo>
-              </Pressable>
-            ))}
-          </ScrollView>
+          <CategoryChipList
+            categories={categories ?? []}
+            selectedId={data.categoryId}
+            onSelect={chooseCategory}
+            onCreateNew={openCreateCategory}
+            onEdit={openEditCategory}
+            disabled={rulePreview.isPending || setCategory.isPending}
+            loading={rulePreview.isPending}
+          />
         )}
       </View>
 
@@ -368,6 +451,16 @@ export default function TransactionDetailScreen() {
         ) : null}
       </View>
     </Screen>
+
+    <CategoryFormSheet
+      visible={categoryFormVisible}
+      category={categoryFormTarget}
+      onClose={() => setCategoryFormVisible(false)}
+      onSubmit={submitCategoryForm}
+      submitting={createCategory.isPending || updateCategory.isPending}
+      errorMessage={categoryFormError}
+    />
+    </>
   );
 }
 
@@ -389,6 +482,9 @@ function Divider() {
 }
 
 const styles = StyleSheet.create({
+  withdrawalBlock: {
+    marginBottom: spacing.lg,
+  },
   back: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -452,26 +548,6 @@ const styles = StyleSheet.create({
   },
   categorySourceHint: {
     marginTop: spacing.xs,
-  },
-  categoryList: {
-    gap: spacing.sm,
-    paddingRight: spacing.lg,
-    alignItems: 'center',
-  },
-  categoryLoading: {
-    marginRight: spacing.sm,
-  },
-  categoryChip: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm + 2,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  categoryChipSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
   },
   noteInput: {
     backgroundColor: colors.surface,

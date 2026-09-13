@@ -81,6 +81,17 @@ public sealed class AccountService(INexoDbContext db, IClock clock) : IAccountSe
         var now = clock.UtcNow;
         var order = await db.FinancialAccounts.CountAsync(a => a.UserId == userId, cancellationToken);
 
+        // Onboarding funcional: "primera cuenta agregada" is a fact about the
+        // account, not about which screen created it -- this fires the same way
+        // whether it came from the onboarding flow or from Cuentas → Agregar
+        // cuenta later. Guarded by `order == 0` so an already-onboarded user
+        // adding their fifth account never pays for the extra lookup.
+        if (order == 0)
+        {
+            var owner = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+            owner?.RecordFirstAccountAdded(now);
+        }
+
         var account = FinancialAccount.Open(
             userId,
             provider,

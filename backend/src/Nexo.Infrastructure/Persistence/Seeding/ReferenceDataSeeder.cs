@@ -49,6 +49,14 @@ public sealed class ReferenceDataSeeder(NexoDbContext db, IClock clock, ILogger<
                 [ConnectionMode.ManualImport], now, "GENERIC_V1", "#00C2A8", "payphone", 6),
             Provider.Create(ProviderCodes.PeiGo, "PeiGo", "PeiGo", ProviderKind.Wallet,
                 [ConnectionMode.ManualImport], now, "GENERIC_V1", "#FF5A36", "peigo", 7),
+            // Registro rápido de efectivo: el dinero en el bolsillo entra al modelo
+            // como un proveedor más para no necesitar ni una sola rama especial en
+            // saldos, Home, Movimientos o Estadísticas. Su único modo es Manual, así
+            // que jamás ofrece importar un archivo ni conectar un correo, y no tiene
+            // parser de estados de cuenta (statementParserCode queda en null a
+            // propósito: no existe un "estado de cuenta del efectivo").
+            Provider.Create(ProviderCodes.Cash, "Efectivo", "Efectivo", ProviderKind.Wallet,
+                [ConnectionMode.Manual], now, null, "#C7F36B", "efectivo", 0),
             Provider.Create(ProviderCodes.Other, "Otra institución", "Otra", ProviderKind.Bank,
                 [ConnectionMode.ManualImport], now, "GENERIC_V1", "#74766F", null, 99),
         };

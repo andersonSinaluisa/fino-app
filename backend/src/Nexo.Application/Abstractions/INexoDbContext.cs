@@ -7,6 +7,7 @@ using Nexo.Domain.Imports;
 using Nexo.Domain.Insights;
 using Nexo.Domain.Notifications;
 using Nexo.Domain.Providers;
+using Nexo.Domain.Pulses;
 using Nexo.Domain.Transactions;
 using Nexo.Domain.Users;
 
@@ -49,6 +50,9 @@ public interface INexoDbContext
     DbSet<Device> Devices { get; }
 
     DbSet<Notification> Notifications { get; }
+
+    /// <summary>PULSO: proactive, explainable observations. See FinancialPulse's remarks.</summary>
+    DbSet<FinancialPulse> Pulses { get; }
 
     DbSet<AuditLogEntry> AuditLog { get; }
 

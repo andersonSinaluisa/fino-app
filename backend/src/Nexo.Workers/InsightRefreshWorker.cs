@@ -17,6 +17,18 @@ public sealed class WorkerOptions
 
     public int InsightRefreshHours { get; set; } = 6;
 
+    /// <summary>PULSO FASE 1: how often PulseEvaluationWorker re-runs PulseEngine for every active user.</summary>
+    public int PulseEvaluationHours { get; set; } = 4;
+
+    /// <summary>
+    /// PULSO: dev-only escape hatch. When set, PulseEvaluationWorker uses this as its
+    /// raw interval in seconds instead of <see cref="PulseEvaluationHours"/> and skips
+    /// that field's 1-hour floor -- so appsettings.Development.json can make a pass run
+    /// every 30-60s while testing rules end-to-end instead of waiting out the production
+    /// cadence. Null (the default, and always in Production) leaves normal behavior alone.
+    /// </summary>
+    public int? PulseEvaluationIntervalSeconds { get; set; }
+
     /// <summary>Days between "delete my account" and the irreversible erase.</summary>
     public int AccountDeletionGraceDays { get; set; } = 7;
 }

@@ -8,7 +8,8 @@ namespace Nexo.Domain.Tests;
 /// record (always written, regardless of push); <see cref="Device"/> carries the
 /// five independent preference toggles the spec asks for (Movimientos, Ingresos,
 /// Insights, Seguridad, Recordatorios) plus the two device-level switches that
-/// predate this entregable (PushEnabled, ShowAmountsInPreview).
+/// predate this entregable (PushEnabled, ShowAmountsInPreview). PULSO FASE 3
+/// adds a sixth category (Pulso) and the "no molestar" quiet-hours window.
 /// </summary>
 public class NotificationTests
 {
@@ -66,6 +67,12 @@ public class NotificationTests
         Assert.True(device.NotifyOnInsights);
         Assert.True(device.NotifyOnSecurity);
         Assert.True(device.NotifyOnReminders);
+        // PULSO FASE 3: Pulso is the sixth category, on by default like the
+        // other five; quiet hours are off by default (both null) since nobody
+        // has chosen a window yet.
+        Assert.True(device.NotifyOnPulses);
+        Assert.Null(device.QuietHoursStartHour);
+        Assert.Null(device.QuietHoursEndHour);
         Assert.Equal(Now, device.LastSeenAt);
     }
 
@@ -74,7 +81,7 @@ public class NotificationTests
     {
         var device = Device.Register(User, "ExponentPushToken[abc]", DevicePlatform.Ios, Now);
 
-        // Only Seguridad stays on -- proves the five categories are independent,
+        // Only Seguridad stays on -- proves the six categories are independent,
         // not one shared "notifications on/off" switch.
         device.UpdatePreferences(
             pushEnabled: true,
@@ -84,6 +91,9 @@ public class NotificationTests
             notifyOnInsights: false,
             notifyOnSecurity: true,
             notifyOnReminders: false,
+            notifyOnPulses: false,
+            quietHoursStartHour: null,
+            quietHoursEndHour: null,
             now: Now.AddMinutes(5));
 
         Assert.False(device.NotifyOnMovements);
@@ -91,13 +101,14 @@ public class NotificationTests
         Assert.False(device.NotifyOnInsights);
         Assert.True(device.NotifyOnSecurity);
         Assert.False(device.NotifyOnReminders);
+        Assert.False(device.NotifyOnPulses);
     }
 
     [Fact]
     public void Touching_a_device_updates_last_seen_without_resetting_preferences()
     {
         var device = Device.Register(User, "ExponentPushToken[abc]", DevicePlatform.Web, Now);
-        device.UpdatePreferences(true, false, true, false, true, false, true, Now.AddMinutes(1));
+        device.UpdatePreferences(true, false, true, false, true, false, true, true, null, null, Now.AddMinutes(1));
 
         device.Touch("2.3.0", Now.AddDays(1));
 
@@ -107,5 +118,47 @@ public class NotificationTests
         // reset what the person already chose.
         Assert.False(device.ShowAmountsInPreview);
         Assert.False(device.NotifyOnIncome);
+    }
+
+    [Fact]
+    public void Setting_a_quiet_hours_window_persists_start_and_end()
+    {
+        var device = Device.Register(User, "ExponentPushToken[abc]", DevicePlatform.Android, Now);
+
+        device.UpdatePreferences(true, true, true, true, true, true, true, true, 22, 7, Now.AddMinutes(5));
+
+        Assert.Equal(22, device.QuietHoursStartHour);
+        Assert.Equal(7, device.QuietHoursEndHour);
+    }
+
+    [Theory]
+    [InlineData(22, null)]
+    [InlineData(null, 7)]
+    public void A_quiet_hours_window_needs_both_a_start_and_an_end(int? start, int? end)
+    {
+        var device = Device.Register(User, "ExponentPushToken[abc]", DevicePlatform.Android, Now);
+
+        Assert.Throws<Nexo.Domain.Common.DomainException>(() =>
+            device.UpdatePreferences(true, true, true, true, true, true, true, true, start, end, Now.AddMinutes(5)));
+    }
+
+    [Theory]
+    [InlineData(-1, 7)]
+    [InlineData(22, 24)]
+    public void A_quiet_hours_hour_outside_0_to_23_is_rejected(int? start, int? end)
+    {
+        var device = Device.Register(User, "ExponentPushToken[abc]", DevicePlatform.Android, Now);
+
+        Assert.Throws<Nexo.Domain.Common.DomainException>(() =>
+            device.UpdatePreferences(true, true, true, true, true, true, true, true, start, end, Now.AddMinutes(5)));
+    }
+
+    [Fact]
+    public void A_quiet_hours_window_cannot_start_and_end_at_the_same_hour()
+    {
+        var device = Device.Register(User, "ExponentPushToken[abc]", DevicePlatform.Android, Now);
+
+        Assert.Throws<Nexo.Domain.Common.DomainException>(() =>
+            device.UpdatePreferences(true, true, true, true, true, true, true, true, 9, 9, Now.AddMinutes(5)));
     }
 }

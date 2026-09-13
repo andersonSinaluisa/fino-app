@@ -10,6 +10,15 @@ public enum AccountType
     CreditCard = 2,
     Wallet = 3,
     Other = 4,
+
+    /// <summary>
+    /// Registro rápido de efectivo: dinero físico. Se comporta como cualquier
+    /// otra cuenta (mueve saldo, aparece en Home, Movimientos y Estadísticas);
+    /// lo único propio es que su saldo solo puede venir de movimientos escritos
+    /// a mano, así que nunca llega a ser <see cref="BalanceType.Verified"/> por
+    /// una importación -- solo porque la persona contó su efectivo y lo dijo.
+    /// </summary>
+    Cash = 5,
 }
 
 /// <summary>
@@ -181,6 +190,17 @@ public sealed class FinancialAccount : Entity, IUserOwned
     public void Archive(DateTimeOffset now)
     {
         IsArchived = true;
+        Stamp(now);
+    }
+
+    /// <summary>
+    /// Registro rápido de efectivo: volver a usar una cuenta archivada la reabre
+    /// con su historial y su saldo intactos. Archivar nunca borró nada, así que
+    /// esto no reconstruye ni recalcula: solo la vuelve a hacer visible.
+    /// </summary>
+    public void Unarchive(DateTimeOffset now)
+    {
+        IsArchived = false;
         Stamp(now);
     }
 

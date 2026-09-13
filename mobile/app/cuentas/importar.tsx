@@ -9,7 +9,28 @@ import { Badge, Button, Card, Screen, SectionHeader, Typo } from '../../componen
 import { api } from '../../services/endpoints';
 import { ApiError } from '../../services/apiClient';
 import { devLog, serializeError } from '../../services/devLog';
-import { useCancelImport, useRefreshAfterImport } from '../../hooks/queries';
+import {
+  useAccount,
+  useCancelImport,
+  useRefreshAfterImport,
+  useSkipOnboarding,
+  useWithdrawalScan,
+} from '../../hooks/queries';
+import { useAuthStore } from '../../store/authStore';
+import { getBankImportConfig } from '../../lib/bankTutorials';
+import { ImportProcessingReveal } from '../../components/onboarding/ImportProcessingReveal';
+import { OnboardingTopBar } from '../../components/onboarding/OnboardingTopBar';
+import { SkipOnboardingSheet } from '../../components/onboarding/SkipOnboardingSheet';
+import {
+  AnalyticsEvent,
+  AnalyticsSource,
+  ErrorReason,
+  toCountBucket,
+  toDurationBucket,
+  toFileFormat,
+  track,
+  trackOnce,
+} from '../../services/analytics';
 import { formatCurrency, formatDayHeading } from '../../utils/format';
 import { ACCEPTED_EXTENSIONS, extensionOf, guessMimeType } from '../../lib/importFileTypes';
 import type { ImportPreview, ImportResult, ManualColumnMapping } from '../../types/api';
@@ -167,13 +188,29 @@ export default function ImportScreen() {
   // sharedUri/sharedName come from app/compartir.tsx (the fino:///compartir
   // share-sheet hand-off) -- present only when this screen was reached by
   // sharing a file into Fino instead of tapping "Elegir archivo" below.
-  const { accountId, sharedUri, sharedName } = useLocalSearchParams<{
+  const { accountId, sharedUri, sharedName, onboarding, bankId } = useLocalSearchParams<{
     accountId: string;
     sharedUri?: string;
     sharedName?: string;
+    onboarding?: string;
+    bankId?: string;
   }>();
+  // Onboarding funcional: esta pantalla es la MISMA para el onboarding inicial
+  // y para "Cuentas → Agregar cuenta" -- `onboarding=1` solo cambia copy y el
+  // destino final, nunca la lógica de subida/preview/confirmación de abajo.
+  const isOnboarding = onboarding === '1';
+  const bankConfig = bankId ? getBankImportConfig(bankId) : null;
+  const setOnboarding = useAuthStore((state) => state.setOnboarding);
+  const skipOnboarding = useSkipOnboarding();
+  const [skipSheetVisible, setSkipSheetVisible] = useState(false);
   const refreshAfterImport = useRefreshAfterImport();
   const cancelImport = useCancelImport();
+  // Detección de "banco distinto": el resolver del backend ya prueba TODOS
+  // los parsers si el sugerido no reconoce el archivo (StatementParserResolver),
+  // así que un archivo de otro banco ya se importa bien -- lo único que falta
+  // es avisar, en vez de dejar que "· PICHINCHA" junto a la cuenta de
+  // Guayaquil se lea como un error.
+  const { data: account } = useAccount(accountId);
 
   // Arriving with a shared file already known (sharedUri/sharedName) skips
   // the "Elegir archivo" screen entirely -- starting on 'working' avoids a
@@ -181,6 +218,8 @@ export default function ImportScreen() {
   const [step, setStep] = useState<Step>(sharedUri && sharedName ? 'working' : 'pick');
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
+  // §8: se activa sola cuando hay un importId, así que no añade una espera al flujo.
+  const withdrawalScan = useWithdrawalScan(result?.importId);
   const [error, setError] = useState<string | null>(null);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
 
@@ -237,6 +276,16 @@ export default function ImportScreen() {
     setRoleColumns(EMPTY_ROLE_COLUMNS);
     setStep('working');
 
+    // Antes esto solo se medía dentro del onboarding, así que una
+    // importación hecha desde Cuentas no existía para analytics y
+    // "% de usuarios que importan" salía sistemáticamente bajo. Ahora se
+    // mide siempre y es `source` quien distingue el contexto.
+    const analyticsSource = isOnboarding ? AnalyticsSource.Onboarding : AnalyticsSource.Accounts;
+    const fileFormat = toFileFormat(asset.name);
+    importStartedAtRef.current = Date.now();
+
+    track(AnalyticsEvent.ImportStarted, { source: analyticsSource, fileFormat });
+
     try {
       devLog(LOG_TAG, 'upload_start', { name: asset.name, mimeType: asset.mimeType, size: asset.size });
       const response = await api.imports.upload(accountId, asset);
@@ -248,6 +297,12 @@ export default function ImportScreen() {
       if (response.status === 'Failed') {
         devLog(LOG_TAG, 'backend_reported_failed', { failureReason: response.failureReason });
         setError(response.failureReason ?? 'No pudimos leer el archivo.');
+        track(AnalyticsEvent.ImportFailed, {
+          source: analyticsSource,
+          fileFormat,
+          reason: ErrorReason.ParserFailed,
+          durationBucket: elapsedImportBucket(),
+        });
       }
     } catch (uploadError) {
       devLog(LOG_TAG, 'upload_failed', {
@@ -260,6 +315,17 @@ export default function ImportScreen() {
           ? uploadError.message
           : 'No pudimos subir el archivo. Si el problema sigue, prueba eligiéndolo de nuevo desde otra app.',
       );
+      track(AnalyticsEvent.ImportFailed, {
+        source: analyticsSource,
+        fileFormat,
+        reason:
+          uploadError instanceof ApiError
+            ? uploadError.status >= 500
+              ? ErrorReason.ServerError
+              : ErrorReason.UploadError
+            : ErrorReason.NetworkError,
+        durationBucket: elapsedImportBucket(),
+      });
       setStep('pick');
     }
   };
@@ -271,6 +337,17 @@ export default function ImportScreen() {
   // exact same resolvePickedFile() gate a manual pick goes through -- same
   // extension whitelist, same "did the copy actually land" check.
   const sharedHandledRef = useRef(false);
+
+  /**
+   * §18: cuánto tardó la importación, en tramos. El milisegundo exacto no
+   * responde ninguna pregunta que el tramo no responda, y combinado con la
+   * hora del evento sería casi un identificador.
+   */
+  const importStartedAtRef = useRef<number | null>(null);
+  const elapsedImportBucket = () =>
+    importStartedAtRef.current === null
+      ? undefined
+      : toDurationBucket(Date.now() - importStartedAtRef.current);
 
   useEffect(() => {
     if (sharedHandledRef.current || !sharedUri || !sharedName || !accountId) {
@@ -315,6 +392,9 @@ export default function ImportScreen() {
     // below is what actually checks whether that copy produced a real file,
     // so a broken provider gets a specific, actionable message instead of a
     // generic upload failure three steps later.
+    track(AnalyticsEvent.FilePickerOpened, {
+      source: isOnboarding ? AnalyticsSource.Onboarding : AnalyticsSource.Accounts,
+    });
     devLog(LOG_TAG, 'picker_open', { acceptedTypes: ACCEPTED_TYPES, platform: Platform.OS });
 
     let picked: DocumentPicker.DocumentPickerResult;
@@ -458,6 +538,32 @@ export default function ImportScreen() {
       setResult(confirmation);
       refreshAfterImport();
       setStep('done');
+
+      // "import_completed" es la métrica principal del spec (tasa de primera
+      // importación exitosa). El conteo viaja BUCKETIZADO: el número exacto de
+      // movimientos de un estado de cuenta es un dato de esa persona, y el
+      // tramo responde igual de bien "¿importan archivos grandes o pequeños?".
+      track(AnalyticsEvent.ImportCompleted, {
+        source: isOnboarding ? AnalyticsSource.Onboarding : AnalyticsSource.Accounts,
+        sourceType: 'bank_statement',
+        fileFormat: toFileFormat(pickedAsset?.name),
+        transactionCountBucket: toCountBucket(confirmation.importedCount),
+        durationBucket: elapsedImportBucket(),
+      });
+
+      void trackOnce(AnalyticsEvent.FirstImportCompleted, {
+        fileFormat: toFileFormat(pickedAsset?.name),
+      });
+
+      if (isOnboarding) {
+        track(AnalyticsEvent.OnboardingCompleted);
+        // El backend ya marcó "primera importación completada" al confirmar
+        // (ImportService.ConfirmAsync) -- esto solo refresca la sesión en
+        // memoria para que un cierre de la app justo aquí no vuelva a mostrar
+        // el onboarding. Sin bloquear: si falla, se reconcilia en el próximo
+        // login.
+        void api.onboarding.get().then(setOnboarding).catch(() => undefined);
+      }
     } catch (confirmError) {
       setError(confirmError instanceof ApiError ? confirmError.message : 'No pudimos importar los movimientos.');
       setStep('preview');
@@ -476,21 +582,36 @@ export default function ImportScreen() {
     });
   };
 
+  const confirmSkip = () => {
+    skipOnboarding.mutate(undefined, {
+      onSuccess: () => router.replace('/(tabs)'),
+    });
+  };
+
   return (
     <Screen>
-      <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back}>
-        <Ionicons name="close" size={20} color={colors.text} />
-        <Typo variant="caption" color={colors.textSecondary}>
-          Cerrar
-        </Typo>
-      </Pressable>
+      {isOnboarding && step !== 'done' ? (
+        <OnboardingTopBar
+          stage="importa"
+          onBack={() => router.back()}
+          onSkip={() => setSkipSheetVisible(true)}
+        />
+      ) : isOnboarding ? null : (
+        <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back}>
+          <Ionicons name="close" size={20} color={colors.text} />
+          <Typo variant="caption" color={colors.textSecondary}>
+            Cerrar
+          </Typo>
+        </Pressable>
+      )}
 
       {step === 'pick' ? (
         <View style={styles.block}>
-          <Typo variant="title">Importar movimientos</Typo>
+          <Typo variant="title">{isOnboarding ? 'Elige el archivo' : 'Importar movimientos'}</Typo>
           <Typo variant="body" color={colors.textSecondary}>
-            Sube el estado de cuenta que descargaste de tu banco. Aceptamos CSV y XLSX.
-            Te mostramos todo antes de guardar nada.
+            {isOnboarding
+              ? `Busca el archivo que descargaste de ${bankConfig?.displayName ?? 'tu banco'}. Te mostramos todo antes de guardar nada.`
+              : 'Sube el estado de cuenta que descargaste de tu banco. Aceptamos CSV y XLSX. Te mostramos todo antes de guardar nada.'}
           </Typo>
 
           {error ? (
@@ -516,20 +637,26 @@ export default function ImportScreen() {
         <View style={styles.working}>
           <ActivityIndicator color={colors.textSecondary} />
           <Typo variant="body" color={colors.textSecondary}>
-            Procesando tu archivo…
+            {isOnboarding ? 'Leyendo tu archivo…' : 'Procesando tu archivo…'}
           </Typo>
         </View>
       ) : null}
 
       {step === 'preview' && preview ? (
         <View style={styles.block}>
-          <Typo variant="title">
-            {preview.status === 'Failed' ? 'No pudimos leerlo' : `Encontramos ${preview.totalRows} movimientos`}
-          </Typo>
-          <Typo variant="caption" color={colors.textSecondary}>
-            {preview.fileName}
-            {preview.parserCode ? `  ·  ${preview.parserCode}` : ''}
-          </Typo>
+          {isOnboarding ? (
+            <ImportProcessingReveal preview={preview} bankTitle={bankConfig?.displayName ?? 'tu banco'} />
+          ) : (
+            <>
+              <Typo variant="title">
+                {preview.status === 'Failed' ? 'No pudimos leerlo' : `Encontramos ${preview.totalRows} movimientos`}
+              </Typo>
+              <Typo variant="caption" color={colors.textSecondary}>
+                {preview.fileName}
+                {preview.parserCode ? `  ·  ${preview.parserCode}` : ''}
+              </Typo>
+            </>
+          )}
 
           {preview.status === 'Failed' ? (
             <>
@@ -546,6 +673,17 @@ export default function ImportScreen() {
             </>
           ) : (
             <>
+              {account && preview.detectedProviderCode && preview.detectedProviderCode !== account.providerCode ? (
+                <View style={styles.noticeBox}>
+                  <Ionicons name="swap-horizontal-outline" size={17} color={colors.warning} />
+                  <Typo variant="caption" color={colors.textSecondary} style={styles.flex}>
+                    Este archivo parece ser de{' '}
+                    {getBankImportConfig(preview.detectedProviderCode)?.displayName ?? preview.detectedProviderCode},
+                    no de {account.providerName}. Lo importamos igual, usando el formato correcto.
+                  </Typo>
+                </View>
+              ) : null}
+
               <View style={styles.summaryRow}>
                 <Summary label="Ingresos" value={formatCurrency(preview.incomeTotal)} tone={colors.success} />
                 <Summary label="Gastos" value={formatCurrency(preview.expenseTotal)} tone={colors.text} />
@@ -720,7 +858,7 @@ export default function ImportScreen() {
             <Ionicons name="checkmark" size={26} color={colors.onAccent} />
           </View>
 
-          <Typo variant="title">Listo</Typo>
+          <Typo variant="title">{isOnboarding ? 'Fino ya tiene tus movimientos' : 'Listo'}</Typo>
           <Typo variant="body" color={colors.textSecondary}>
             Importamos {result.importedCount} movimiento(s).
             {result.upgradedCount > 0
@@ -739,9 +877,45 @@ export default function ImportScreen() {
             </Typo>
           </Card>
 
-          <Button label="Ver mis movimientos" onPress={() => router.replace('/(tabs)/movimientos')} />
+          {/* §8: "Encontramos 3 posibles retiros [Revisar]". Se consulta DESPUÉS de
+              importar y no bloquea nada: la importación ya terminó y fue un éxito,
+              esto es solo una invitación a revisar cuando quiera. */}
+          {withdrawalScan.data && withdrawalScan.data.candidateCount > 0 ? (
+            <Card tone="secondary">
+              <View style={styles.withdrawalNotice}>
+                <Ionicons name="cash-outline" size={18} color={colors.text} />
+                <Typo variant="body" style={styles.withdrawalNoticeText}>
+                  {withdrawalScan.data.candidateCount === 1
+                    ? 'Encontramos 1 posible retiro en efectivo.'
+                    : `Encontramos ${withdrawalScan.data.candidateCount} posibles retiros en efectivo.`}
+                </Typo>
+              </View>
+              <Typo variant="caption" color={colors.textSecondary}>
+                Si ese dinero pasó a tu efectivo, no debería contar como gasto.
+              </Typo>
+              <Button
+                label="Revisar retiros"
+                variant="secondary"
+                compact
+                fullWidth={false}
+                onPress={() => router.push('/transferencias')}
+              />
+            </Card>
+          ) : null}
+
+          <Button
+            label={isOnboarding ? 'Ver mi dinero' : 'Ver mis movimientos'}
+            onPress={() => router.replace(isOnboarding ? '/(tabs)' : '/(tabs)/movimientos')}
+          />
         </View>
       ) : null}
+
+      <SkipOnboardingSheet
+        visible={skipSheetVisible}
+        loading={skipOnboarding.isPending}
+        onDismiss={() => setSkipSheetVisible(false)}
+        onConfirmSkip={confirmSkip}
+      />
     </Screen>
   );
 }
@@ -775,6 +949,14 @@ function StepHint({ index, label }: { index: number; label: string }) {
 }
 
 const styles = StyleSheet.create({
+  withdrawalNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  withdrawalNoticeText: {
+    flex: 1,
+  },
   flex: { flex: 1 },
   back: {
     flexDirection: 'row',

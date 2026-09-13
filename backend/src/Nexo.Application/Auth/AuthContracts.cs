@@ -6,13 +6,31 @@ public sealed record LoginRequest(string Email, string Password);
 
 public sealed record RefreshRequest(string RefreshToken);
 
+/// <summary>
+/// Onboarding funcional (rediseño post-login): the five independent milestones
+/// the client needs to decide where to resume after the app was closed
+/// mid-flow. See User's own remarks on the fields this mirrors for why it is
+/// five timestamps and not one boolean.
+/// </summary>
+public sealed record OnboardingStatusDto(
+    DateTimeOffset? StartedAt,
+    DateTimeOffset? TutorialCompletedAt,
+    DateTimeOffset? SkippedAt,
+    DateTimeOffset? FirstAccountAddedAt,
+    DateTimeOffset? FirstImportCompletedAt)
+{
+    /// <summary>True once there is real financial data to show -- the one signal Home actually needs ("show me the empty state or not"), computed here so the client never has to reimplement it.</summary>
+    public bool HasImportedData => FirstImportCompletedAt is not null;
+}
+
 public sealed record AuthenticatedUser(
     Guid Id,
     string Email,
     string DisplayName,
     string TimeZoneId,
     string Currency,
-    string Locale);
+    string Locale,
+    OnboardingStatusDto Onboarding);
 
 /// <summary>
 /// <c>AccountDeletionCancelled</c> (Entregable 22, "Privacidad completa") is

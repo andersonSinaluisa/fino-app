@@ -1,14 +1,14 @@
-import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Modal, Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../theme';
-import { Badge, Card, EmptyState, Screen, Skeleton, SkeletonCard, Typo } from '../../components/ui';
+import { Button, Card, EmptyState, Input, Screen, SelectSheet, Skeleton, SkeletonCard, Typo } from '../../components/ui';
+import { IncomeExpenseChart, type IncomeExpenseMode } from '../../components/analytics/IncomeExpenseChart';
+import { CategoryTrendList } from '../../components/analytics/CategoryTrendList';
 import { useAccounts, useAnalyticsDashboard } from '../../hooks/queries';
 import { usePreferencesStore } from '../../store/preferencesStore';
-import { formatCompactCurrency, formatCurrency, formatPeriodChange } from '../../utils/format';
-import { iconForCategory } from '../../utils/categoryIcons';
+import { formatCompactCurrency, formatCurrency, formatPeriodChange, parseDateInput } from '../../utils/format';
 import type {
-  AnalyticsDashboard,
   AnalyticsPeriodCode,
   AnalyticsSeriesPoint,
   BalancePoint,
@@ -17,43 +17,89 @@ import type {
   MerchantRanking,
   MonthlyHistoryItem,
   RecurringPayment,
+  WeekdayWeekend,
 } from '../../types/api';
+import { AnalyticsEvent, track } from '../../services/analytics';
 
 const PERIODS: { code: AnalyticsPeriodCode; label: string }[] = [
   { code: 'month', label: 'Este mes' },
   { code: 'last_month', label: 'Mes anterior' },
   { code: 'last_3_months', label: 'Últimos 3 meses' },
-  { code: 'last_6_months', label: '6 meses' },
-  { code: 'year', label: 'Año' },
+  { code: 'last_6_months', label: 'Últimos 6 meses' },
+  { code: 'year', label: 'Este año' },
+  { code: 'custom', label: 'Personalizado' },
 ];
 
-type DetailMode = 'weekly' | 'monthly';
+interface CustomRange {
+  from: string;
+  to: string;
+}
 
+/**
+ * Rediseño de Estadísticas (2026-09): la pantalla sigue siendo la más
+ * completa de FINO -- ningún dato se eliminó -- pero ahora explica primero
+ * ("¿cómo me fue?") y deja profundizar después, en vez de competir todo al
+ * mismo nivel. Reutiliza los mismos hooks y campos reales de
+ * AnalyticsDashboard que ya usaba la versión anterior; lo que cambia es la
+ * composición visual y qué tan prominente es cada dato.
+ */
 export default function StatisticsScreen() {
   const hidden = usePreferencesStore((state) => state.amountsHidden);
   const [period, setPeriod] = useState<AnalyticsPeriodCode>('month');
   const [accountId, setAccountId] = useState<string | undefined>(undefined);
-  const [detailMode, setDetailMode] = useState<DetailMode>('weekly');
+  const [detailMode, setDetailMode] = useState<IncomeExpenseMode>('weekly');
+  const [customRange, setCustomRange] = useState<CustomRange | null>(null);
+
+  const [periodSheetOpen, setPeriodSheetOpen] = useState(false);
+  const [accountSheetOpen, setAccountSheetOpen] = useState(false);
+  const [customRangeOpen, setCustomRangeOpen] = useState(false);
 
   const { data: accounts } = useAccounts();
-  const { data, isLoading, isError, refetch, isRefetching } = useAnalyticsDashboard({ period, accountId });
+  const { data, isLoading, isError, refetch, isRefetching } = useAnalyticsDashboard({
+    period,
+    accountId,
+    from: period === 'custom' ? customRange?.from : undefined,
+    to: period === 'custom' ? customRange?.to : undefined,
+  });
 
   const selectedAccount = accounts?.find((account) => account.id === accountId);
-  const score = useMemo(() => financialScore(data), [data]);
+  const accountLabel = selectedAccount?.alias ?? 'Todas las cuentas';
+
+  /**
+   * §16: adopción de Estadísticas. `hasData` separa "la abrió y vio algo" de
+   * "la abrió y estaba vacía" -- son dos conclusiones muy distintas sobre si
+   * la función sirve. Ni el periodo concreto ni la cuenta elegida salen aquí.
+   */
+  const hasStatistics = Boolean(data && !isError);
+
+  useEffect(() => {
+    if (isLoading) {
+      return;
+    }
+
+    track(AnalyticsEvent.StatisticsViewed, { period, hasData: hasStatistics });
+    // Solo al cargar o al cambiar de periodo, no en cada render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, hasStatistics, period]);
+  const periodButtonLabel =
+    period === 'custom' && customRange
+      ? `${shortRangeDate(customRange.from)} - ${shortRangeDate(customRange.to)}`
+      : (PERIODS.find((item) => item.code === period)?.label ?? 'Periodo');
+
+  const previousMonthLabel =
+    period === 'month' && data && data.monthlyHistory.length >= 2
+      ? data.monthlyHistory[data.monthlyHistory.length - 2]!.monthLabel
+      : undefined;
+  const expenseComparison = data ? formatPeriodChange(data.kpis.expenseChangePercent, previousMonthLabel) : null;
 
   return (
     <Screen refreshing={isRefetching} onRefresh={() => void refetch()}>
       <View style={styles.header}>
         <View style={styles.headerTitleRow}>
           <View style={styles.headerTitle}>
-            <View style={styles.inline}>
-              <Typo variant="heading">Dashboard financiero</Typo>
-              <View style={styles.statusDot}>
-                <Ionicons name="checkmark" size={10} color={colors.onAccent} />
-              </View>
-            </View>
+            <Typo variant="heading">Estadísticas</Typo>
             <Typo variant="caption" color={colors.textSecondary}>
-              Analítica transparente de tu dinero
+              Entiende qué está pasando con tu dinero
             </Typo>
           </View>
           <View style={styles.avatar}>
@@ -61,31 +107,74 @@ export default function StatisticsScreen() {
           </View>
         </View>
 
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-          {PERIODS.map((item) => (
-            <SegmentChip
-              key={item.code}
-              label={item.label}
-              selected={period === item.code}
-              onPress={() => setPeriod(item.code)}
-            />
-          ))}
-        </ScrollView>
+        <View style={styles.filterRow}>
+          <FilterButton label={periodButtonLabel} onPress={() => setPeriodSheetOpen(true)} />
+          {accounts && accounts.length > 1 ? (
+            <FilterButton label={accountLabel} onPress={() => setAccountSheetOpen(true)} />
+          ) : null}
+        </View>
 
-        {accounts && accounts.length > 1 ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-            <SegmentChip label="Todas las cuentas" selected={!accountId} onPress={() => setAccountId(undefined)} />
-            {accounts.map((account) => (
-              <SegmentChip
-                key={account.id}
-                label={account.alias}
-                selected={accountId === account.id}
-                onPress={() => setAccountId(account.id)}
-              />
-            ))}
-          </ScrollView>
+        {data ? (
+          <Typo variant="caption" color={colors.textSecondary}>
+            {data.period.label} · {accountLabel}
+          </Typo>
         ) : null}
       </View>
+
+      <SelectSheet
+        visible={periodSheetOpen}
+        title="Periodo"
+        options={PERIODS.map((item) => ({ value: item.code as AnalyticsPeriodCode | undefined, label: item.label }))}
+        selectedValue={period}
+        onSelect={(value) => {
+          setPeriodSheetOpen(false);
+          if (value === 'custom') {
+            setCustomRangeOpen(true);
+            return;
+          }
+          // §16: qué periodos usa de verdad la gente. Solo el código del
+          // tramo elegido, nunca las fechas del rango: un rango personalizado
+          // puede señalar cuándo cobra o cuándo viajó.
+          track(AnalyticsEvent.StatisticsPeriodChanged, { period: value ?? 'month' });
+          setPeriod(value ?? 'month');
+          setCustomRange(null);
+        }}
+        onClose={() => setPeriodSheetOpen(false)}
+      />
+
+      {accounts && accounts.length > 1 ? (
+        <SelectSheet
+          visible={accountSheetOpen}
+          title="Cuenta"
+          options={[
+            { value: undefined as string | undefined, label: 'Todas las cuentas' },
+            ...accounts.map((account) => ({ value: account.id as string | undefined, label: account.alias })),
+          ]}
+          selectedValue={accountId}
+          onSelect={(value) => {
+            // Solo SI filtró por una cuenta o volvió a "todas". Nunca cuál:
+            // el id de la cuenta no le dice nada útil a un dashboard y sí es
+            // un identificador financiero.
+            track(AnalyticsEvent.StatisticsAccountFilterChanged, {
+              filterKind: value ? 'single_account' : 'all_accounts',
+            });
+            setAccountId(value);
+            setAccountSheetOpen(false);
+          }}
+          onClose={() => setAccountSheetOpen(false)}
+        />
+      ) : null}
+
+      {customRangeOpen ? (
+        <CustomRangeModal
+          onCancel={() => setCustomRangeOpen(false)}
+          onApply={(from, to) => {
+            setCustomRange({ from, to });
+            setPeriod('custom');
+            setCustomRangeOpen(false);
+          }}
+        />
+      ) : null}
 
       {isError ? (
         <EmptyState
@@ -97,7 +186,7 @@ export default function StatisticsScreen() {
         />
       ) : isLoading || !data ? (
         <View style={styles.loading}>
-          <Skeleton height={120} />
+          <Skeleton height={90} />
           <SkeletonCard />
           <SkeletonCard />
           <SkeletonCard />
@@ -110,311 +199,62 @@ export default function StatisticsScreen() {
         />
       ) : (
         <>
-          <HealthCard data={data} score={score} hidden={hidden} accountLabel={selectedAccount?.alias ?? 'Todas las cuentas'} />
+          <SummaryCard
+            income={data.kpis.income}
+            expense={data.kpis.expense}
+            net={data.kpis.net}
+            savingsRatePercent={data.kpis.savingsRatePercent}
+            comparison={expenseComparison}
+            hidden={hidden}
+          />
 
-          <View style={styles.kpiGrid}>
-            <KpiTile
-              label="Ingresos"
-              icon="arrow-down"
-              value={data.kpis.income}
-              tone={colors.success}
-              change={data.kpis.incomeChangePercent}
-              hidden={hidden}
-              signed
-            />
-            <KpiTile
-              label="Gastos totales"
-              icon="arrow-up"
-              value={data.kpis.expense}
-              tone={colors.warning}
-              change={data.kpis.expenseChangePercent}
-              hidden={hidden}
-              invertChangeTone
-              signed
-            />
-            <KpiTile
-              label="Balance neto"
-              badge={data.kpis.net >= 0 ? 'superávit' : 'déficit'}
-              value={data.kpis.net}
-              tone={data.kpis.net >= 0 ? colors.success : colors.danger}
-              change={data.kpis.netChangePercent}
-              hidden={hidden}
-              signed
-            />
-            <KpiTile
-              label="Tasa de ahorro"
-              icon="leaf"
-              value={data.kpis.savingsRatePercent}
-              tone={colors.text}
-              hidden={hidden}
-              percent
-            />
+          <View style={styles.section}>
+            <Card>
+              <Typo variant="bodyStrong">Tu mes</Typo>
+              <Typo variant="caption" color={colors.textSecondary} style={styles.cardSubtitle}>
+                Ingresos y gastos a lo largo del tiempo
+              </Typo>
+              <IncomeExpenseChart
+                key={`${detailMode}-${period}-${accountId ?? 'all'}`}
+                points={detailMode === 'weekly' ? data.series : data.monthlyHistory.map(monthToSeriesPoint)}
+                mode={detailMode}
+                onModeChange={setDetailMode}
+                hidden={hidden}
+              />
+            </Card>
           </View>
 
-          <MoneyQuestionCard data={data} hidden={hidden} />
-          <IncomeExpenseCard data={data} mode={detailMode} onModeChange={setDetailMode} hidden={hidden} />
+          {data.categoryBreakdown.length > 0 ? (
+            <SpendBreakdownCard
+              items={data.categoryBreakdown}
+              spotlightCategoryId={data.spotlightCategoryId}
+              totalExpense={data.kpis.expense}
+              periodLabel={data.period.label}
+              hidden={hidden}
+            />
+          ) : null}
 
           {data.balanceEvolution.length > 0 ? (
-            <BalanceEvolutionCard points={data.balanceEvolution} hidden={hidden} />
+            <BalanceEvolutionCard points={data.balanceEvolution} periodLabel={data.period.label} hidden={hidden} />
           ) : null}
 
-          {data.categoryBreakdown.length > 0 ? (
-            <CategoryCard items={data.categoryBreakdown} spotlightCategoryId={data.spotlightCategoryId} hidden={hidden} />
-          ) : null}
+          <SpendTypeCard
+            fixedExpense={data.moneyFlow.fixedExpense}
+            variableExpense={data.moneyFlow.variableExpense}
+            recurring={data.recurringPayments}
+            hidden={hidden}
+          />
 
-          <SpendStructureCard recurring={data.recurringPayments} hidden={hidden} />
+          {data.topMerchants.length > 0 ? <TopMerchantsCard merchants={data.topMerchants} hidden={hidden} /> : null}
 
-          {data.topMerchants.length > 0 || data.peakSpendingDays.length > 0 ? (
-            <MerchantsAndPeaksCard merchants={data.topMerchants} months={data.monthlyHistory} hidden={hidden} />
-          ) : null}
+          <PatternInsightCard data={data.weekdayWeekend} hidden={hidden} />
 
-          <HabitPatternCard data={data} hidden={hidden} />
+          {data.monthlyHistory.length > 1 ? <MonthComparisonTable months={data.monthlyHistory} hidden={hidden} /> : null}
 
-          {data.monthlyHistory.length > 1 ? <MonthComparisonCard months={data.monthlyHistory} hidden={hidden} /> : null}
-
-          {data.insights.length > 0 ? <ConclusionsCard insights={data.insights} /> : null}
+          {data.insights.length > 0 ? <DetectedInsightsCard insights={data.insights} /> : null}
         </>
       )}
     </Screen>
-  );
-}
-
-function financialScore(data: AnalyticsDashboard | undefined): number {
-  if (!data) {
-    return 0;
-  }
-
-  const savingsScore = Math.max(0, Math.min(45, (data.kpis.savingsRatePercent ?? 0) * 1.5));
-  const balanceScore = data.kpis.net >= 0 ? 30 : Math.max(0, 30 + (data.kpis.net / Math.max(data.kpis.income, 1)) * 30);
-  const diversityScore = Math.min(15, data.categoryBreakdown.length * 2);
-  const recurrentScore = data.recurringPayments.length > 0 ? 8 : 4;
-  return Math.round(Math.max(0, Math.min(100, savingsScore + balanceScore + diversityScore + recurrentScore)));
-}
-
-function SegmentChip({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      style={[styles.segmentChip, selected ? styles.segmentChipSelected : null]}
-    >
-      <Typo variant="caption" color={selected ? colors.onPrimary : colors.textSecondary} numberOfLines={1}>
-        {label}
-      </Typo>
-    </Pressable>
-  );
-}
-
-function HealthCard({
-  data,
-  score,
-  hidden,
-  accountLabel,
-}: {
-  data: AnalyticsDashboard;
-  score: number;
-  hidden: boolean;
-  accountLabel: string;
-}) {
-  return (
-    <Card style={styles.healthCard}>
-      <View style={styles.healthTop}>
-        <View>
-          <Typo variant="caption" color={colors.textSecondary}>
-            Todo al día - {accountLabel}
-          </Typo>
-          <Typo variant="bodyStrong">Tu radiografía financiera</Typo>
-        </View>
-        <Badge label={data.period.label} tone="neutral" />
-      </View>
-      <View style={styles.scoreRow}>
-        <Typo variant="display" tabular>
-          {hidden ? '••••' : score}
-        </Typo>
-        <Typo variant="caption" color={colors.textSecondary} style={styles.scoreText}>
-          Estado financiero {score >= 75 ? 'saludable' : score >= 55 ? 'estable' : 'por ajustar'}
-        </Typo>
-      </View>
-      <View style={styles.scoreTrack}>
-        <View style={[styles.scoreFill, { width: `${Math.max(5, score)}%` }]} />
-      </View>
-    </Card>
-  );
-}
-
-function KpiTile({
-  label,
-  icon,
-  badge,
-  value,
-  tone,
-  change,
-  hidden,
-  signed = false,
-  percent = false,
-  invertChangeTone = false,
-}: {
-  label: string;
-  icon?: keyof typeof Ionicons.glyphMap;
-  badge?: string;
-  value: number | null;
-  tone: string;
-  change?: number | null;
-  hidden: boolean;
-  signed?: boolean;
-  percent?: boolean;
-  invertChangeTone?: boolean;
-}) {
-  const comparison = change === undefined ? null : formatPeriodChange(change);
-  const changeIsGood = comparison ? (invertChangeTone ? !comparison.up : comparison.up) : null;
-
-  return (
-    <Card style={styles.kpiTile}>
-      <View style={styles.kpiTop}>
-        <Typo variant="caption" color={colors.textSecondary}>
-          {label}
-        </Typo>
-        {icon ? <Ionicons name={icon} size={15} color={tone} /> : null}
-        {badge ? <Badge label={badge} tone={value !== null && value >= 0 ? 'positive' : 'danger'} /> : null}
-      </View>
-      <Typo variant="heading" color={tone} tabular numberOfLines={1}>
-        {hidden ? '••••' : formatKpiValue(value, { signed, percent })}
-      </Typo>
-      {comparison ? (
-        <Typo variant="caption" color={changeIsGood ? colors.success : colors.warning} numberOfLines={1}>
-          {comparison.label}
-        </Typo>
-      ) : (
-        <Typo variant="caption" color={colors.textSecondary}>
-          Sin comparativo
-        </Typo>
-      )}
-    </Card>
-  );
-}
-
-function formatKpiValue(value: number | null, options: { signed?: boolean; percent?: boolean } = {}): string {
-  if (value === null) {
-    return 'Sin dato';
-  }
-
-  if (options.percent) {
-    return `${Math.round(value)}%`;
-  }
-
-  if (!options.signed) {
-    return formatCompactCurrency(value);
-  }
-
-  return `${value >= 0 ? '+' : '-'}${formatCompactCurrency(Math.abs(value))}`;
-}
-
-function MoneyQuestionCard({ data, hidden }: { data: AnalyticsDashboard; hidden: boolean }) {
-  const income = data.moneyFlow.income;
-  const fixed = data.moneyFlow.fixedExpense;
-  const variable = data.moneyFlow.variableExpense;
-  const savings = data.moneyFlow.netSavings;
-  const totalExpense = Math.max(fixed + variable, 1);
-
-  return (
-    <Card style={styles.largeCard}>
-      <View style={styles.cardTitleRow}>
-        <Typo variant="bodyStrong">¿Qué pasó con lo que recibí?</Typo>
-        <Ionicons name="eye-outline" size={17} color={colors.textSecondary} />
-      </View>
-      <Typo variant="caption" color={colors.textSecondary}>
-        Detalle de cada dólar que ingresó al periodo
-      </Typo>
-
-      <View style={styles.flowRibbon}>
-        <FlowMetric label="Ingresaste" value={income} hidden={hidden} />
-        <FlowMetric label="Gastos fijos" value={fixed} hidden={hidden} />
-        <FlowMetric label="Consumo" value={variable} hidden={hidden} />
-        <FlowMetric label="Ahorro" value={savings} hidden={hidden} positive={savings >= 0} />
-      </View>
-
-      <View style={styles.multiTrack}>
-        <View style={[styles.trackPart, { flex: fixed || 0.001, backgroundColor: colors.primary }]} />
-        <View style={[styles.trackPart, { flex: variable || 0.001, backgroundColor: colors.accentSecondary }]} />
-        <View style={[styles.trackPart, { flex: Math.max(savings, 0) || 0.001, backgroundColor: colors.accent }]} />
-      </View>
-
-      <View style={styles.tipBox}>
-        <Ionicons name="sparkles-outline" size={17} color={colors.text} />
-        <Typo variant="caption" color={colors.textSecondary} style={styles.flex}>
-          Transparencia: {Math.round((fixed / totalExpense) * 100)}% de tus gastos fueron fijos y{' '}
-          {Math.round((variable / totalExpense) * 100)}% variables. Esta vista usa tus movimientos confirmados.
-        </Typo>
-      </View>
-    </Card>
-  );
-}
-
-function FlowMetric({ label, value, hidden, positive = false }: { label: string; value: number; hidden: boolean; positive?: boolean }) {
-  return (
-    <View style={styles.flowMetric}>
-      <Typo variant="overline" color={colors.textSecondary}>
-        {label}
-      </Typo>
-      <Typo variant="caption" color={positive ? colors.success : colors.text} tabular numberOfLines={1}>
-        {hidden ? '••••' : formatCompactCurrency(value)}
-      </Typo>
-    </View>
-  );
-}
-
-function IncomeExpenseCard({
-  data,
-  mode,
-  onModeChange,
-  hidden,
-}: {
-  data: AnalyticsDashboard;
-  mode: DetailMode;
-  onModeChange: (mode: DetailMode) => void;
-  hidden: boolean;
-}) {
-  const points = mode === 'weekly' ? data.series : data.monthlyHistory.map(monthToSeriesPoint);
-  const max = Math.max(1, ...points.flatMap((point) => [point.income, point.expense]));
-
-  return (
-    <Card style={styles.largeCard}>
-      <View style={styles.cardTitleRow}>
-        <View>
-          <Typo variant="bodyStrong">Ingresos vs Gastos</Typo>
-          <Typo variant="caption" color={colors.textSecondary}>
-            Comparativo actual del mes
-          </Typo>
-        </View>
-        <View style={styles.modeSwitch}>
-          <ModeButton label="Semanal" selected={mode === 'weekly'} onPress={() => onModeChange('weekly')} />
-          <ModeButton label="Mensual" selected={mode === 'monthly'} onPress={() => onModeChange('monthly')} />
-        </View>
-      </View>
-
-      <View style={styles.legendRow}>
-        <LegendDot color={colors.accent} label="Ingresos" />
-        <LegendDot color={colors.primary} label="Gastos" />
-      </View>
-
-      <View style={styles.barChart}>
-        {points.slice(-6).map((point) => (
-          <View key={`${point.from}-${point.label}`} style={styles.barColumn}>
-            <View style={styles.barPair}>
-              <View style={[styles.bar, { height: Math.max(4, (point.income / max) * 112), backgroundColor: colors.accent }]} />
-              <View style={[styles.bar, { height: Math.max(4, (point.expense / max) * 112), backgroundColor: colors.primary }]} />
-            </View>
-            <Typo variant="overline" color={colors.textSecondary} numberOfLines={1}>
-              {point.label}
-            </Typo>
-          </View>
-        ))}
-      </View>
-      <Typo variant="caption" color={colors.textSecondary} align="center">
-        Total visible: {hidden ? '••••' : formatCompactCurrency(max)}
-      </Typo>
-    </Card>
   );
 }
 
@@ -428,28 +268,209 @@ function monthToSeriesPoint(month: MonthlyHistoryItem): AnalyticsSeriesPoint {
   };
 }
 
-function ModeButton({ label, selected, onPress }: { label: string; selected: boolean; onPress: () => void }) {
+function shortRangeDate(iso: string): string {
+  const date = new Date(`${iso}T00:00:00`);
+  return `${date.getDate()}/${date.getMonth() + 1}`;
+}
+
+function toISODate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function FilterButton({ label, onPress }: { label: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} style={[styles.modeButton, selected ? styles.modeButtonSelected : null]}>
-      <Typo variant="overline" color={selected ? colors.text : colors.textSecondary}>
+    <Pressable
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.filterButton, pressed ? styles.filterButtonPressed : null]}
+    >
+      <Typo variant="caption" color={colors.text} numberOfLines={1} style={styles.filterButtonLabel}>
         {label}
       </Typo>
+      <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
     </Pressable>
   );
 }
 
-function LegendDot({ color, label }: { color: string; label: string }) {
+function CustomRangeModal({ onCancel, onApply }: { onCancel: () => void; onApply: (from: string, to: string) => void }) {
+  const [fromText, setFromText] = useState('');
+  const [toText, setToText] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const handleApply = () => {
+    const from = parseDateInput(fromText);
+    const to = parseDateInput(toText);
+
+    if (!from || !to) {
+      setError('Ingresa fechas válidas (DD/MM/AAAA).');
+      return;
+    }
+
+    if (from.getTime() > to.getTime()) {
+      setError('"Desde" debe ser anterior a "Hasta".');
+      return;
+    }
+
+    setError(null);
+    onApply(toISODate(from), toISODate(to));
+  };
+
   return (
-    <View style={styles.legendItem}>
-      <View style={[styles.legendDot, { backgroundColor: color }]} />
-      <Typo variant="caption" color={colors.textSecondary}>
+    <Modal visible transparent animationType="slide" onRequestClose={onCancel}>
+      <Pressable style={styles.backdrop} onPress={onCancel} accessibilityRole="button" accessibilityLabel="Cerrar" />
+      <View style={styles.sheet}>
+        <View style={styles.handle} />
+        <Typo variant="bodyStrong" style={styles.sheetTitle}>
+          Periodo personalizado
+        </Typo>
+
+        <View style={styles.customField}>
+          <Input label="Desde" placeholder="DD/MM/AAAA" value={fromText} onChangeText={setFromText} keyboardType="numeric" />
+        </View>
+        <View style={styles.customField}>
+          <Input
+            label="Hasta"
+            placeholder="DD/MM/AAAA"
+            value={toText}
+            onChangeText={setToText}
+            keyboardType="numeric"
+            error={error}
+          />
+        </View>
+
+        <View style={styles.customActions}>
+          <Pressable onPress={onCancel} hitSlop={8}>
+            <Typo variant="body" color={colors.textSecondary}>
+              Cancelar
+            </Typo>
+          </Pressable>
+          <Button label="Aplicar" onPress={handleApply} compact fullWidth={false} />
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function SummaryCard({
+  income,
+  expense,
+  net,
+  savingsRatePercent,
+  comparison,
+  hidden,
+}: {
+  income: number;
+  expense: number;
+  net: number;
+  savingsRatePercent: number | null;
+  comparison: { label: string; up: boolean } | null;
+  hidden: boolean;
+}) {
+  return (
+    <View style={styles.section}>
+      <Card>
+        <Typo variant="overline" color={colors.textSecondary} style={styles.cardHeading}>
+          RESUMEN DEL MES
+        </Typo>
+
+        <View style={styles.summaryRows}>
+          <SummaryRow label="Ingresos" value={income} tone={colors.success} hidden={hidden} />
+          <View style={styles.divider} />
+          <SummaryRow label="Gastos" value={expense} tone={colors.warning} hidden={hidden} />
+          <View style={styles.divider} />
+          <SummaryRow label="Balance" value={net} tone={net >= 0 ? colors.success : colors.danger} hidden={hidden} strong />
+          <View style={styles.divider} />
+          <SummaryRow
+            label="Ahorro"
+            display={savingsRatePercent === null ? '—' : `${Math.round(savingsRatePercent)}%`}
+            tone={colors.text}
+            hidden={hidden}
+          />
+        </View>
+
+        {comparison ? (
+          <View style={styles.comparisonRow}>
+            <Ionicons
+              name={comparison.up ? 'trending-up' : 'trending-down'}
+              size={13}
+              color={comparison.up ? colors.warning : colors.success}
+            />
+            <Typo variant="caption" color={comparison.up ? colors.warning : colors.success}>
+              Gastaste {comparison.label}
+            </Typo>
+          </View>
+        ) : null}
+      </Card>
+    </View>
+  );
+}
+
+function SummaryRow({
+  label,
+  value,
+  display,
+  tone,
+  strong,
+  hidden,
+}: {
+  label: string;
+  value?: number;
+  display?: string;
+  tone: string;
+  strong?: boolean;
+  hidden: boolean;
+}) {
+  return (
+    <View style={styles.summaryRow}>
+      <Typo variant="body" color={colors.textSecondary}>
         {label}
+      </Typo>
+      <Typo variant={strong ? 'bodyStrong' : 'body'} tabular color={tone}>
+        {hidden ? '••••' : (display ?? formatCurrency(value ?? 0))}
       </Typo>
     </View>
   );
 }
 
-function BalanceEvolutionCard({ points, hidden }: { points: BalancePoint[]; hidden: boolean }) {
+function SpendBreakdownCard({
+  items,
+  spotlightCategoryId,
+  totalExpense,
+  periodLabel,
+  hidden,
+}: {
+  items: CategoryTrend[];
+  spotlightCategoryId: string | null;
+  totalExpense: number;
+  periodLabel: string;
+  hidden: boolean;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? items : items.slice(0, 5);
+
+  return (
+    <View style={styles.section}>
+      <Card>
+        <Typo variant="bodyStrong">¿En qué se fue tu dinero?</Typo>
+        <Typo variant="caption" color={colors.textSecondary} style={styles.cardSubtitle}>
+          {hidden ? '••••' : formatCurrency(totalExpense)} gastados en {periodLabel}
+        </Typo>
+
+        <CategoryTrendList items={visible} spotlightCategoryId={spotlightCategoryId} hidden={hidden} />
+
+        {items.length > 5 ? (
+          <Pressable onPress={() => setExpanded((prev) => !prev)} hitSlop={8} style={styles.linkRow}>
+            <Typo variant="caption" color={colors.text}>
+              {expanded ? 'Ver menos' : 'Ver todas las categorías'}
+            </Typo>
+          </Pressable>
+        ) : null}
+      </Card>
+    </View>
+  );
+}
+
+function BalanceEvolutionCard({ points, periodLabel, hidden }: { points: BalancePoint[]; periodLabel: string; hidden: boolean }) {
   const [width, setWidth] = useState(0);
   const values = points.map((point) => point.balance);
   const min = Math.min(...values);
@@ -465,360 +486,312 @@ function BalanceEvolutionCard({ points, hidden }: { points: BalancePoint[]; hidd
   }));
 
   return (
-    <Card style={styles.largeCard}>
-      <View style={styles.cardTitleRow}>
-        <View>
-          <Typo variant="bodyStrong">Evolución del saldo disponible</Typo>
-          <Typo variant="caption" color={colors.textSecondary}>
-            Comportamiento del dinero y proyección
-          </Typo>
-        </View>
-        <View style={styles.rightValue}>
+    <View style={styles.section}>
+      <Card>
+        <View style={styles.cardTitleRow}>
+          <View style={styles.flex}>
+            <Typo variant="bodyStrong">Tu dinero disponible</Typo>
+            <Typo variant="caption" color={colors.textSecondary}>
+              Cómo cambió tu saldo durante {periodLabel}
+            </Typo>
+          </View>
           <Typo variant="bodyStrong" tabular>
             {hidden ? '••••' : formatCurrency(last.balance)}
           </Typo>
-          <Typo variant="overline" color={colors.textSecondary}>
-            cierre
-          </Typo>
         </View>
-      </View>
 
-      <View style={styles.lineChart} onLayout={(event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width)}>
-        {width > 0
-          ? plotted.slice(0, -1).map((item, index) => {
-              const next = plotted[index + 1]!;
-              const dx = next.x - item.x;
-              const dy = next.y - item.y;
-              const length = Math.sqrt(dx * dx + dy * dy);
-              const angle = Math.atan2(dy, dx);
-              return (
+        <View style={styles.lineChart} onLayout={(event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width)}>
+          {width > 0
+            ? plotted.slice(0, -1).map((item, index) => {
+                const next = plotted[index + 1]!;
+                const dx = next.x - item.x;
+                const dy = next.y - item.y;
+                const length = Math.sqrt(dx * dx + dy * dy);
+                const angle = Math.atan2(dy, dx);
+                return (
+                  <View
+                    key={`${item.point.asOf}-${next.point.asOf}`}
+                    style={[
+                      styles.lineSegment,
+                      {
+                        width: length,
+                        left: item.x + spacing.lg,
+                        top: item.y + spacing.lg,
+                        transform: [{ rotateZ: `${angle}rad` }],
+                      },
+                    ]}
+                  />
+                );
+              })
+            : null}
+          {width > 0
+            ? plotted.map((item) => (
                 <View
-                  key={`${item.point.asOf}-${next.point.asOf}`}
+                  key={item.point.asOf}
                   style={[
-                    styles.lineSegment,
+                    styles.lineDot,
                     {
-                      width: length,
-                      left: item.x + spacing.lg,
-                      top: item.y + spacing.lg,
-                      transform: [{ rotateZ: `${angle}rad` }],
+                      left: item.x + spacing.lg - 4,
+                      top: item.y + spacing.lg - 4,
                     },
                   ]}
                 />
-              );
-            })
-          : null}
-        {width > 0
-          ? plotted.map((item) => (
-              <View
-                key={item.point.asOf}
-                style={[
-                  styles.lineDot,
-                  {
-                    left: item.x + spacing.lg - 4,
-                    top: item.y + spacing.lg - 4,
-                  },
-                ]}
-              />
-            ))
-          : null}
-      </View>
-
-      <View style={styles.legendRow}>
-        <LegendDot color={colors.primary} label="Línea continua: saldo verificado" />
-        <LegendDot color={colors.accent} label="Último punto: cierre" />
-      </View>
-    </Card>
-  );
-}
-
-function CategoryCard({ items, spotlightCategoryId, hidden }: { items: CategoryTrend[]; spotlightCategoryId: string | null; hidden: boolean }) {
-  const max = Math.max(1, ...items.map((item) => item.total));
-
-  return (
-    <Card style={styles.largeCard}>
-      <View style={styles.cardTitleRow}>
-        <Typo variant="bodyStrong">Gastos por categoría</Typo>
-        <Typo variant="caption" color={colors.textSecondary}>
-          {items.length} categorías
-        </Typo>
-      </View>
-      <View style={styles.categoryStack}>
-        {items.slice(0, 6).map((item) => (
-          <View key={item.categoryId} style={styles.categoryRow}>
-            <View style={[styles.categoryIcon, { backgroundColor: `${item.color}24` }]}>
-              <Ionicons name={iconForCategory(item.icon)} size={16} color={item.color} />
-            </View>
-            <View style={styles.flex}>
-              <View style={styles.cardTitleRow}>
-                <Typo variant="caption" numberOfLines={1} style={styles.flex}>
-                  {item.name}
-                </Typo>
-                <Typo variant="caption" tabular>
-                  {hidden ? '••••' : formatCurrency(item.total)}
-                </Typo>
-              </View>
-              <View style={styles.categoryTrack}>
-                <View
-                  style={[
-                    styles.categoryFill,
-                    { width: `${Math.max(4, (item.total / max) * 100)}%`, backgroundColor: item.color },
-                  ]}
-                />
-              </View>
-              <Typo variant="overline" color={item.changePercent !== null && item.changePercent > 0 ? colors.warning : colors.textSecondary}>
-                {Math.round(item.percentage)}% · {item.count} mov.
-                {item.categoryId === spotlightCategoryId ? ' · mayor cambio' : ''}
-              </Typo>
-            </View>
-          </View>
-        ))}
-      </View>
-    </Card>
-  );
-}
-
-function SpendStructureCard({ recurring, hidden }: { recurring: RecurringPayment[]; hidden: boolean }) {
-  const totalRecurring = recurring.reduce((sum, item) => sum + item.averageAmount, 0);
-
-  return (
-    <Card style={styles.largeCard}>
-      <View style={styles.cardTitleRow}>
-        <Typo variant="bodyStrong">Estructura del gasto</Typo>
-        <Typo variant="caption" color={colors.textSecondary}>
-          Compromisos fijos frente a decisiones diarias
-        </Typo>
-      </View>
-      <View style={styles.twoColumns}>
-        <StructureBox title="Fijos / recurrentes" value={totalRecurring} hint={`${recurring.length} detectados`} hidden={hidden} />
-        <StructureBox title="Variables / otros" value={0} hint="resto del consumo" hidden={hidden} muted />
-      </View>
-      {recurring.length > 0 ? (
-        <View style={styles.listCard}>
-          {recurring.slice(0, 3).map((item, index) => (
-            <View key={item.merchant} style={[styles.listRow, index > 0 ? styles.rowDivider : null]}>
-              <View style={styles.smallIcon}>
-                <Ionicons name="receipt-outline" size={15} color={colors.text} />
-              </View>
-              <View style={styles.flex}>
-                <Typo variant="caption" numberOfLines={1}>
-                  {item.merchant}
-                </Typo>
-                <Typo variant="overline" color={colors.textSecondary}>
-                  {item.occurrencesLast6Months} veces en 6 meses
-                </Typo>
-              </View>
-              <Typo variant="caption" tabular>
-                {hidden ? '••••' : formatCurrency(item.averageAmount)}
-              </Typo>
-            </View>
-          ))}
+              ))
+            : null}
         </View>
-      ) : (
-        <Typo variant="caption" color={colors.textSecondary}>
-          Aún no hay pagos recurrentes suficientes para separarlos del gasto variable.
-        </Typo>
-      )}
-    </Card>
-  );
-}
-
-function StructureBox({
-  title,
-  value,
-  hint,
-  hidden,
-  muted = false,
-}: {
-  title: string;
-  value: number;
-  hint: string;
-  hidden: boolean;
-  muted?: boolean;
-}) {
-  return (
-    <View style={[styles.structureBox, muted ? styles.structureMuted : null]}>
-      <Typo variant="overline" color={colors.textSecondary}>
-        {title}
-      </Typo>
-      <Typo variant="heading" tabular>
-        {hidden ? '••••' : formatCurrency(value)}
-      </Typo>
-      <Typo variant="caption" color={colors.textSecondary}>
-        {hint}
-      </Typo>
+      </Card>
     </View>
   );
 }
 
-function MerchantsAndPeaksCard({
-  merchants,
-  months,
+function SpendTypeCard({
+  fixedExpense,
+  variableExpense,
+  recurring,
   hidden,
 }: {
-  merchants: MerchantRanking[];
-  months: MonthlyHistoryItem[];
+  fixedExpense: number;
+  variableExpense: number;
+  recurring: RecurringPayment[];
   hidden: boolean;
 }) {
+  const hasRecurring = recurring.length > 0;
+
+  return (
+    <View style={styles.section}>
+      <Card>
+        <Typo variant="bodyStrong" style={styles.cardHeadingSpaced}>
+          Tipo de gasto
+        </Typo>
+
+        <View style={styles.summaryRow}>
+          <Typo variant="body" color={colors.textSecondary}>
+            Fijos / recurrentes
+          </Typo>
+          <Typo variant="body" tabular>
+            {hidden ? '••••' : formatCurrency(fixedExpense)}
+          </Typo>
+        </View>
+        <View style={styles.summaryRow}>
+          <Typo variant="body" color={colors.textSecondary}>
+            Variables
+          </Typo>
+          <Typo variant="body" tabular>
+            {hidden ? '••••' : formatCurrency(variableExpense)}
+          </Typo>
+        </View>
+
+        <View style={styles.spendTypeTrack}>
+          <View style={[styles.spendTypeFill, { flex: fixedExpense || 0.0001, backgroundColor: colors.primary }]} />
+          <View
+            style={[styles.spendTypeFill, { flex: variableExpense || 0.0001, backgroundColor: colors.accentSecondary }]}
+          />
+        </View>
+
+        {hasRecurring ? (
+          <View style={styles.recurringList}>
+            {recurring.slice(0, 3).map((item, index) => (
+              <View key={item.merchant} style={[styles.listRow, index > 0 ? styles.rowDivider : null]}>
+                <Typo variant="caption" numberOfLines={1} style={styles.flex}>
+                  {item.merchant}
+                </Typo>
+                <Typo variant="caption" tabular>
+                  {hidden ? '••••' : formatCurrency(item.averageAmount)}
+                </Typo>
+              </View>
+            ))}
+          </View>
+        ) : (
+          <Typo variant="caption" color={colors.textSecondary} style={styles.cardSubtitle}>
+            No hemos identificado gastos recurrentes todavía.
+          </Typo>
+        )}
+      </Card>
+    </View>
+  );
+}
+
+function TopMerchantsCard({ merchants, hidden }: { merchants: MerchantRanking[]; hidden: boolean }) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? merchants.slice(0, 8) : merchants.slice(0, 3);
   const max = Math.max(1, ...merchants.map((item) => item.total));
 
   return (
-    <Card style={styles.largeCard}>
-      <View style={styles.cardTitleRow}>
-        <Typo variant="bodyStrong">Top comercios y días pico</Typo>
-        <Typo variant="caption" color={colors.textSecondary}>
-          Donde se concentra el consumo
+    <View style={styles.section}>
+      <Card>
+        <Typo variant="bodyStrong" style={styles.cardHeadingSpaced}>
+          Donde más gastaste
         </Typo>
-      </View>
 
-      {merchants.slice(0, 5).map((merchant, index) => (
-        <View key={merchant.merchant} style={styles.merchantRow}>
-          <View style={styles.merchantLogo}>
-            <Typo variant="overline">{merchant.merchant.slice(0, 2).toUpperCase()}</Typo>
-          </View>
-          <View style={styles.flex}>
-            <Typo variant="caption" numberOfLines={1}>
-              {merchant.merchant}
-            </Typo>
-            <View style={styles.merchantTrack}>
-              <View style={[styles.merchantFill, { width: `${Math.max(5, (merchant.total / max) * 100)}%` }]} />
-            </View>
-          </View>
-          <View style={styles.rightValue}>
-            <Typo variant="caption" tabular>
-              {hidden ? '••••' : formatCurrency(merchant.total)}
-            </Typo>
-            <Typo variant="overline" color={colors.textSecondary}>
-              {index + 1}
-            </Typo>
-          </View>
-        </View>
-      ))}
-
-      {months.length > 0 ? (
-        <View style={styles.peakGrid}>
-          {months.slice(-3).map((month) => (
-            <View key={month.monthLabel} style={styles.peakChip}>
-              <Typo variant="overline" color={colors.textSecondary}>
-                {month.monthLabel}
+        <View style={styles.merchantList}>
+          {visible.map((merchant, index) => (
+            <View key={merchant.merchant} style={styles.merchantRow}>
+              <Typo variant="caption" color={colors.textSecondary} style={styles.rank}>
+                {index + 1}
               </Typo>
-              <Typo variant="caption" tabular>
-                {hidden ? '••••' : formatCompactCurrency(month.expense)}
+              <View style={styles.flex}>
+                <Typo variant="body" numberOfLines={1}>
+                  {merchant.merchant}
+                </Typo>
+                <View style={styles.merchantTrack}>
+                  <View style={[styles.merchantFill, { width: `${Math.max(5, (merchant.total / max) * 100)}%` }]} />
+                </View>
+              </View>
+              <Typo variant="bodyStrong" tabular>
+                {hidden ? '••••' : formatCurrency(merchant.total)}
               </Typo>
             </View>
           ))}
         </View>
-      ) : null}
-    </Card>
+
+        {merchants.length > 3 ? (
+          <Pressable onPress={() => setExpanded((prev) => !prev)} hitSlop={8} style={styles.linkRow}>
+            <Typo variant="caption" color={colors.text}>
+              {expanded ? 'Ver menos' : 'Ver ranking completo'}
+            </Typo>
+          </Pressable>
+        ) : null}
+      </Card>
+    </View>
   );
 }
 
-function HabitPatternCard({ data, hidden }: { data: AnalyticsDashboard; hidden: boolean }) {
-  const weekday = data.weekdayWeekend.weekdayAveragePerDay;
-  const weekend = data.weekdayWeekend.weekendAveragePerDay;
-  const total = Math.max(weekday + weekend, 1);
-  const weekdayPercent = Math.round((weekday / total) * 100);
+function PatternInsightCard({ data, hidden }: { data: WeekdayWeekend; hidden: boolean }) {
+  const totalSpend = data.weekdayTotal + data.weekendTotal;
+
+  if (totalSpend <= 0) {
+    return null;
+  }
+
+  const weekendPercent = Math.round((data.weekendTotal / totalSpend) * 100);
 
   return (
-    <Card style={styles.largeCard}>
-      <View style={styles.inline}>
-        <View style={styles.habitIcon}>
-          <Ionicons name="calendar-outline" size={18} color={colors.text} />
+    <View style={styles.section}>
+      <Card>
+        <View style={styles.insightHeader}>
+          <Typo variant="body">✦</Typo>
+          <Typo variant="bodyStrong">Patrón detectado</Typo>
         </View>
-        <Typo variant="bodyStrong">Patrón de hábitos</Typo>
-      </View>
-      <Typo variant="caption" color={colors.textSecondary}>
-        Los fines de semana concentran el {100 - weekdayPercent}% de tus gastos variables, principalmente en salidas y entretenimiento.
-      </Typo>
-      <View style={styles.twoColumns}>
-        <HabitMetric label="Lun - Vie" value={weekday} hidden={hidden} />
-        <HabitMetric label="Sáb - Dom" value={weekend} hidden={hidden} />
-      </View>
-      <View style={styles.scoreTrack}>
-        <View style={[styles.scoreFill, { width: `${weekdayPercent}%`, backgroundColor: colors.accentSecondary }]} />
-      </View>
-    </Card>
+        <Typo variant="body" color={colors.textSecondary} style={styles.cardSubtitle}>
+          Los fines de semana representan {weekendPercent}% de tus gastos variables.
+        </Typo>
+        <View style={styles.twoColumns}>
+          <PatternMetric label="Entre semana" value={data.weekdayAveragePerDay} hidden={hidden} />
+          <PatternMetric label="Fin de semana" value={data.weekendAveragePerDay} hidden={hidden} />
+        </View>
+      </Card>
+    </View>
   );
 }
 
-function HabitMetric({ label, value, hidden }: { label: string; value: number; hidden: boolean }) {
+function PatternMetric({ label, value, hidden }: { label: string; value: number; hidden: boolean }) {
   return (
-    <View>
-      <Typo variant="overline" color={colors.textSecondary}>
+    <View style={styles.flex}>
+      <Typo variant="caption" color={colors.textSecondary}>
         {label}
       </Typo>
-      <Typo variant="caption" tabular>
-        {hidden ? '••••' : `${formatCurrency(value)} prom.`}
+      <Typo variant="body" tabular>
+        {hidden ? '••••' : `${formatCurrency(value)} promedio`}
       </Typo>
     </View>
   );
 }
 
-function MonthComparisonCard({ months, hidden }: { months: MonthlyHistoryItem[]; hidden: boolean }) {
+function MonthComparisonTable({ months, hidden }: { months: MonthlyHistoryItem[]; hidden: boolean }) {
   const current = months[months.length - 1]!;
   const previous = months[months.length - 2]!;
-  const rows = [
+  const rows: { label: string; current: number; previous: number; goodWhenUp: boolean }[] = [
     { label: 'Ingresos', current: current.income, previous: previous.income, goodWhenUp: true },
-    { label: 'Gastos totales', current: current.expense, previous: previous.expense, goodWhenUp: false },
-    { label: 'Ahorro neto', current: current.net, previous: previous.net, goodWhenUp: true },
+    { label: 'Gastos', current: current.expense, previous: previous.expense, goodWhenUp: false },
+    { label: 'Balance', current: current.net, previous: previous.net, goodWhenUp: true },
   ];
 
   return (
-    <Card style={styles.largeCard}>
-      <View style={styles.cardTitleRow}>
-        <Typo variant="bodyStrong">Este mes vs Mes anterior</Typo>
-        <Ionicons name="analytics-outline" size={17} color={colors.textSecondary} />
-      </View>
-      {rows.map((row) => {
-        const change = row.previous === 0 ? null : ((row.current - row.previous) / Math.abs(row.previous)) * 100;
-        const positive = change === null ? true : row.goodWhenUp ? change >= 0 : change <= 0;
-        return (
-          <View key={row.label} style={styles.compareRow}>
-            <View style={styles.flex}>
-              <Typo variant="caption">{row.label}</Typo>
-              <Typo variant="overline" color={colors.textSecondary}>
-                {previous.monthLabel} a {current.monthLabel}
+    <View style={styles.section}>
+      <Card>
+        <Typo variant="bodyStrong" style={styles.cardHeadingSpaced}>
+          {current.monthLabel} vs {previous.monthLabel}
+        </Typo>
+
+        <View style={styles.compareHeaderRow}>
+          <Typo variant="overline" color={colors.textSecondary} style={styles.compareLabelCol} />
+          <Typo variant="overline" color={colors.textSecondary} style={styles.compareValueCol}>
+            {previous.monthLabel.toUpperCase()}
+          </Typo>
+          <Typo variant="overline" color={colors.textSecondary} style={styles.compareValueCol}>
+            {current.monthLabel.toUpperCase()}
+          </Typo>
+          <Typo variant="overline" color={colors.textSecondary} style={styles.compareChangeCol}>
+            CAMBIO
+          </Typo>
+        </View>
+
+        {rows.map((row) => {
+          const change = row.previous === 0 ? null : ((row.current - row.previous) / Math.abs(row.previous)) * 100;
+          const favorable = change === null ? null : row.goodWhenUp ? change >= 0 : change <= 0;
+          return (
+            <View key={row.label} style={styles.compareDataRow}>
+              <Typo variant="body" style={styles.compareLabelCol} numberOfLines={1}>
+                {row.label}
+              </Typo>
+              <Typo variant="caption" tabular style={styles.compareValueCol}>
+                {hidden ? '••••' : formatCompactCurrency(row.previous)}
+              </Typo>
+              <Typo variant="caption" tabular style={styles.compareValueCol}>
+                {hidden ? '••••' : formatCompactCurrency(row.current)}
+              </Typo>
+              <Typo
+                variant="caption"
+                tabular
+                color={change === null ? colors.textSecondary : favorable ? colors.success : colors.warning}
+                style={styles.compareChangeCol}
+              >
+                {change === null ? '—' : `${change >= 0 ? '+' : ''}${Math.round(change)}%`}
               </Typo>
             </View>
-            <Typo variant="caption" tabular>
-              {hidden ? '••••' : formatCompactCurrency(row.current - row.previous)}
-            </Typo>
-            <Badge label={change === null ? 'nuevo' : `${positive ? '+' : ''}${Math.round(change)}%`} tone={positive ? 'positive' : 'attention'} />
-          </View>
-        );
-      })}
-    </Card>
+          );
+        })}
+      </Card>
+    </View>
   );
 }
 
-function ConclusionsCard({ insights }: { insights: Insight[] }) {
+function DetectedInsightsCard({ insights }: { insights: Insight[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? insights : insights.slice(0, 3);
+
   return (
-    <Card style={styles.largeCard}>
-      <View style={styles.cardTitleRow}>
-        <Typo variant="bodyStrong">Conclusiones del mes</Typo>
-        <Typo variant="caption" color={colors.textSecondary}>
-          {insights.length} detectadas
+    <View style={styles.section}>
+      <Card>
+        <Typo variant="bodyStrong" style={styles.cardHeadingSpaced}>
+          Lo que FINO detectó
         </Typo>
-      </View>
-      {insights.slice(0, 3).map((insight) => (
-        <View key={insight.code} style={styles.conclusionRow}>
-          <View style={[styles.conclusionIcon, { backgroundColor: insight.severity === 'Attention' ? 'rgba(228,168,83,0.16)' : `${colors.accent}55` }]}>
-            <Ionicons
-              name={insight.severity === 'Attention' ? 'warning-outline' : 'sparkles-outline'}
-              size={16}
-              color={insight.severity === 'Attention' ? colors.warning : colors.text}
-            />
-          </View>
-          <View style={styles.flex}>
-            <Typo variant="caption" numberOfLines={1}>
-              {insight.title}
-            </Typo>
-            <Typo variant="overline" color={colors.textSecondary} numberOfLines={2}>
-              {insight.body}
-            </Typo>
-          </View>
+
+        <View style={styles.insightList}>
+          {visible.map((insight) => (
+            <View key={insight.code} style={styles.insightRow}>
+              <Typo variant="body">✦</Typo>
+              <View style={styles.flex}>
+                <Typo variant="body" numberOfLines={1}>
+                  {insight.title}
+                </Typo>
+                <Typo variant="caption" color={colors.textSecondary}>
+                  {insight.body}
+                </Typo>
+              </View>
+            </View>
+          ))}
         </View>
-      ))}
-    </Card>
+
+        {insights.length > 3 ? (
+          <Pressable onPress={() => setExpanded((prev) => !prev)} hitSlop={8} style={styles.linkRow}>
+            <Typo variant="caption" color={colors.text}>
+              {expanded ? 'Ver menos' : `Ver los ${insights.length} insights`}
+            </Typo>
+          </Pressable>
+        ) : null}
+      </Card>
+    </View>
   );
 }
 
@@ -840,19 +813,6 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
-  inline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  statusDot: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   avatar: {
     width: 34,
     height: 34,
@@ -861,174 +821,78 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  chips: {
+  filterRow: {
+    flexDirection: 'row',
     gap: spacing.sm,
-    paddingRight: spacing.lg,
   },
-  segmentChip: {
-    minHeight: 34,
-    maxWidth: 140,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.md,
-  },
-  segmentChipSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  loading: {
-    gap: spacing.lg,
-  },
-  healthCard: {
-    gap: spacing.md,
-  },
-  healthTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: spacing.md,
-  },
-  scoreRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: spacing.md,
-  },
-  scoreText: {
+  filterButton: {
     flex: 1,
-    paddingBottom: spacing.sm,
-  },
-  scoreTrack: {
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: colors.surfaceSecondary,
-    overflow: 'hidden',
-  },
-  scoreFill: {
-    height: '100%',
-    borderRadius: 5,
-    backgroundColor: colors.accent,
-  },
-  kpiGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  kpiTile: {
-    flexBasis: '47%',
-    flexGrow: 1,
-    minHeight: 118,
-    gap: spacing.xs,
-  },
-  kpiTop: {
-    minHeight: 22,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: spacing.xs,
+    backgroundColor: colors.surface,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
   },
-  largeCard: {
-    gap: spacing.md,
-    marginTop: spacing.md,
+  filterButtonPressed: {
+    opacity: 0.7,
+  },
+  filterButtonLabel: {
+    flexShrink: 1,
+  },
+  loading: {
+    gap: spacing.lg,
+    marginTop: spacing.lg,
+  },
+  section: {
+    marginTop: spacing.xl,
+  },
+  cardHeading: {
+    marginBottom: spacing.md,
+  },
+  cardHeadingSpaced: {
+    marginBottom: spacing.md,
+  },
+  cardSubtitle: {
+    marginTop: 2,
+    marginBottom: spacing.md,
   },
   cardTitleRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: spacing.md,
+    marginBottom: spacing.md,
   },
-  flowRibbon: {
-    flexDirection: 'row',
+  summaryRows: {
     gap: spacing.sm,
   },
-  flowMetric: {
-    flex: 1,
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: radius.md,
-    padding: spacing.sm,
-    gap: 2,
-  },
-  multiTrack: {
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.surfaceSecondary,
-    overflow: 'hidden',
+  summaryRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xs,
   },
-  trackPart: {
-    height: '100%',
+  divider: {
+    height: 1,
+    backgroundColor: colors.border,
   },
-  tipBox: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: spacing.sm,
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: radius.md,
-    padding: spacing.md,
-  },
-  modeSwitch: {
-    flexDirection: 'row',
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: radius.pill,
-    padding: 3,
-  },
-  modeButton: {
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 5,
-  },
-  modeButtonSelected: {
-    backgroundColor: colors.surface,
-  },
-  legendRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md,
-  },
-  legendItem: {
+  comparisonRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
+    marginTop: spacing.md,
   },
-  legendDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  barChart: {
-    height: 150,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    gap: spacing.sm,
-  },
-  barColumn: {
-    flex: 1,
+  linkRow: {
+    marginTop: spacing.md,
     alignItems: 'center',
-    gap: spacing.sm,
-  },
-  barPair: {
-    height: 120,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 5,
-  },
-  bar: {
-    width: 8,
-    borderRadius: 4,
-  },
-  rightValue: {
-    alignItems: 'flex-end',
-    gap: 2,
   },
   lineChart: {
     height: 148,
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: radius.md,
-    overflow: 'hidden',
     position: 'relative',
   },
   lineSegment: {
@@ -1047,81 +911,41 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: colors.primary,
   },
-  categoryStack: {
-    gap: spacing.md,
-  },
-  categoryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-  },
-  categoryIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  categoryTrack: {
-    height: 6,
-    borderRadius: 3,
+  spendTypeTrack: {
+    height: 10,
+    borderRadius: 5,
     backgroundColor: colors.surfaceSecondary,
     overflow: 'hidden',
-    marginTop: spacing.xs,
-  },
-  categoryFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  twoColumns: {
     flexDirection: 'row',
-    gap: spacing.sm,
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
   },
-  structureBox: {
-    flex: 1,
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    gap: spacing.xs,
+  spendTypeFill: {
+    height: '100%',
   },
-  structureMuted: {
-    opacity: 0.72,
-  },
-  listCard: {
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
+  recurringList: {
+    gap: 0,
   },
   listRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
   },
   rowDivider: {
     borderTopWidth: 1,
     borderTopColor: colors.border,
   },
-  smallIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
+  merchantList: {
+    gap: spacing.md,
   },
   merchantRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
   },
-  merchantLogo: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
+  rank: {
+    width: 18,
   },
   merchantTrack: {
     height: 5,
@@ -1135,47 +959,76 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: colors.accent,
   },
-  peakGrid: {
+  twoColumns: {
     flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: spacing.xs,
+    gap: spacing.lg,
+    marginTop: spacing.md,
   },
-  peakChip: {
-    flex: 1,
-    alignItems: 'center',
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: radius.md,
-    padding: spacing.sm,
-  },
-  habitIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.accent,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  compareRow: {
+  insightHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: radius.md,
-    padding: spacing.md,
+    marginBottom: spacing.sm,
   },
-  conclusionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  insightList: {
     gap: spacing.md,
-    backgroundColor: colors.surfaceSecondary,
-    borderRadius: radius.md,
-    padding: spacing.md,
   },
-  conclusionIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+  insightRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: spacing.sm,
+  },
+  compareHeaderRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    marginBottom: spacing.xs,
+  },
+  compareDataRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+  },
+  compareLabelCol: {
+    flex: 1.2,
+  },
+  compareValueCol: {
+    flex: 1,
+    textAlign: 'right',
+  },
+  compareChangeCol: {
+    flex: 0.8,
+    textAlign: 'right',
+  },
+  backdrop: {
+    flex: 1,
+    backgroundColor: colors.overlay,
+  },
+  sheet: {
+    backgroundColor: colors.background,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    paddingTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.xxl,
+  },
+  handle: {
+    alignSelf: 'center',
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.borderStrong,
+    marginBottom: spacing.md,
+  },
+  sheetTitle: {
+    marginBottom: spacing.md,
+  },
+  customField: {
+    marginBottom: spacing.md,
+  },
+  customActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.sm,
   },
 });

@@ -3,7 +3,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../theme';
 import { Typo } from '../ui/Typo';
 import { Badge } from '../ui/Badge';
-import { formatCurrency } from '../../utils/format';
+import { formatCategoryShare, formatCurrency } from '../../utils/format';
 import { iconForCategory } from '../../utils/categoryIcons';
 import type { CategoryTrend } from '../../types/api';
 
@@ -39,7 +39,7 @@ export function CategoryTrendList({ items, spotlightCategoryId, hidden }: Catego
                 {item.categoryId === spotlightCategoryId ? <Badge label="Mayor cambio" tone="attention" /> : null}
               </View>
               <Typo variant="caption" color={colors.textSecondary}>
-                {item.percentage.toFixed(0)}% · {item.count} {item.count === 1 ? 'movimiento' : 'movimientos'}
+                {formatCategoryShare(item.percentage)} · {item.count} {item.count === 1 ? 'movimiento' : 'movimientos'}
               </Typo>
             </View>
 

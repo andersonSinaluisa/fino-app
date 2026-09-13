@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { forwardRef, useState, type ReactNode } from 'react';
 import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 import { colors, radius, spacing, typography } from '../../theme';
 import { Typo } from './Typo';
@@ -7,9 +7,14 @@ interface InputProps extends TextInputProps {
   label: string;
   error?: string | null;
   hint?: string;
+  /** Icono/acción fijo a la derecha del campo (p. ej. mostrar/ocultar contraseña). */
+  rightElement?: ReactNode;
 }
 
-export function Input({ label, error, hint, style, ...rest }: InputProps) {
+export const Input = forwardRef<TextInput, InputProps>(function Input(
+  { label, error, hint, rightElement, style, ...rest },
+  ref,
+) {
   const [focused, setFocused] = useState(false);
 
   return (
@@ -18,24 +23,29 @@ export function Input({ label, error, hint, style, ...rest }: InputProps) {
         {label.toUpperCase()}
       </Typo>
 
-      <TextInput
-        {...rest}
-        onFocus={(event) => {
-          setFocused(true);
-          rest.onFocus?.(event);
-        }}
-        onBlur={(event) => {
-          setFocused(false);
-          rest.onBlur?.(event);
-        }}
-        placeholderTextColor={colors.textSecondary}
-        style={[
-          styles.input,
-          focused ? styles.focused : null,
-          error ? styles.errored : null,
-          style,
-        ]}
-      />
+      <View style={styles.fieldRow}>
+        <TextInput
+          {...rest}
+          ref={ref}
+          onFocus={(event) => {
+            setFocused(true);
+            rest.onFocus?.(event);
+          }}
+          onBlur={(event) => {
+            setFocused(false);
+            rest.onBlur?.(event);
+          }}
+          placeholderTextColor={colors.textSecondary}
+          style={[
+            styles.input,
+            focused ? styles.focused : null,
+            error ? styles.errored : null,
+            style,
+          ]}
+        />
+
+        {rightElement ? <View style={styles.rightElement}>{rightElement}</View> : null}
+      </View>
 
       {error ? (
         <Typo variant="caption" color={colors.danger}>
@@ -48,11 +58,14 @@ export function Input({ label, error, hint, style, ...rest }: InputProps) {
       ) : null}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   wrapper: {
     gap: spacing.sm,
+  },
+  fieldRow: {
+    justifyContent: 'center',
   },
   input: {
     backgroundColor: colors.surface,
@@ -70,5 +83,9 @@ const styles = StyleSheet.create({
   },
   errored: {
     borderColor: colors.danger,
+  },
+  rightElement: {
+    position: 'absolute',
+    right: spacing.lg,
   },
 });

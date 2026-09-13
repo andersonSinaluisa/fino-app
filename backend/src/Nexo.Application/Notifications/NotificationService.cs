@@ -27,6 +27,11 @@ public sealed record RegisterDeviceRequest(
 /// Seguridad, Recordatorios), plus the two device-level switches that predate
 /// this entregable and are not part of any category (PushEnabled turns push off
 /// entirely; ShowAmountsInPreview is Entregable 18's "ocultar montos en previews").
+/// PULSO FASE 3 adds a sixth category (NotifyOnPulses) and the "no molestar"
+/// window (QuietHoursStartHour/QuietHoursEndHour, both null or both 0-23 --
+/// see <see cref="Nexo.Domain.Notifications.Device.UpdatePreferences"/>), which
+/// suppresses push for every category during that local-time window without
+/// touching any of the toggles above.
 /// </summary>
 public sealed record NotificationPreferencesDto(
     bool PushEnabled,
@@ -35,7 +40,10 @@ public sealed record NotificationPreferencesDto(
     bool NotifyOnIncome,
     bool NotifyOnInsights,
     bool NotifyOnSecurity,
-    bool NotifyOnReminders);
+    bool NotifyOnReminders,
+    bool NotifyOnPulses = true,
+    int? QuietHoursStartHour = null,
+    int? QuietHoursEndHour = null);
 
 public interface INotificationService
 {
@@ -129,6 +137,9 @@ public sealed class NotificationService(INexoDbContext db, IClock clock) : INoti
             preferences.NotifyOnInsights,
             preferences.NotifyOnSecurity,
             preferences.NotifyOnReminders,
+            preferences.NotifyOnPulses,
+            preferences.QuietHoursStartHour,
+            preferences.QuietHoursEndHour,
             clock.UtcNow);
 
         await db.SaveChangesAsync(cancellationToken);
@@ -152,7 +163,10 @@ public sealed class NotificationService(INexoDbContext db, IClock clock) : INoti
         device.NotifyOnIncome,
         device.NotifyOnInsights,
         device.NotifyOnSecurity,
-        device.NotifyOnReminders);
+        device.NotifyOnReminders,
+        device.NotifyOnPulses,
+        device.QuietHoursStartHour,
+        device.QuietHoursEndHour);
 }
 
 /// <summary>
@@ -180,6 +194,15 @@ public sealed class NotificationDispatcher(
         foreach (var device in devices)
         {
             if (!ShouldNotify(device, notification.Type))
+            {
+                continue;
+            }
+
+            // PULSO FASE 3 ("no molestar"): this only skips the push for this
+            // device. The notification row above is already saved regardless, so
+            // the person still sees it in-app the next time they open Nexo --
+            // quiet hours mute the buzz, never the record.
+            if (IsWithinQuietHours(device, clock.UtcNow))
             {
                 continue;
             }
@@ -285,5 +308,45 @@ public sealed class NotificationDispatcher(
         NotificationType.SecurityAlert => device.NotifyOnSecurity,
         NotificationType.WeeklySummary => device.NotifyOnReminders,
         NotificationType.AccountNeedsUpdate => device.NotifyOnReminders,
+        NotificationType.PulseReady => device.NotifyOnPulses,
     };
+
+    /// <summary>
+    /// Ecuador has one timezone and no DST, and every Nexo user is there today
+    /// (see <c>StatementDateInterpreter.Ecuador()</c>, the same fixed-offset
+    /// fallback this mirrors) -- so "no molestar" hours are interpreted as
+    /// Ecuador wall-clock time rather than adding a per-device timezone nobody
+    /// has asked for yet. Both hours null (the default) means quiet hours are
+    /// off; <see cref="Domain.Notifications.Device.UpdatePreferences"/> is what
+    /// guarantees they are never set one without the other.
+    /// </summary>
+    private static readonly TimeZoneInfo EcuadorTimeZone = ResolveEcuadorTimeZone();
+
+    private static bool IsWithinQuietHours(Device device, DateTimeOffset now)
+    {
+        if (device.QuietHoursStartHour is not { } start || device.QuietHoursEndHour is not { } end)
+        {
+            return false;
+        }
+
+        var localHour = TimeZoneInfo.ConvertTime(now, EcuadorTimeZone).Hour;
+
+        // A window like 22-7 crosses midnight; 9-17 does not. Equal bounds is
+        // rejected by UpdatePreferences, so this is never an always-on window.
+        return start <= end
+            ? localHour >= start && localHour < end
+            : localHour >= start || localHour < end;
+    }
+
+    private static TimeZoneInfo ResolveEcuadorTimeZone()
+    {
+        try
+        {
+            return TimeZoneInfo.FindSystemTimeZoneById("America/Guayaquil");
+        }
+        catch (Exception ex) when (ex is TimeZoneNotFoundException or InvalidTimeZoneException)
+        {
+            return TimeZoneInfo.CreateCustomTimeZone("nexo-ec", TimeSpan.FromHours(-5), "Ecuador", "Ecuador");
+        }
+    }
 }

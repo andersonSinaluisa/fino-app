@@ -18,6 +18,14 @@ public enum ConnectionMode
     Email = 1,
     Api = 2,
     Webhook = 3,
+
+    /// <summary>
+    /// Registro rápido de efectivo: la persona escribe el movimiento a mano, uno
+    /// a uno. Deliberadamente distinto de <see cref="ManualImport"/> (que sigue
+    /// significando "sube un archivo del banco"): un proveedor con este modo no
+    /// debe ofrecer nunca importar archivos ni conectar un correo.
+    /// </summary>
+    Manual = 4,
 }
 
 /// <summary>

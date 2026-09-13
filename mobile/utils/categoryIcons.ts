@@ -28,6 +28,22 @@ const ICON_MAP: Record<string, IoniconName> = {
   percent: 'receipt-outline',
   'trending-up': 'trending-up-outline',
   circle: 'ellipse-outline',
+  // Categorías personalizadas: el resto del vocabulario que el backend acepta
+  // (Nexo.Domain.Categories.CategoryAppearance.Icons) para una categoría que
+  // la persona crea ella misma -- mismo principio que el bloque de arriba,
+  // nunca se manda un nombre de Ionicons directamente desde el picker.
+  home: 'home-outline',
+  gift: 'gift-outline',
+  briefcase: 'briefcase-outline',
+  paw: 'paw-outline',
+  airplane: 'airplane-outline',
+  cafe: 'cafe-outline',
+  fitness: 'barbell-outline',
+  'musical-notes': 'musical-notes-outline',
+  'game-controller': 'game-controller-outline',
+  cash: 'cash-outline',
+  people: 'people-outline',
+  construct: 'construct-outline',
 };
 
 const FALLBACK: IoniconName = 'ellipse-outline';
@@ -39,3 +55,17 @@ export function iconForCategory(icon: string | null | undefined): IoniconName {
 
   return ICON_MAP[icon] ?? FALLBACK;
 }
+
+/**
+ * Categorías personalizadas: las opciones que el picker de ícono muestra,
+ * en el mismo orden que el backend valida (CategoryAppearance.Icons) -- una
+ * sola fuente de verdad para "qué íconos existen", tomada de ICON_MAP en vez
+ * de una segunda lista que se podría desincronizar.
+ */
+export const CATEGORY_ICON_KEYS: string[] = Object.keys(ICON_MAP);
+
+/** Categorías personalizadas: misma paleta que ya usan las categorías del sistema (ReferenceDataSeeder), para que una categoría propia nunca desentone. */
+export const CATEGORY_COLORS: string[] = [
+  '#E4A853', '#8DD9B6', '#7FB3E8', '#C7F36B', '#D8A0E8', '#D8665B',
+  '#9AA8E8', '#E8B4A0', '#B6A0E8', '#ECE9E1', '#A67C52', '#4E9F73', '#74766F',
+];

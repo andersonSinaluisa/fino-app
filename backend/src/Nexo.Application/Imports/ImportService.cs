@@ -479,6 +479,7 @@ public sealed class ImportService(
 
         import.MarkPreviewReady(
             parsed.ParserCode,
+            parsed.DetectedProviderCode,
             parsed.Transactions.Count + parsed.Errors.Count,
             newRows,
             duplicates,
@@ -680,6 +681,19 @@ public sealed class ImportService(
         activity?.SetTag("nexo.flagged", flagged);
         activity?.SetTag("nexo.upgraded", upgraded);
 
+        // Onboarding funcional: "primera importación completada" is PULSO's
+        // north-star metric (first successful import rate), so it is recorded
+        // here -- the one place a confirm can actually be said to have
+        // produced something -- rather than from whichever screen called
+        // ConfirmAsync. Only counts when at least one row actually landed;
+        // an import that was entirely duplicates/invalid rows never "shows
+        // someone their money", so it must not silently satisfy the milestone.
+        if (imported > 0)
+        {
+            var owner = await db.Users.FirstOrDefaultAsync(u => u.Id == userId, cancellationToken);
+            owner?.RecordFirstImportCompleted(now);
+        }
+
         await db.SaveChangesAsync(cancellationToken);
 
         await accounts.RecalculateBalanceAsync(userId, import.FinancialAccountId, cancellationToken);
@@ -842,6 +856,7 @@ public sealed class ImportService(
             import.FinancialAccountId,
             import.FileName,
             import.ParserCode,
+            import.DetectedProviderCode,
             import.Status.ToString(),
             import.TotalRows,
             import.NewRows,

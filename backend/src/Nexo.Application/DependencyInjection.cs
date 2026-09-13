@@ -15,10 +15,14 @@ using Nexo.Application.Imports.Parsing;
 using Nexo.Application.Imports.Parsing.Parsers;
 using Nexo.Application.Insights;
 using Nexo.Application.Notifications;
+using Nexo.Application.Onboarding;
 using Nexo.Application.Privacy;
 using Nexo.Application.Providers;
+using Nexo.Application.Pulses;
+using Nexo.Application.QuickEntry;
 using Nexo.Application.Transactions;
 using Nexo.Application.Transfers;
+using Nexo.Application.Withdrawals;
 
 namespace Nexo.Application;
 
@@ -37,6 +41,11 @@ public static class DependencyInjection
         services.AddScoped<ITransactionService, TransactionService>();
         services.AddScoped<IAnalyticsService, AnalyticsService>();
         services.AddScoped<IInternalTransferService, InternalTransferService>();
+
+        // Retiros de efectivo: una especialización de las transferencias internas,
+        // no un sistema aparte. Depende de ICashAccountProvisioner (registrado más
+        // abajo con el registro rápido) para poder crear la cuenta Efectivo al vuelo.
+        services.AddScoped<IWithdrawalService, WithdrawalService>();
         services.AddScoped<ICategoryService, CategoryService>();
         services.AddScoped<ICategorizationEngine, CategorizationEngine>();
         services.AddScoped<ICategorizationRuleService, CategorizationRuleService>();
@@ -44,6 +53,18 @@ public static class DependencyInjection
         services.AddScoped<IImportService, ImportService>();
         services.AddScoped<IInsightEngine, InsightEngine>();
         services.AddScoped<IInsightService, InsightService>();
+        services.AddScoped<IPulseEngine, PulseEngine>();
+        services.AddScoped<IPulseService, PulseService>();
+        services.AddScoped<IPulseNotificationDecisionService, PulseNotificationDecisionService>();
+        services.AddScoped<IOnboardingService, OnboardingService>();
+
+        // Registro rápido de efectivo. CashAccountProvisioner y
+        // QuickEntrySuggestionService son colaboradores de QuickTransactionService,
+        // no puntos de entrada paralelos: el único camino que ESCRIBE un movimiento
+        // manual sigue siendo IQuickTransactionService.CreateAsync.
+        services.AddScoped<ICashAccountProvisioner, CashAccountProvisioner>();
+        services.AddScoped<IQuickTransactionService, QuickTransactionService>();
+        services.AddScoped<IQuickEntrySuggestionService, QuickEntrySuggestionService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<INotificationDispatcher, NotificationDispatcher>();
         services.AddScoped<IPrivacyService, PrivacyService>();

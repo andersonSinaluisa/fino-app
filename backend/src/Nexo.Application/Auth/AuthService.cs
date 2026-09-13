@@ -418,7 +418,13 @@ public sealed class AuthService(
                 user.DisplayName,
                 user.TimeZoneId,
                 user.PreferredCurrency,
-                user.Locale));
+                user.Locale,
+                new OnboardingStatusDto(
+                    user.OnboardingStartedAt,
+                    user.OnboardingTutorialCompletedAt,
+                    user.OnboardingSkippedAt,
+                    user.FirstAccountAddedAt,
+                    user.FirstImportCompletedAt)));
     }
 
     private async Task RevokeFamilyAsync(Guid userId, string reason, DateTimeOffset now, CancellationToken cancellationToken)

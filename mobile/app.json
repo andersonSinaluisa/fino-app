@@ -20,10 +20,14 @@
       "supportsTablet": false,
       "bundleIdentifier": "app.fino.mobile",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "Fino solo accede a tu fototeca si eliges desde ahí una factura para registrar un gasto o un archivo para importar un estado de cuenta. Fino no explora tus fotos ni las envía a ningún servidor.",
+        "NSCameraUsageDescription": "Fino necesita acceso a la cámara para escanear tus facturas. La foto se lee en tu propio teléfono y no se envía a ningún servidor."
       },
       "entitlements": {
-        "com.apple.security.application-groups": ["group.app.fino.mobile"]
+        "com.apple.security.application-groups": [
+          "group.app.fino.mobile"
+        ]
       }
     },
     "android": {
@@ -33,7 +37,10 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -48,7 +55,18 @@
         }
       ],
       "@bacons/apple-targets",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Fino necesita acceso al micrófono para registrar movimientos por voz. No se guarda el audio.",
+          "speechRecognitionPermission": "Fino usa el reconocimiento de voz de tu teléfono para convertir lo que dices en un movimiento. No se guarda el audio.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
+      ],
       "./plugins/withShareIntent.js",
+      "./plugins/withQuickEntryShortcut.js",
       [
         "react-native-android-widget",
         {
@@ -131,6 +149,28 @@
               "resizeMode": "horizontal|vertical",
               "widgetFeatures": "reconfigurable|configuration_optional",
               "updatePeriodMillis": 1800000
+            },
+            {
+              "name": "Pulso",
+              "label": "Fino: Pulso",
+              "description": "Lo más relevante que Fino ha notado en tus finanzas.",
+              "minWidth": "180dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 3,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 1800000
+            },
+            {
+              "name": "RegistrarEfectivo",
+              "label": "Fino: Registrar efectivo",
+              "description": "Anota un gasto en efectivo sin abrir Fino entera.",
+              "minWidth": "110dp",
+              "minHeight": "110dp",
+              "targetCellWidth": 2,
+              "targetCellHeight": 2,
+              "resizeMode": "horizontal|vertical",
+              "updatePeriodMillis": 0
             }
           ]
         }
@@ -152,14 +192,18 @@
                   "bundleIdentifier": "app.fino.mobile.widget",
                   "targetName": "FinoWidgets",
                   "entitlements": {
-                    "com.apple.security.application-groups": ["group.app.fino.mobile"]
+                    "com.apple.security.application-groups": [
+                      "group.app.fino.mobile"
+                    ]
                   }
                 },
                 {
                   "bundleIdentifier": "app.fino.mobile.share",
                   "targetName": "FinoShare",
                   "entitlements": {
-                    "com.apple.security.application-groups": ["group.app.fino.mobile"]
+                    "com.apple.security.application-groups": [
+                      "group.app.fino.mobile"
+                    ]
                   }
                 }
               ]

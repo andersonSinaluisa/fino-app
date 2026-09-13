@@ -8,17 +8,28 @@ import type {
   Category,
   CategorizationRule,
   CreateCategorizationRuleRequest,
+  CreateCategoryRequest,
   EmailConnection,
   HomeSummary,
   ImportPreview,
   ImportResult,
   ImportSummary,
   Insight,
+  ConfirmWithdrawalRequest,
+  CreateQuickTransactionRequest,
+  QuickEntryBootstrap,
+  WithdrawalCandidate,
+  WithdrawalConfirmation,
+  WithdrawalScan,
+  SetCashBalanceRequest,
+  UpdateQuickTransactionRequest,
   InternalTransferCandidate,
   ManualColumnMapping,
   NotificationPreferences,
+  OnboardingStatus,
   Paged,
   Provider,
+  Pulse,
   RulePreview,
   RulePreviewRequest,
   SecurityEvent,
@@ -26,6 +37,7 @@ import type {
   TransactionDetail,
   TransactionListItem,
   UpdateCategorizationRuleRequest,
+  UpdateCategoryRequest,
 } from '../types/api';
 
 export interface TransactionQuery {
@@ -169,6 +181,34 @@ export const api = {
       }),
   },
 
+  /**
+   * Registro rápido de efectivo (§28). Una sola superficie para TODOS los puntos
+   * de entrada -- el bottom sheet, el formulario completo, un frecuente de un
+   * toque, la voz, el widget y los atajos del sistema operativo. Ninguno de ellos
+   * tiene su propia forma de crear un movimiento.
+   */
+  quickEntry: {
+    /** §40: todo lo que el sheet necesita para abrirse, en una sola llamada. */
+    bootstrap: () => request<QuickEntryBootstrap>('/api/v1/quick-entry/bootstrap'),
+
+    create: (body: CreateQuickTransactionRequest) =>
+      request<TransactionDetail>('/api/v1/quick-entry/transactions', { method: 'POST', body }),
+
+    update: (id: string, body: UpdateQuickTransactionRequest) =>
+      request<TransactionDetail>(`/api/v1/quick-entry/transactions/${id}`, { method: 'PUT', body }),
+
+    /**
+     * §6: Deshacer. Borra de verdad, y solo funciona sobre movimientos escritos a
+     * mano -- los que reporta un banco se ignoran, no se borran.
+     */
+    remove: (id: string) =>
+      request<void>(`/api/v1/quick-entry/transactions/${id}`, { method: 'DELETE' }),
+
+    /** §24-25: declarar cuánto efectivo tienes, o corregirlo dejando rastro. */
+    setCashBalance: (body: SetCashBalanceRequest) =>
+      request<Account>('/api/v1/quick-entry/cash-balance', { method: 'POST', body }),
+  },
+
   // Entregable 13: "¿Esto fue una transferencia entre tus cuentas?"
   transfers: {
     candidates: () => request<InternalTransferCandidate[]>('/api/v1/transfers/candidates'),
@@ -181,9 +221,43 @@ export const api = {
 
     clear: (transactionId: string) =>
       request<void>(`/api/v1/transfers/${transactionId}/clear`, { method: 'POST' }),
+
+    /**
+     * Retiros de efectivo. Cuelgan de /transfers a propósito: un retiro conciliado
+     * ES una transferencia interna, y separarlos sugeriría que hay dos sistemas de
+     * conciliación cuando solo hay uno.
+     */
+    withdrawals: {
+      candidates: () =>
+        request<WithdrawalCandidate[]>('/api/v1/transfers/withdrawals/candidates'),
+
+      /** Sin cashTransactionId, el servidor crea la entrada de efectivo que falta. */
+      confirm: (transactionId: string, body: ConfirmWithdrawalRequest = {}) =>
+        request<WithdrawalConfirmation>(`/api/v1/transfers/withdrawals/${transactionId}/confirm`, {
+          method: 'POST',
+          body,
+        }),
+
+      reject: (transactionId: string) =>
+        request<void>(`/api/v1/transfers/withdrawals/${transactionId}/reject`, { method: 'POST' }),
+
+      /** Cuántos retiros dejó una importación, para avisar sin interrumpirla. */
+      scan: (importId: string) =>
+        request<WithdrawalScan>(`/api/v1/transfers/withdrawals/scan/${importId}`),
+    },
   },
 
-  categories: () => request<Category[]>('/api/v1/categories'),
+  categories: {
+    list: () => request<Category[]>('/api/v1/categories'),
+
+    // Categorías personalizadas: crear/editar una categoría propia con
+    // ícono y color. Nunca para las del sistema (el backend rechaza eso).
+    create: (body: CreateCategoryRequest) =>
+      request<Category>('/api/v1/categories', { method: 'POST', body }),
+
+    update: (id: string, body: UpdateCategoryRequest) =>
+      request<Category>(`/api/v1/categories/${id}`, { method: 'PUT', body }),
+  },
 
   // "Categorización personal": administración directa de las reglas propias
   // del usuario (pantalla "Reglas de categorización", punto 15) y la
@@ -212,6 +286,29 @@ export const api = {
   insights: {
     list: () => request<Insight[]>('/api/v1/insights'),
     refresh: () => request<Insight[]>('/api/v1/insights/refresh', { method: 'POST' }),
+  },
+
+  /** PULSO FASE 1/2: read-only from the app -- PulseEvaluationWorker is what creates pulses server-side. */
+  pulses: {
+    list: () => request<Pulse[]>('/api/v1/pulses'),
+    get: (id: string) => request<Pulse>(`/api/v1/pulses/${id}`),
+    /** PULSO FASE 4: 👍/👎 on the detail screen. */
+    feedback: (id: string, helpful: boolean) =>
+      request<Pulse>(`/api/v1/pulses/${id}/feedback`, { method: 'POST', body: { helpful } }),
+  },
+
+  /**
+   * Onboarding funcional (rediseño post-login): register() and login()
+   * already return the current snapshot inline (AuthResult.user.onboarding),
+   * so `get` here is only for refreshing a possibly-stale cached value, not
+   * the common path.
+   */
+  onboarding: {
+    get: () => request<OnboardingStatus>('/api/v1/onboarding'),
+    start: () => request<OnboardingStatus>('/api/v1/onboarding/start', { method: 'POST' }),
+    tutorialCompleted: () =>
+      request<OnboardingStatus>('/api/v1/onboarding/tutorial-completed', { method: 'POST' }),
+    skip: () => request<OnboardingStatus>('/api/v1/onboarding/skip', { method: 'POST' }),
   },
 
   imports: {

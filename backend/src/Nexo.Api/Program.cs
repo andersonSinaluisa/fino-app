@@ -260,12 +260,16 @@ app.UseAuthorization();
 app.MapAuthEndpoints();
 app.MapAccountEndpoints();
 app.MapTransactionEndpoints();
+app.MapQuickEntryEndpoints();
 app.MapAnalyticsEndpoints();
 app.MapInternalTransferEndpoints();
+app.MapWithdrawalEndpoints();
 app.MapImportEndpoints();
 app.MapCategorizationRuleEndpoints();
 app.MapProfileEndpoints();
 app.MapEmailIngestionEndpoints();
+app.MapPulseEndpoints();
+app.MapOnboardingEndpoints();
 
 app.MapHub<NexoHub>("/hubs/nexo");
 

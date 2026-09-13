@@ -59,6 +59,14 @@ enum FinoWidgetColor {
         let factor = 0.45
         return RGB(r: rgb.r * factor, g: rgb.g * factor, b: rgb.b * factor).color
     }
+
+    /// The raw hex color itself, with no tint/blend -- for a fixed accent
+    /// picked by data (e.g. Pulso's severity) rather than a category/account
+    /// brand color needing a soft background tint.
+    static func solid(of hex: String, fallback: Color = Color("accentMint")) -> Color {
+        guard let rgb = RGB(hex: hex) else { return fallback }
+        return rgb.color
+    }
 }
 
 /// First 1-2 initials of a name, same rule as utils/format.ts `initialsOf`.

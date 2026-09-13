@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-nexo}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nexo_local_dev}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "5434:5432"
     volumes:
       - nexo-db-data:/var/lib/postgresql/data
     healthcheck:
@@ -36,7 +36,7 @@ services:
       Nexo__Seed__Demo: ${Nexo__Seed__Demo:-true}
       Nexo__Workers__Enabled: ${Nexo__Workers__Enabled:-true}
       Nexo__RateLimiting__Enabled: ${Nexo__RateLimiting__Enabled:-true}
-      Nexo__Push__Enabled: ${Nexo__Push__Enabled:-false}
+      Nexo__Push__Enabled: ${Nexo__Push__Enabled:-true}
       Nexo__Cors__AllowedOrigins__0: ${Nexo__Cors__AllowedOrigins__0:-}
       Nexo__EmailIngestion__Gmail__ClientId: ${Nexo__EmailIngestion__Gmail__ClientId:-}
       Nexo__EmailIngestion__Gmail__ClientSecret: ${Nexo__EmailIngestion__Gmail__ClientSecret:-}

@@ -37,3 +37,34 @@ jest.mock('@expo/vector-icons', () => {
     },
   );
 });
+
+/**
+ * AsyncStorage en memoria. Lo usan `services/analytics/storage.ts` (hitos
+ * únicos y ventana de sesión) y `services/offlineStorage.ts`. `virtual: true`
+ * para que la suite corra igual en un entorno donde el paquete todavía no
+ * esté instalado.
+ */
+jest.mock(
+  '@react-native-async-storage/async-storage',
+  () => {
+    const store = new Map<string, string>();
+
+    return {
+      __esModule: true,
+      default: {
+        getItem: jest.fn(async (key: string) => store.get(key) ?? null),
+        setItem: jest.fn(async (key: string, value: string) => {
+          store.set(key, value);
+        }),
+        removeItem: jest.fn(async (key: string) => {
+          store.delete(key);
+        }),
+        clear: jest.fn(async () => {
+          store.clear();
+        }),
+        getAllKeys: jest.fn(async () => Array.from(store.keys())),
+      },
+    };
+  },
+  { virtual: true },
+);

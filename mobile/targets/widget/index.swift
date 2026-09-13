@@ -14,5 +14,8 @@ struct FinoWidgetsBundle: WidgetBundle {
         CategorySpendWidget()
         ProjectionWidget()
         AccountWidget()
+        PulseWidget()
+        // §28: el único widget que no muestra datos -- es un botón para registrar.
+        QuickEntryWidget()
     }
 }

@@ -27,6 +27,13 @@ export const ANDROID_WIDGET_NAMES = {
   categorySpend: 'Presupuesto',
   projection: 'Proyeccion',
   account: 'Cuenta',
+  pulse: 'Pulso',
+  /**
+   * §28: el único widget que no muestra un dato -- es un botón para registrar.
+   * Comparte el registro y el manejador de los demás para no abrir una segunda
+   * forma de dibujar widgets, pero ignora el snapshot: no tiene nada que leer.
+   */
+  quickEntry: 'RegistrarEfectivo',
 } as const;
 
 export type AndroidWidgetName = (typeof ANDROID_WIDGET_NAMES)[keyof typeof ANDROID_WIDGET_NAMES];

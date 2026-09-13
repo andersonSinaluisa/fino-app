@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,6 +7,7 @@ import { Badge, Button, Card, EmptyState, Screen, SkeletonCard, Typo } from '../
 import { useSummary } from '../../hooks/queries';
 import { estimateAvailableMoney, monthRangeLabel } from '../../utils/planCalculations';
 import { formatCurrency } from '../../utils/format';
+import { AnalyticsEvent, AnalyticsSource, track } from '../../services/analytics';
 
 export default function AvailableMoneyScreen() {
   const router = useRouter();
@@ -18,6 +19,18 @@ export default function AvailableMoneyScreen() {
   const simulatedAvailable = estimate && Number.isFinite(simulatedSpend)
     ? Math.max(estimate.availableUntilMonthEnd - simulatedSpend, 0)
     : null;
+
+  // §16: adopción de la proyección. `hasData` distingue "la abrió y vio algo"
+  // de "la abrió y estaba vacía", que son dos cosas muy distintas para
+  // decidir si la función vale la pena. El importe estimado no sale.
+  const hasEstimate = estimate !== null;
+
+  useEffect(() => {
+    track(AnalyticsEvent.ProjectionViewed, {
+      source: AnalyticsSource.Home,
+      hasData: hasEstimate,
+    });
+  }, [hasEstimate]);
 
   return (
     <Screen refreshing={isRefetching} onRefresh={() => void refetch()}>

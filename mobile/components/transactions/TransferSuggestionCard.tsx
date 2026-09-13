@@ -3,7 +3,8 @@ import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../theme';
 import { Button, Typo } from '../ui';
-import { useConfirmInternalTransfer, useInternalTransferCandidates } from '../../hooks/queries';
+import { useConfirmInternalTransfer, useInternalTransferCandidates, useWithdrawalCandidates } from '../../hooks/queries';
+import { WithdrawalCard } from './WithdrawalCard';
 import { formatCurrency } from '../../utils/format';
 import type { InternalTransferCandidate } from '../../types/api';
 
@@ -21,10 +22,22 @@ function pairKey(candidate: InternalTransferCandidate): string {
  */
 export function TransferSuggestionCard() {
   const { data: candidates } = useInternalTransferCandidates();
+  const { data: withdrawals } = useWithdrawalCandidates();
   const confirm = useConfirmInternalTransfer();
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
 
   const visible = (candidates ?? []).filter((candidate) => !dismissed.has(pairKey(candidate)));
+
+  // Los retiros van antes que las transferencias entre bancos: son mucho más
+  // frecuentes y, sin conciliar, distorsionan más las estadísticas (un retiro sin
+  // revisar infla el gasto del mes con dinero que la persona todavía tiene).
+  // Se muestra UNO, no una pila: esta tarjeta vive encima de la lista de
+  // movimientos, y convertirla en una bandeja la haría inutilizable.
+  const withdrawal = (withdrawals ?? [])[0];
+
+  if (withdrawal) {
+    return <WithdrawalCard candidate={withdrawal} />;
+  }
 
   if (visible.length === 0) {
     return null;

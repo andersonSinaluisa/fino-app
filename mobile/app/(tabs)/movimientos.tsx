@@ -4,7 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing, typography } from '../../theme';
-import { Chip, EmptyState, SkeletonCard, Typo } from '../../components/ui';
+import { Chip, EdgeFade, EmptyState, SkeletonCard, Typo } from '../../components/ui';
 import { DayGroupSection } from '../../components/transactions/DayGroup';
 import { TransferSuggestionCard } from '../../components/transactions/TransferSuggestionCard';
 import { useAccounts, useCategories, useTransactions } from '../../hooks/queries';
@@ -101,6 +101,7 @@ export default function TransactionsScreen() {
         ) : null}
       </View>
 
+      <View style={styles.filtersWrap}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -158,6 +159,9 @@ export default function TransactionsScreen() {
           onPress={() => setAmountFilterOpen((open) => !open)}
         />
       </ScrollView>
+      <EdgeFade side="left" />
+      <EdgeFade side="right" />
+      </View>
 
       {amountFilterOpen ? (
         <View style={styles.amountRow}>
@@ -253,6 +257,9 @@ const styles = StyleSheet.create({
     fontSize: typography.body.fontSize,
     fontWeight: '500',
     padding: 0,
+  },
+  filtersWrap: {
+    position: 'relative',
   },
   filtersRow: {
     marginTop: spacing.md,

@@ -20,6 +20,12 @@ public sealed record ImportPreviewDto(
     Guid FinancialAccountId,
     string FileName,
     string? ParserCode,
+    // Onboarding funcional: el código de banco (ProviderCodes, sin sufijo de
+    // versión) que el parser de verdad detectó -- null para el parser
+    // genérico/mapeo manual. Permite al cliente comparar contra la cuenta
+    // seleccionada y avisar "este archivo parece ser de otro banco" sin que
+    // el cliente tenga que adivinar el mapeo ParserCode -> ProviderCode.
+    string? DetectedProviderCode,
     string Status,
     int TotalRows,
     int NewRows,

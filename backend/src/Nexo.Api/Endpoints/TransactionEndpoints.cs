@@ -3,6 +3,8 @@ using Nexo.Application.Categories;
 using Nexo.Application.Common;
 using Nexo.Application.Insights;
 using Nexo.Application.Transactions;
+using CategoryUpdateCategoryRequest = Nexo.Application.Categories.UpdateCategoryRequest;
+using TransactionUpdateCategoryRequest = Nexo.Application.Transactions.UpdateCategoryRequest;
 
 namespace Nexo.Api.Endpoints;
 
@@ -68,7 +70,7 @@ public static class TransactionEndpoints
 
         group.MapPut("/transactions/{id:guid}/category", async (
             Guid id,
-            UpdateCategoryRequest request,
+            TransactionUpdateCategoryRequest request,
             ITransactionService transactions,
             ICurrentUser currentUser,
             CancellationToken cancellationToken) =>
@@ -123,6 +125,27 @@ public static class TransactionEndpoints
                 CancellationToken cancellationToken) =>
             Results.Ok(await categories.ListAsync(currentUser.RequireUserId(), cancellationToken)))
             .WithTags("Categories");
+
+        // Categorías personalizadas: crear/editar una categoría propia con
+        // ícono y color. Nunca toca ni permite tocar las del sistema.
+        group.MapPost("/categories", async (
+                CreateCategoryRequest request,
+                ICategoryService categories,
+                ICurrentUser currentUser,
+                CancellationToken cancellationToken) =>
+            Results.Ok(await categories.CreateAsync(currentUser.RequireUserId(), request, cancellationToken)))
+            .WithTags("Categories")
+            .WithSummary("Crea una categoría propia con ícono y color. 409 si ya tienes una con ese nombre.");
+
+        group.MapPut("/categories/{id:guid}", async (
+                Guid id,
+                CategoryUpdateCategoryRequest request,
+                ICategoryService categories,
+                ICurrentUser currentUser,
+                CancellationToken cancellationToken) =>
+            Results.Ok(await categories.UpdateAsync(currentUser.RequireUserId(), id, request, cancellationToken)))
+            .WithTags("Categories")
+            .WithSummary("Cambia nombre/ícono/color de una categoría propia. 404 si es del sistema o de otro usuario.");
 
         group.MapGet("/insights", async (
                 IInsightService insights,

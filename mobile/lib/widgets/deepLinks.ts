@@ -25,4 +25,18 @@ export const widgetDeepLinks = {
   statistics: () => link('estadisticas'),
   movementsByCategory: (categoryId: string) => link(`movimientos?categoryId=${encodeURIComponent(categoryId)}`),
   movementsByAccount: (accountId: string) => link(`movimientos?accountId=${encodeURIComponent(accountId)}`),
+  /** app/pulso/[id].tsx -- the same detail screen the in-app Pulso history list already opens. */
+  pulso: (pulseId: string) => link(`pulso/${encodeURIComponent(pulseId)}`),
+
+  /**
+   * §28-30: registro rápido desde fuera de la app. Un único enlace para el widget
+   * de Android, el de iOS, el atajo de mantener pulsado el icono, un App Intent de
+   * iOS y Siri. Todos abren la MISMA pantalla (app/registrar.tsx), que a su vez
+   * abre el MISMO sheet: ninguno de esos puntos de entrada tiene su propia lógica
+   * de creación, que es lo que §28 pide separando CreateQuickTransaction de la UI.
+   */
+  quickEntry: () => link('registrar'),
+
+  /** §13: el mismo enlace, pero abriendo ya con el micrófono escuchando. */
+  quickEntryByVoice: () => link('registrar?voz=1'),
 };

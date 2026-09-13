@@ -80,6 +80,15 @@ public sealed class Transaction : Entity, IUserOwned
 
     public Guid? EmailConnectionId { get; private set; }
 
+    /// <summary>
+    /// Registro rápido de efectivo (§36, "duplicados"): el identificador que el
+    /// cliente generó ANTES de mandar la petición. Dos toques rápidos en Guardar
+    /// mandan el mismo valor, así que el segundo se resuelve devolviendo el
+    /// movimiento ya creado en vez de crear otro. Null para todo lo que no venga
+    /// de un registro manual -- imports y correos ya se desduplican por huella.
+    /// </summary>
+    public Guid? ClientRequestId { get; private set; }
+
     public string? Note { get; private set; }
 
     /// <summary>
@@ -120,7 +129,8 @@ public sealed class Transaction : Entity, IUserOwned
         Guid? importId = null,
         Guid? emailConnectionId = null,
         CategorySource categorySource = CategorySource.Uncategorized,
-        Guid? categorizationRuleId = null)
+        Guid? categorizationRuleId = null,
+        Guid? clientRequestId = null)
     {
         var magnitude = MoneyMath.Abs(amount);
         if (magnitude == 0m)
@@ -152,6 +162,7 @@ public sealed class Transaction : Entity, IUserOwned
             ExternalReference = NormalizeReference(externalReference),
             ImportId = importId,
             EmailConnectionId = emailConnectionId,
+            ClientRequestId = clientRequestId,
         };
 
         transaction.Fingerprint = TransactionFingerprint.Compute(
@@ -179,6 +190,57 @@ public sealed class Transaction : Entity, IUserOwned
         return trimmed.Length <= 64 ? trimmed : trimmed[..64];
     }
 
+    /// <summary>
+    /// Registro rápido de efectivo: corrige un movimiento que la persona escribió
+    /// a mano. Solo para <see cref="TransactionSource.Manual"/>: un movimiento que
+    /// vino de un banco es un hecho reportado por el banco y nunca se reescribe
+    /// (para esos existen la corrección de comercio y la de categoría, que dejan
+    /// intacto el dato original). El llamador es responsable de reajustar el saldo
+    /// de la cuenta, porque el importe con signo pudo cambiar.
+    /// </summary>
+    public void UpdateManualDetails(
+        decimal amount,
+        TransactionDirection direction,
+        string description,
+        DateTimeOffset transactionDate,
+        DateTimeOffset now)
+    {
+        if (Source != TransactionSource.Manual)
+        {
+            throw new DomainException(
+                "not_manual",
+                "Solo se puede editar así un movimiento registrado a mano.");
+        }
+
+        var magnitude = MoneyMath.Abs(amount);
+        if (magnitude == 0m)
+        {
+            throw new DomainException("zero_amount", "A movement must have a non-zero amount.");
+        }
+
+        var cleanDescription = DomainException.RequireText(description, nameof(description), 400);
+
+        Amount = magnitude;
+        Direction = direction;
+        Description = cleanDescription;
+        NormalizedDescription = TextNormalizer.NormalizeForMatching(cleanDescription);
+        // El comercio automático se recalcula solo si la persona no lo corrigió
+        // a mano; MerchantCorrected siempre manda (Entregable 12).
+        Merchant = TextNormalizer.ExtractMerchant(cleanDescription);
+        TransactionDate = transactionDate.ToUniversalTime();
+
+        Fingerprint = TransactionFingerprint.Compute(
+            ProviderCode,
+            FinancialAccountId,
+            ExternalReference,
+            TransactionDate,
+            Amount,
+            Direction,
+            Description);
+
+        Stamp(now);
+    }
+
     /// <summary>Applied by the rules engine. Never overrides a manual choice.</summary>
     public bool ApplyAutomaticCategory(
         Guid categoryId,
@@ -196,6 +258,21 @@ public sealed class Transaction : Entity, IUserOwned
         CategorizationRuleId = categorizationRuleId;
         Stamp(now);
         return true;
+    }
+
+    /// <summary>
+    /// Registro rápido de efectivo: deja el movimiento explícitamente sin
+    /// categoría. Distinto de "todavía nadie lo miró": la persona borró la
+    /// categoría a propósito, así que las reglas tampoco deben volver a ponerle
+    /// una. Necesario porque el camino rápido permite guardar sin categorizar.
+    /// </summary>
+    public void ClearCategoryManually(DateTimeOffset now)
+    {
+        CategoryId = null;
+        CategoryManuallySet = true;
+        CategorySource = CategorySource.Uncategorized;
+        CategorizationRuleId = null;
+        Stamp(now);
     }
 
     public void SetCategoryManually(Guid categoryId, DateTimeOffset now)

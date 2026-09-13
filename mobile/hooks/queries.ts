@@ -1,10 +1,20 @@
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type TransactionQuery } from '../services/endpoints';
+import { useAuthStore } from '../store/authStore';
+import { AnalyticsEvent, track } from '../services/analytics';
 import type {
   AnalyticsPeriodCode,
+  ConfirmWithdrawalRequest,
+  CreateQuickTransactionRequest,
+  SetCashBalanceRequest,
+  UpdateQuickTransactionRequest,
   CreateCategorizationRuleRequest,
+  CreateCategoryRequest,
   NotificationPreferences,
+  OnboardingStatus,
+  Pulse,
   UpdateCategorizationRuleRequest,
+  UpdateCategoryRequest,
 } from '../types/api';
 
 export const queryKeys = {
@@ -14,6 +24,8 @@ export const queryKeys = {
   providers: ['providers'] as const,
   categories: ['categories'] as const,
   insights: ['insights'] as const,
+  pulses: ['pulses'] as const,
+  pulse: (id: string) => ['pulses', id] as const,
   analyticsDashboard: (query: { period?: AnalyticsPeriodCode; from?: string; to?: string; accountId?: string }) =>
     ['analytics', 'dashboard', query] as const,
   transactions: (query: TransactionQuery) => ['transactions', query] as const,
@@ -21,13 +33,39 @@ export const queryKeys = {
   emailConnections: ['email-connections'] as const,
   importHistory: ['imports', 'history'] as const,
   transferCandidates: ['transfers', 'candidates'] as const,
+  withdrawalCandidates: ['transfers', 'withdrawals'] as const,
+  withdrawalScan: (importId: string) => ['transfers', 'withdrawals', 'scan', importId] as const,
   notifications: ['notifications'] as const,
   sessions: ['auth', 'sessions'] as const,
   activity: ['auth', 'activity'] as const,
   // "Categorización personal": las reglas propias del usuario ("Reglas de
   // categorización", punto 15).
   categorizationRules: ['categorization-rules'] as const,
+  // Registro rápido de efectivo: sugerencias y saldo de efectivo del sheet.
+  quickEntryBootstrap: ['quick-entry', 'bootstrap'] as const,
 };
+
+/**
+ * Registro rápido de efectivo: lo que hay que refrescar después de crear, editar
+ * o deshacer un movimiento manual. Está en una función y no repetido en cada
+ * mutación porque olvidar una clave en uno solo de los sitios produce el peor
+ * error posible en una app de dinero: una pantalla mostrando un saldo viejo
+ * mientras otra muestra el nuevo.
+ */
+/**
+ * Exportada porque useOfflineSync (fuera de este archivo) necesita disparar
+ * exactamente la misma invalidación cuando la cola de "registrado sin
+ * señal" termina de sincronizar -- un solo lugar decide qué refrescar
+ * después de un movimiento manual, sea que se haya guardado al toque o
+ * que haya esperado en la cola.
+ */
+export function invalidateAfterQuickEntry(client: ReturnType<typeof useQueryClient>): void {
+  void client.invalidateQueries({ queryKey: queryKeys.summary });
+  void client.invalidateQueries({ queryKey: queryKeys.accounts });
+  void client.invalidateQueries({ queryKey: ['transactions'] });
+  void client.invalidateQueries({ queryKey: ['analytics'] });
+  void client.invalidateQueries({ queryKey: queryKeys.quickEntryBootstrap });
+}
 
 export function useSummary() {
   return useQuery({ queryKey: queryKeys.summary, queryFn: api.summary });
@@ -50,11 +88,112 @@ export function useProviders() {
 }
 
 export function useCategories() {
-  return useQuery({ queryKey: queryKeys.categories, queryFn: api.categories, staleTime: 5 * 60 * 1000 });
+  return useQuery({ queryKey: queryKeys.categories, queryFn: api.categories.list, staleTime: 5 * 60 * 1000 });
+}
+
+/** Categorías personalizadas: crea una categoría propia con ícono y color. */
+export function useCreateCategory() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (request: CreateCategoryRequest) => api.categories.create(request),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.categories });
+    },
+  });
+}
+
+/** Categorías personalizadas: edita nombre/ícono/color de una categoría propia (nunca del sistema). */
+export function useUpdateCategory() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...request }: { id: string } & UpdateCategoryRequest) => api.categories.update(id, request),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.categories });
+      // El nombre/ícono/color de una categoría se ve embebido en las reglas
+      // que ya apuntan a ella (CategorizationRuleDto.categoryName/Icon/Color).
+      void client.invalidateQueries({ queryKey: queryKeys.categorizationRules });
+    },
+  });
 }
 
 export function useInsights() {
   return useQuery({ queryKey: queryKeys.insights, queryFn: api.insights.list });
+}
+
+/**
+ * PULSO FASE 2: pulsos ya evaluados en el servidor (PulseEvaluationWorker),
+ * ordenados por relevancia -- el mismo orden que usan la card de Home y la
+ * pantalla de historial "Actividad de FINO". Solo lectura: la app nunca
+ * dispara la evaluación, así como insights.refresh no se usa desde Home.
+ */
+export function usePulses() {
+  return useQuery({ queryKey: queryKeys.pulses, queryFn: api.pulses.list });
+}
+
+/** PULSO FASE 2/3: un pulso por id, para la pantalla de detalle (también el destino del deep link de un push, FASE 3). */
+export function usePulse(id: string | undefined) {
+  return useQuery({
+    queryKey: id ? queryKeys.pulse(id) : ['pulses', 'missing'],
+    queryFn: () => api.pulses.get(id!),
+    enabled: !!id,
+  });
+}
+
+/**
+ * PULSO FASE 4: 👍/👎 en la pantalla de detalle. La respuesta trae el pulso
+ * completo con el feedback ya aplicado -- se escribe directo en la caché de
+ * ese pulso (y en su entrada dentro de la lista, si ya se cargó) en vez de
+ * invalidar y volver a pedir todo.
+ */
+/**
+ * Onboarding funcional: las tres transiciones que el cliente dispara
+ * explícitamente (arrancar, terminar el tutorial, saltar). Cada una aplica
+ * el snapshot que devuelve el backend al authStore -- no solo a la cache de
+ * TanStack Query -- porque app/index.tsx decide el destino del cold start
+ * leyendo `user.onboarding` del authStore, no una query.
+ */
+export function useStartOnboarding() {
+  const setOnboarding = useAuthStore((state) => state.setOnboarding);
+
+  return useMutation({
+    mutationFn: api.onboarding.start,
+    onSuccess: (status: OnboardingStatus) => setOnboarding(status),
+  });
+}
+
+export function useCompleteOnboardingTutorial() {
+  const setOnboarding = useAuthStore((state) => state.setOnboarding);
+
+  return useMutation({
+    mutationFn: api.onboarding.tutorialCompleted,
+    onSuccess: (status: OnboardingStatus) => setOnboarding(status),
+  });
+}
+
+export function useSkipOnboarding() {
+  const setOnboarding = useAuthStore((state) => state.setOnboarding);
+
+  return useMutation({
+    mutationFn: api.onboarding.skip,
+    onSuccess: (status: OnboardingStatus) => {
+      setOnboarding(status);
+      track(AnalyticsEvent.OnboardingSkipped);
+    },
+  });
+}
+
+export function useSubmitPulseFeedback() {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, helpful }: { id: string; helpful: boolean }) => api.pulses.feedback(id, helpful),
+    onSuccess: (updated) => {
+      client.setQueryData(queryKeys.pulse(updated.id), updated);
+      client.setQueryData<Pulse[]>(queryKeys.pulses, (current) =>
+        current?.map((pulse) => (pulse.id === updated.id ? updated : pulse)),
+      );
+    },
+  });
 }
 
 /** Entregable "Dashboard de estadísticas": KPIs, series, categorías y saldo histórico, todo en una sola llamada. */
@@ -446,5 +585,136 @@ export function useSecurityActivity() {
     initialPageParam: 1,
     queryFn: ({ pageParam }) => api.auth.listActivity({ page: pageParam, pageSize: PAGE_SIZE }),
     getNextPageParam: (lastPage) => (lastPage.hasMore ? lastPage.page + 1 : undefined),
+  });
+}
+
+/* -------------------------------------------------------------------------
+   Registro rápido de efectivo
+   ------------------------------------------------------------------------- */
+
+/**
+ * §40: el sheet debe abrirse prácticamente al instante, así que estos datos se
+ * consideran frescos durante un minuto y el sheet pinta lo que ya hay en caché
+ * mientras refresca por detrás. Nunca hay una pantalla de carga entre tocar "+"
+ * y poder escribir el monto.
+ */
+export function useQuickEntryBootstrap(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.quickEntryBootstrap,
+    queryFn: api.quickEntry.bootstrap,
+    staleTime: 60_000,
+    enabled,
+  });
+}
+
+/**
+ * El único hook que crea un movimiento a mano. Todos los caminos rápidos (teclado,
+ * texto natural, voz, frecuentes) pasan por aquí, así que la invalidación de caché
+ * y el registro de analítica se escriben una vez.
+ */
+export function useCreateQuickTransaction() {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: CreateQuickTransactionRequest) => api.quickEntry.create(body),
+    onSuccess: () => invalidateAfterQuickEntry(client),
+  });
+}
+
+export function useUpdateQuickTransaction() {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: UpdateQuickTransactionRequest }) =>
+      api.quickEntry.update(id, body),
+    onSuccess: (_data, variables) => {
+      invalidateAfterQuickEntry(client);
+      void client.invalidateQueries({ queryKey: queryKeys.transaction(variables.id) });
+    },
+  });
+}
+
+/**
+ * §6: Deshacer. No es una mutación optimista a propósito -- se espera al servidor
+ * y luego se refresca, porque decirle a alguien que su gasto se deshizo cuando en
+ * realidad sigue ahí es peor que esperar medio segundo.
+ */
+export function useUndoQuickTransaction() {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => api.quickEntry.remove(id),
+    onSuccess: (_data, id) => {
+      invalidateAfterQuickEntry(client);
+      void client.invalidateQueries({ queryKey: queryKeys.transaction(id) });
+    },
+  });
+}
+
+/** §24-25: declarar el efectivo que tienes, o corregirlo. */
+export function useSetCashBalance() {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: (body: SetCashBalanceRequest) => api.quickEntry.setCashBalance(body),
+    onSuccess: (_data, variables) => {
+      invalidateAfterQuickEntry(client);
+      track(variables.mode === 'Anchor' ? AnalyticsEvent.CashBalanceSet : AnalyticsEvent.CashBalanceAdjusted);
+    },
+  });
+}
+
+/* -------------------------------------------------------------------------
+   Retiros de efectivo
+   ------------------------------------------------------------------------- */
+
+export function useWithdrawalCandidates() {
+  return useQuery({
+    queryKey: queryKeys.withdrawalCandidates,
+    queryFn: api.transfers.withdrawals.candidates,
+  });
+}
+
+/**
+ * Conciliar un retiro mueve dinero entre dos cuentas y lo saca de las métricas de
+ * gasto, así que hay que refrescar prácticamente todo: saldos, Home, movimientos y
+ * estadísticas. Se reutiliza el mismo conjunto de claves que ya invalida el registro
+ * rápido, más las dos bandejas de conciliación.
+ */
+export function useConfirmWithdrawal() {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ transactionId, body }: { transactionId: string; body?: ConfirmWithdrawalRequest }) =>
+      api.transfers.withdrawals.confirm(transactionId, body ?? {}),
+    onSuccess: () => {
+      invalidateAfterQuickEntry(client);
+      void client.invalidateQueries({ queryKey: queryKeys.withdrawalCandidates });
+      void client.invalidateQueries({ queryKey: queryKeys.transferCandidates });
+      void client.invalidateQueries({ queryKey: queryKeys.insights });
+      void client.invalidateQueries({ queryKey: queryKeys.categorizationRules });
+    },
+  });
+}
+
+export function useRejectWithdrawal() {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: (transactionId: string) => api.transfers.withdrawals.reject(transactionId),
+    onSuccess: (_data, transactionId) => {
+      void client.invalidateQueries({ queryKey: queryKeys.withdrawalCandidates });
+      void client.invalidateQueries({ queryKey: queryKeys.transaction(transactionId) });
+      void client.invalidateQueries({ queryKey: ['transactions'] });
+    },
+  });
+}
+
+/** §8: se consulta al terminar de importar, sin bloquear la importación. */
+export function useWithdrawalScan(importId: string | undefined) {
+  return useQuery({
+    queryKey: importId ? queryKeys.withdrawalScan(importId) : ['transfers', 'withdrawals', 'scan', 'none'],
+    queryFn: () => api.transfers.withdrawals.scan(importId!),
+    enabled: Boolean(importId),
   });
 }

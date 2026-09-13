@@ -45,6 +45,15 @@ public sealed class Import : Entity, IUserOwned
 
     public string? ParserCode { get; private set; }
 
+    /// <summary>
+    /// El banco que el parser de verdad reconoció (StatementParseResult.DetectedProviderCode),
+    /// no el que la cuenta tenía seleccionado -- null para el parser genérico/mapeo manual,
+    /// que no afirman reconocer ningún banco en particular. Onboarding funcional: esto es lo
+    /// que permite avisar "este archivo parece ser de otro banco" en vez de confundir a la
+    /// persona con una importación que funcionó pero con un `ParserCode` que no esperaba.
+    /// </summary>
+    public string? DetectedProviderCode { get; private set; }
+
     public ImportStatus Status { get; private set; } = ImportStatus.Received;
 
     public int TotalRows { get; private set; }
@@ -98,6 +107,7 @@ public sealed class Import : Entity, IUserOwned
 
     public void MarkPreviewReady(
         string parserCode,
+        string? detectedProviderCode,
         int totalRows,
         int newRows,
         int duplicateRows,
@@ -111,6 +121,7 @@ public sealed class Import : Entity, IUserOwned
         DateTimeOffset now)
     {
         ParserCode = parserCode;
+        DetectedProviderCode = detectedProviderCode;
         TotalRows = totalRows;
         NewRows = newRows;
         DuplicateRows = duplicateRows;

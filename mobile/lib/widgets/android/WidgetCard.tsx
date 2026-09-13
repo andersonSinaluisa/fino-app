@@ -20,13 +20,18 @@ import { initialsOf } from '../../../utils/format';
 // Literal copies of theme/tokens.ts -- react-native-android-widget's
 // ColorProp type wants a `#${string}` literal, so these are copied rather
 // than imported to keep that typing simple.
-const CARD_BACKGROUND = '#FFFFFF'; // colors.surface
-const TEXT_PRIMARY = '#191A18'; // colors.text
-const TEXT_SECONDARY = '#74766F'; // colors.textSecondary
+// Exportadas porque §28 añadió un widget que no usa WidgetCard (el de registrar
+// no muestra ningún dato: es un botón) y tiene que pintar con exactamente los
+// mismos colores. Duplicar los literales allí habría sido la vía más corta para
+// que los widgets de Fino dejaran de parecerse entre ellos.
+export const CARD_BACKGROUND = '#FFFFFF'; // colors.surface
+export const TEXT_PRIMARY = '#191A18'; // colors.text
+export const TEXT_SECONDARY = '#74766F'; // colors.textSecondary
 export const ACCENT_LIME = '#C7F36B'; // colors.accent -- reserved for "your money, right now"
 export const ACCENT_MINT = '#8DD9B6'; // colors.accentSecondary -- everything else
-const CARD_RADIUS = 22; // radius.lg, the same radius Card.tsx uses in-app
-const MARK_FALLBACK_BG = '#ECE9E1'; // colors.surfaceSecondary
+export const CARD_RADIUS = 22; // radius.lg, the same radius Card.tsx uses in-app
+export const SURFACE_SECONDARY = '#ECE9E1'; // colors.surfaceSecondary
+const MARK_FALLBACK_BG = SURFACE_SECONDARY;
 
 /**
  * Blends `hex` toward the (white) card background at `alpha` opacity and
@@ -114,8 +119,12 @@ export function WidgetCard(props: {
   /** Category/account name: when set, the header mark becomes its initials
    * on a soft tint of `accent`, matching ProviderAvatar. */
   markLabel?: string | null;
+  /** Caps `subtitle` to N lines (e.g. a Pulso's `body`, which is prose, not
+   * a short stat like the other widgets' one-liners). Unset preserves every
+   * existing widget's current unbounded behavior. */
+  subtitleMaxLines?: number;
 }): React.JSX.Element {
-  const { eyebrow, title, value, subtitle, clickUri, accent, markLabel } = props;
+  const { eyebrow, title, value, subtitle, clickUri, accent, markLabel, subtitleMaxLines } = props;
 
   return (
     <FlexWidget
@@ -153,7 +162,12 @@ export function WidgetCard(props: {
         <TextWidget text={value} style={{ fontSize: 22, color: TEXT_PRIMARY, fontWeight: '700', letterSpacing: -0.3 }} />
       ) : null}
       {subtitle ? (
-        <TextWidget text={subtitle} style={{ fontSize: 12, color: TEXT_SECONDARY, fontWeight: '500', marginTop: 4 }} />
+        <TextWidget
+          text={subtitle}
+          maxLines={subtitleMaxLines}
+          truncate={subtitleMaxLines ? 'END' : undefined}
+          style={{ fontSize: 12, color: TEXT_SECONDARY, fontWeight: '500', marginTop: 4 }}
+        />
       ) : null}
     </FlexWidget>
   );

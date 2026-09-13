@@ -120,6 +120,16 @@ public sealed class TransactionConfiguration : IEntityTypeConfiguration<Transact
         // instead of a sequential scan over the whole table.
         builder.HasIndex(t => new { t.UserId, t.NormalizedDescription });
 
+        // Registro rápido de efectivo (§36): idempotencia del guardado rápido. El
+        // índice es único y parcial -- solo cubre las filas que de verdad traen un
+        // ClientRequestId (los movimientos manuales), así que los millones de
+        // movimientos importados, todos con NULL, no entran en él. Es la garantía
+        // real contra el doble toque: aunque dos peticiones lleguen a la vez y
+        // ambas pasen la comprobación previa, la base de datos deja pasar solo una.
+        builder.HasIndex(t => new { t.UserId, t.ClientRequestId })
+            .IsUnique()
+            .HasFilter("\"ClientRequestId\" IS NOT NULL");
+
         builder.HasOne<User>()
             .WithMany()
             .HasForeignKey(t => t.UserId)
