@@ -38,6 +38,10 @@ despliegue separado (`dotnet ef database update` o un bundle) y dejar
 
 ## Variables de entorno en producción
 
+Usa `.env.production.example` como plantilla. El archivo real debe llamarse
+`.env.production` o vivir en el gestor de secretos del proveedor; no se
+versiona.
+
 | Variable | Obligatoria | Notas |
 | --- | --- | --- |
 | `ConnectionStrings__Default` | Sí | Con TLS hacia PostgreSQL |
@@ -71,6 +75,24 @@ openssl rand -base64 32   # cifrado de secretos
 `aspnet:10.0` con el usuario sin privilegios que trae la imagen oficial
 (`USER $APP_UID`).
 
+Para levantar la API con configuración productiva desde este repo:
+
+```bash
+scripts/start-production.sh \
+  --db-host host.docker.internal \
+  --db-ssl disable \
+  --api-url https://api.fino.app
+```
+
+El script crea `.env.production` si no existe, genera los secretos faltantes
+(`Nexo__Jwt__SigningKey`, `Nexo__Secrets__EncryptionKey`,
+`Nexo__EmailIngestion__Forwarding__WebhookSecret` y `POSTGRES_PASSWORD` si sigue
+en placeholder), valida el compose y levanta solo la API. No levanta
+PostgreSQL: en producción debe existir en el servidor o en una instancia
+administrada. Si PostgreSQL está instalado en el mismo host Docker, usa
+`--db-host host.docker.internal`; el compose productivo mapea ese nombre al
+gateway del host.
+
 **La imagen necesita ICU.** La normalización de acentos (`SUPERMAXI ALBÓRADA` debe
 igualar a `ALBORADA` para deduplicar) y la zona horaria `America/Guayaquil`
 dependen de ella. La imagen Debian que usamos la trae; si alguna vez se cambia a
@@ -82,6 +104,15 @@ Alpine, hay que instalar `icu-libs` y **no** activar `InvariantGlobalization`.
 | --- | --- |
 | `/health/live` | Liveness: el proceso responde. No toca la base, así que una base lenta no reinicia el pod. |
 | `/health/ready` | Readiness: además llega a PostgreSQL. |
+
+Smoke test productivo después del despliegue:
+
+```bash
+scripts/smoke-production.sh https://api.fino.app
+```
+
+El script valida `/health/live` y `/health/ready`; no crea usuarios ni escribe
+datos en producción.
 
 ## Observabilidad
 
@@ -208,7 +239,10 @@ eas submit --platform ios
 ```
 
 `EXPO_PUBLIC_API_URL` se define por perfil en `eas.json`. Un build nunca puede
-apuntar a `localhost`.
+apuntar a `localhost` ni a un túnel temporal. El perfil `preview` apunta a
+`https://api.staging.nexo.app` y el perfil `production` a
+`https://api.fino.app`; cambia esos dominios solo cuando existan los hosts
+reales equivalentes.
 
 **Entregable 31 ("Mobile builds"), estado real.** `mobile/app.json` y
 `mobile/eas.json` ya existían con los tres perfiles (development/preview/

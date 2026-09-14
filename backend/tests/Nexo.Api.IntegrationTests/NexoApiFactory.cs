@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -61,7 +62,10 @@ public sealed class NexoApiFactory : WebApplicationFactory<Program>
             }
 
             services.AddDbContext<NexoDbContext>(options =>
-                options.UseSqlite($"Data Source={_databasePath}"));
+                options
+                    .UseSqlite($"Data Source={_databasePath}")
+                    .ConfigureWarnings(warnings =>
+                        warnings.Ignore(RelationalEventId.PendingModelChangesWarning)));
 
             // Fixtures are dated March 2026. Without a fixed clock, assertions about
             // "this month" would pass or fail depending on the day the suite runs.

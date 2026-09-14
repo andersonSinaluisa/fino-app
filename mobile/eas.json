@@ -23,7 +23,7 @@
       "node": "22.22.3",
       "android": { "buildType": "apk" },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://492kh6nx-5080.use2.devtunnels.ms/"
+        "EXPO_PUBLIC_API_URL": "https://api.staging.nexo.app"
       }
     },
     "preview:simulator": {
@@ -34,7 +34,7 @@
       "autoIncrement": true,
       "node": "22.22.3",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://492kh6nx-5080.use2.devtunnels.ms/"
+        "EXPO_PUBLIC_API_URL": "https://api.fino.app"
       },
       "distribution": "store"
     }

@@ -21,6 +21,7 @@ web-build/
 .env.local
 *.env
 !.env.example
+!.env.*.example
 
 # Editors
 .idea/
