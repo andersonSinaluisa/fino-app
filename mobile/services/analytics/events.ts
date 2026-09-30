@@ -105,6 +105,17 @@ export const AnalyticsEvent = {
   StatisticsPeriodChanged: 'statistics_period_changed',
   StatisticsAccountFilterChanged: 'statistics_account_filter_changed',
 
+  // --- Presupuestos y Comprometido ----------------------------------------
+  // Describen el USO de la función. Ningún monto, nombre de presupuesto,
+  // categoría personalizada ni porcentaje sale de aquí.
+  BudgetCreated: 'budget_created',
+  BudgetUpdated: 'budget_updated',
+  BudgetDeleted: 'budget_deleted',
+  BudgetReserveEnabled: 'budget_reserve_enabled',
+  BudgetExceeded: 'budget_exceeded',
+  BudgetOpened: 'budget_opened',
+  CommittedBreakdownOpened: 'committed_breakdown_opened',
+
   // --- Pulso ---------------------------------------------------------------
   PulseCardViewed: 'pulse_card_viewed',
   PulseOpened: 'pulse_opened',
@@ -178,6 +189,9 @@ export const AnalyticsScreen = {
   Notifications: 'notifications',
   Projection: 'projection',
   Subscription: 'subscription',
+  Budgets: 'budgets',
+  BudgetDetail: 'budget_detail',
+  Committed: 'committed',
 } as const;
 
 export type AnalyticsScreenName = (typeof AnalyticsScreen)[keyof typeof AnalyticsScreen];
@@ -206,6 +220,8 @@ export const AnalyticsSource = {
   Notification: 'notification',
   Onboarding: 'onboarding',
   Deeplink: 'deeplink',
+  Budgets: 'budgets',
+  Committed: 'committed',
   Unknown: 'unknown',
 } as const;
 
@@ -297,3 +313,17 @@ export const FileFormat = {
 } as const;
 
 export type FileFormatValue = (typeof FileFormat)[keyof typeof FileFormat];
+
+/** Presupuestos: el período elegido (conjunto cerrado), nunca fechas ni montos. */
+export const BudgetPeriodValue = {
+  Weekly: 'weekly',
+  Biweekly: 'biweekly',
+  Monthly: 'monthly',
+  Custom: 'custom',
+} as const;
+
+/** Presupuestos: dónde se activó la reserva. */
+export const BudgetFlow = {
+  Create: 'create',
+  Edit: 'edit',
+} as const;

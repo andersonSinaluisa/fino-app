@@ -34,7 +34,7 @@
       "autoIncrement": true,
       "node": "22.22.3",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.fino.app"
+        "EXPO_PUBLIC_API_URL": "https://fino-api.brix-dev.com/"
       },
       "distribution": "store"
     }

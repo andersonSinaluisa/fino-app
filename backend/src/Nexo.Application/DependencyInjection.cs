@@ -5,6 +5,7 @@ using Nexo.Application.Accounts;
 using Nexo.Application.Analytics;
 using Nexo.Application.Audit;
 using Nexo.Application.Auth;
+using Nexo.Application.Budgets;
 using Nexo.Application.Categories;
 using Nexo.Application.Categorization;
 using Nexo.Application.Deduplication;
@@ -57,6 +58,13 @@ public static class DependencyInjection
         services.AddScoped<IPulseService, PulseService>();
         services.AddScoped<IPulseNotificationDecisionService, PulseNotificationDecisionService>();
         services.AddScoped<IOnboardingService, OnboardingService>();
+
+        // Presupuestos + Comprometido. BudgetLedgerFactory is the one evaluator both
+        // services share, and CommittedMoneyService is the only producer of
+        // Comprometido/Disponible anywhere in the product.
+        services.AddScoped<BudgetLedgerFactory>();
+        services.AddScoped<IBudgetService, BudgetService>();
+        services.AddScoped<ICommittedMoneyService, CommittedMoneyService>();
 
         // Registro rápido de efectivo. CashAccountProvisioner y
         // QuickEntrySuggestionService son colaboradores de QuickTransactionService,

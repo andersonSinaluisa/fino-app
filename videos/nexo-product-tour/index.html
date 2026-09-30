@@ -1,0 +1,1147 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>Nexo Product Tour</title>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <style>
+      :root {
+        --ink: #101410;
+        --deep: #141a17;
+        --paper: #f5f3ed;
+        --muted: #b9b9ad;
+        --line: rgba(245, 243, 237, 0.18);
+        --mint: #8dd9b6;
+        --lime: #c7f36b;
+        --coral: #ff8a64;
+        --amber: #ffd166;
+        --teal: #35c6b3;
+        --danger: #d8665b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--ink);
+        color: var(--paper);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+      }
+
+      #root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background:
+          radial-gradient(circle at 18% 24%, rgba(199, 243, 107, 0.16), transparent 25%),
+          radial-gradient(circle at 78% 72%, rgba(255, 138, 100, 0.14), transparent 27%),
+          var(--deep);
+      }
+
+      .clip {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+
+      .grain {
+        position: absolute;
+        inset: 0;
+        opacity: 0.11;
+        background-image:
+          linear-gradient(90deg, rgba(245, 243, 237, 0.08) 1px, transparent 1px),
+          linear-gradient(rgba(245, 243, 237, 0.08) 1px, transparent 1px);
+        background-size: 72px 72px;
+      }
+
+      .scan {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          180deg,
+          transparent 0%,
+          rgba(141, 217, 182, 0.08) 48%,
+          transparent 100%
+        );
+      }
+
+      .scene {
+        position: relative;
+        z-index: 2;
+        display: grid;
+        width: 100%;
+        height: 100%;
+        padding: 86px 116px;
+      }
+
+      .scene.two-col {
+        grid-template-columns: 0.95fr 1.05fr;
+        align-items: center;
+        gap: 70px;
+      }
+
+      .scene.center {
+        place-items: center;
+        text-align: center;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        width: fit-content;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 18px;
+        border: 1px solid rgba(245, 243, 237, 0.2);
+        border-radius: 999px;
+        color: var(--lime);
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
+      .eyebrow-dot {
+        display: block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: var(--lime);
+      }
+
+      h1,
+      h2,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        max-width: 1080px;
+        font-size: 118px;
+        line-height: 0.95;
+        font-weight: 900;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        max-width: 780px;
+        font-size: 78px;
+        line-height: 0.98;
+        font-weight: 880;
+        letter-spacing: 0;
+      }
+
+      .lead {
+        max-width: 720px;
+        color: rgba(245, 243, 237, 0.78);
+        font-size: 34px;
+        line-height: 1.24;
+        font-weight: 560;
+      }
+
+      .highlight {
+        color: var(--lime);
+      }
+
+      .muted {
+        color: rgba(245, 243, 237, 0.6);
+      }
+
+      .stack {
+        display: grid;
+        gap: 30px;
+      }
+
+      .dashboard {
+        position: relative;
+        width: 780px;
+        height: 690px;
+        margin-left: auto;
+      }
+
+      .dash-card {
+        position: absolute;
+        display: grid;
+        gap: 10px;
+        width: 292px;
+        min-height: 154px;
+        padding: 24px;
+        border: 1px solid rgba(245, 243, 237, 0.16);
+        border-radius: 22px;
+        background: rgba(245, 243, 237, 0.1);
+        box-shadow: 0 30px 90px rgba(0, 0, 0, 0.24);
+        backdrop-filter: blur(18px);
+      }
+
+      .dash-card strong {
+        color: var(--paper);
+        font-size: 24px;
+      }
+
+      .dash-card span {
+        color: rgba(245, 243, 237, 0.65);
+        font-size: 18px;
+      }
+
+      .dash-card .money {
+        color: var(--lime);
+        font-size: 38px;
+        font-weight: 850;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .dash-1 {
+        top: 18px;
+        left: 86px;
+      }
+
+      .dash-2 {
+        top: 120px;
+        right: 48px;
+      }
+
+      .dash-3 {
+        top: 350px;
+        left: 0;
+      }
+
+      .dash-4 {
+        right: 0;
+        bottom: 20px;
+      }
+
+      .radar {
+        position: absolute;
+        top: 180px;
+        left: 180px;
+        display: grid;
+        width: 352px;
+        height: 352px;
+        place-items: center;
+        border: 1px solid rgba(141, 217, 182, 0.28);
+        border-radius: 50%;
+      }
+
+      .radar::before,
+      .radar::after {
+        content: "";
+        position: absolute;
+        border: 1px solid rgba(141, 217, 182, 0.16);
+        border-radius: 50%;
+      }
+
+      .radar::before {
+        width: 240px;
+        height: 240px;
+      }
+
+      .radar::after {
+        width: 122px;
+        height: 122px;
+      }
+
+      .radar-core {
+        position: relative;
+        display: grid;
+        width: 136px;
+        height: 136px;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--lime);
+        color: var(--ink);
+        font-size: 30px;
+        font-weight: 900;
+      }
+
+      .pipeline {
+        position: relative;
+        width: 860px;
+        height: 620px;
+      }
+
+      .source {
+        position: absolute;
+        display: flex;
+        width: 260px;
+        min-height: 92px;
+        align-items: center;
+        gap: 18px;
+        padding: 20px;
+        border: 1px solid rgba(245, 243, 237, 0.14);
+        border-radius: 20px;
+        background: rgba(245, 243, 237, 0.09);
+        color: var(--paper);
+        font-size: 26px;
+        font-weight: 760;
+      }
+
+      .source .icon {
+        display: grid;
+        width: 62px;
+        height: 52px;
+        flex: 0 0 auto;
+        place-items: center;
+        border-radius: 16px;
+        background: rgba(199, 243, 107, 0.18);
+        color: var(--lime);
+        font-size: 26px;
+      }
+
+      .src-1 {
+        top: 24px;
+        left: 26px;
+      }
+
+      .src-2 {
+        top: 176px;
+        left: 38px;
+      }
+
+      .src-3 {
+        top: 328px;
+        left: 44px;
+      }
+
+      .src-4 {
+        top: 480px;
+        left: 60px;
+      }
+
+      .pipe-core {
+        position: absolute;
+        top: 168px;
+        right: 18px;
+        display: grid;
+        width: 420px;
+        height: 286px;
+        place-items: center;
+        border: 1px solid rgba(199, 243, 107, 0.3);
+        border-radius: 32px;
+        background: rgba(199, 243, 107, 0.12);
+        box-shadow: 0 34px 90px rgba(0, 0, 0, 0.24);
+      }
+
+      .pipe-core strong {
+        font-size: 42px;
+      }
+
+      .pipe-core span {
+        max-width: 300px;
+        color: rgba(245, 243, 237, 0.7);
+        font-size: 22px;
+        line-height: 1.25;
+        text-align: center;
+      }
+
+      .connector {
+        position: absolute;
+        overflow: visible;
+      }
+
+      .connector path {
+        fill: none;
+        stroke: rgba(199, 243, 107, 0.52);
+        stroke-linecap: round;
+        stroke-width: 5;
+      }
+
+      .table {
+        display: grid;
+        gap: 14px;
+        width: 910px;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: 150px 1fr 160px 190px 140px;
+        align-items: center;
+        gap: 18px;
+        min-height: 76px;
+        padding: 16px 20px;
+        border: 1px solid rgba(245, 243, 237, 0.14);
+        border-radius: 18px;
+        background: rgba(245, 243, 237, 0.08);
+        font-size: 22px;
+      }
+
+      .row.header {
+        color: rgba(245, 243, 237, 0.64);
+        font-size: 17px;
+        font-weight: 760;
+        text-transform: uppercase;
+      }
+
+      .pill {
+        display: inline-flex;
+        width: fit-content;
+        align-items: center;
+        justify-content: center;
+        padding: 8px 13px;
+        border-radius: 999px;
+        color: #0b0d0b;
+        font-size: 16px;
+        font-weight: 840;
+      }
+
+      .pill.green {
+        background: var(--lime);
+      }
+
+      .pill.mint {
+        background: var(--mint);
+      }
+
+      .pill.amber {
+        background: var(--amber);
+      }
+
+      .pill.coral {
+        background: var(--coral);
+      }
+
+      .amount {
+        font-weight: 860;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .negative {
+        color: #ffac95;
+      }
+
+      .positive {
+        color: var(--lime);
+      }
+
+      .rules-board {
+        position: relative;
+        width: 900px;
+        height: 640px;
+      }
+
+      .merchant-card {
+        position: absolute;
+        left: 20px;
+        display: grid;
+        gap: 12px;
+        width: 330px;
+        padding: 24px;
+        border-radius: 24px;
+        background: rgba(245, 243, 237, 0.1);
+        border: 1px solid rgba(245, 243, 237, 0.14);
+      }
+
+      .merchant-card strong {
+        font-size: 26px;
+      }
+
+      .merchant-card span {
+        color: rgba(245, 243, 237, 0.62);
+        font-size: 18px;
+      }
+
+      .mer-1 {
+        top: 40px;
+      }
+
+      .mer-2 {
+        top: 226px;
+      }
+
+      .mer-3 {
+        top: 412px;
+      }
+
+      .category-stack {
+        position: absolute;
+        right: 20px;
+        top: 54px;
+        display: grid;
+        gap: 20px;
+      }
+
+      .category {
+        display: flex;
+        width: 355px;
+        align-items: center;
+        gap: 18px;
+        padding: 24px;
+        border-radius: 26px;
+        background: var(--paper);
+        color: var(--ink);
+        font-size: 26px;
+        font-weight: 840;
+      }
+
+      .cat-dot {
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+      }
+
+      .learning {
+        position: absolute;
+        left: 326px;
+        bottom: 18px;
+        display: grid;
+        width: 292px;
+        gap: 12px;
+        padding: 24px;
+        border-radius: 22px;
+        background: rgba(199, 243, 107, 0.15);
+        border: 1px solid rgba(199, 243, 107, 0.34);
+      }
+
+      .learning strong {
+        color: var(--lime);
+        font-size: 22px;
+      }
+
+      .learning span {
+        color: rgba(245, 243, 237, 0.7);
+        font-size: 18px;
+        line-height: 1.25;
+      }
+
+      .insights-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 24px;
+        width: 980px;
+      }
+
+      .insight-card {
+        display: grid;
+        min-height: 226px;
+        align-content: space-between;
+        gap: 20px;
+        padding: 28px;
+        border: 1px solid rgba(245, 243, 237, 0.14);
+        border-radius: 24px;
+        background: rgba(245, 243, 237, 0.09);
+      }
+
+      .insight-card strong {
+        font-size: 26px;
+      }
+
+      .metric {
+        color: var(--lime);
+        font-size: 54px;
+        font-weight: 900;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .spark {
+        width: 100%;
+        height: 68px;
+        overflow: visible;
+      }
+
+      .spark path {
+        fill: none;
+        stroke: var(--coral);
+        stroke-linecap: round;
+        stroke-width: 6;
+      }
+
+      .phone-wrap {
+        position: relative;
+        display: grid;
+        width: 760px;
+        height: 810px;
+        margin: 0 auto;
+        place-items: center start;
+      }
+
+      .phone {
+        position: relative;
+        width: 390px;
+        height: 780px;
+        padding: 24px;
+        border: 14px solid #050706;
+        border-radius: 58px;
+        background: #f5f3ed;
+        color: var(--ink);
+        box-shadow: 0 40px 140px rgba(0, 0, 0, 0.45);
+        overflow: hidden;
+      }
+
+      .phone-screen {
+        display: grid;
+        gap: 18px;
+      }
+
+      .phone-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: #74766f;
+        font-size: 15px;
+        font-weight: 800;
+      }
+
+      .phone-title {
+        font-size: 28px;
+        font-weight: 900;
+      }
+
+      .phone-balance {
+        display: grid;
+        gap: 10px;
+        padding: 22px;
+        border-radius: 28px;
+        background: #101410;
+        color: var(--paper);
+      }
+
+      .phone-balance span {
+        color: rgba(245, 243, 237, 0.62);
+        font-size: 15px;
+      }
+
+      .phone-balance strong {
+        color: var(--lime);
+        font-size: 42px;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .mini-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 17px 0;
+        border-bottom: 1px solid #dfddd4;
+        font-size: 18px;
+        font-weight: 760;
+      }
+
+      .tabs {
+        position: absolute;
+        left: 28px;
+        right: 28px;
+        bottom: 22px;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 8px;
+        padding: 10px;
+        border-radius: 24px;
+        background: #ece9e1;
+      }
+
+      .tab {
+        display: grid;
+        height: 48px;
+        place-items: center;
+        border-radius: 16px;
+        color: #74766f;
+        font-size: 20px;
+        font-weight: 900;
+      }
+
+      .tab.active {
+        background: var(--lime);
+        color: var(--ink);
+      }
+
+      .privacy-bubbles {
+        position: absolute;
+        right: 0;
+        top: 118px;
+        display: grid;
+        gap: 18px;
+      }
+
+      .bubble {
+        width: 254px;
+        padding: 20px 22px;
+        border: 1px solid rgba(245, 243, 237, 0.2);
+        border-radius: 22px;
+        background: rgba(245, 243, 237, 0.1);
+        color: var(--paper);
+        font-size: 22px;
+        font-weight: 760;
+        backdrop-filter: blur(12px);
+      }
+
+      .infra {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 26px;
+        width: 990px;
+      }
+
+      .node {
+        position: relative;
+        display: grid;
+        min-height: 190px;
+        align-content: center;
+        gap: 14px;
+        padding: 30px;
+        border-radius: 26px;
+        background: rgba(245, 243, 237, 0.1);
+        border: 1px solid rgba(245, 243, 237, 0.16);
+      }
+
+      .node::before {
+        content: "";
+        position: absolute;
+        top: 28px;
+        right: 28px;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: var(--lime);
+        box-shadow: 0 0 26px rgba(199, 243, 107, 0.68);
+      }
+
+      .node strong {
+        font-size: 32px;
+      }
+
+      .node span {
+        max-width: 360px;
+        color: rgba(245, 243, 237, 0.68);
+        font-size: 21px;
+        line-height: 1.25;
+      }
+
+      .final-lockup {
+        display: grid;
+        gap: 28px;
+        max-width: 1200px;
+      }
+
+      .final-lockup h2 {
+        max-width: 1120px;
+        font-size: 98px;
+      }
+
+      .status-strip {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 14px;
+      }
+
+      .status-chip {
+        padding: 14px 18px;
+        border-radius: 999px;
+        background: rgba(245, 243, 237, 0.11);
+        border: 1px solid rgba(245, 243, 237, 0.16);
+        color: rgba(245, 243, 237, 0.78);
+        font-size: 22px;
+        font-weight: 760;
+      }
+
+      .comet {
+        position: absolute;
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        background: var(--lime);
+        box-shadow: 0 0 34px var(--lime);
+      }
+
+      .comet::after {
+        content: "";
+        position: absolute;
+        right: 8px;
+        top: 5px;
+        width: 118px;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, var(--lime));
+      }
+    </style>
+  </head>
+  <body>
+    <div data-hf-id="hf-4yy6" id="root" data-composition-id="nexo-product-tour" data-start="0" data-width="1920" data-height="1080" data-duration="66">
+      <div data-hf-id="hf-h60x" class="grain"></div>
+      <div data-hf-id="hf-az1f" class="scan"></div>
+      <audio data-hf-id="hf-w6uf" id="nexo-bgm" src="assets/nexo-bgm.wav" data-start="0" data-duration="66" data-track-index="0" data-volume="0.32" data-automation="{&quot;version&quot;:1,&quot;lanes&quot;:[{&quot;target&quot;:&quot;volume&quot;,&quot;points&quot;:[{&quot;t&quot;:0,&quot;v&quot;:0},{&quot;t&quot;:1.5,&quot;v&quot;:0.32},{&quot;t&quot;:62,&quot;v&quot;:0.32},{&quot;t&quot;:66,&quot;v&quot;:0}]}]}" data-fx-chain="{&quot;version&quot;:1,&quot;nodes&quot;:[{&quot;type&quot;:&quot;highpass&quot;,&quot;id&quot;:&quot;n1&quot;,&quot;label&quot;:&quot;Clean Low End&quot;,&quot;params&quot;:{&quot;frequency&quot;:45,&quot;q&quot;:0.707,&quot;poles&quot;:&quot;2&quot;}},{&quot;type&quot;:&quot;limiter&quot;,&quot;id&quot;:&quot;n2&quot;,&quot;label&quot;:&quot;Ceiling&quot;,&quot;params&quot;:{&quot;limit&quot;:-1,&quot;attack&quot;:5,&quot;release&quot;:80,&quot;level_out&quot;:0}}]}"></audio>
+
+      <section data-hf-id="hf-tk2o" id="s1" class="clip" data-start="0" data-duration="8">
+        <div data-hf-id="hf-qmaz" class="scene two-col">
+          <div data-hf-id="hf-57dz" class="stack copy">
+            <div data-hf-id="hf-jrf4" class="eyebrow"><span data-hf-id="hf-pbp4" class="eyebrow-dot"></span>Nexo MVP</div>
+            <h1 data-hf-id="hf-cfle">Todo tu dinero, <span data-hf-id="hf-xohd" class="highlight">en un solo lugar.</span></h1>
+            <p data-hf-id="hf-xhyl" class="lead">
+              Cuentas, billeteras, tarjetas y efectivo dejan de ser piezas sueltas.
+              Nexo las vuelve una vista clara para decidir mejor.
+            </p>
+          </div>
+          <div data-hf-id="hf-v70k" class="dashboard">
+            <div data-hf-id="hf-34jw" class="radar">
+              <div data-hf-id="hf-a060" class="radar-core">Nexo</div>
+            </div>
+            <div data-hf-id="hf-sbhn" class="dash-card dash-1">
+              <strong data-hf-id="hf-bsqe">Banco Pichincha</strong>
+              <span data-hf-id="hf-sd6e">saldo verificado</span>
+              <div data-hf-id="hf-yb6h" class="money">$1,240</div>
+            </div>
+            <div data-hf-id="hf-jnls" class="dash-card dash-2">
+              <strong data-hf-id="hf-aau1">DEUNA</strong>
+              <span data-hf-id="hf-c5qh">billetera</span>
+              <div data-hf-id="hf-39oz" class="money">$485</div>
+            </div>
+            <div data-hf-id="hf-kf9l" class="dash-card dash-3">
+              <strong data-hf-id="hf-y0b1">Efectivo</strong>
+              <span data-hf-id="hf-d1lj">registro rapido</span>
+              <div data-hf-id="hf-p0up" class="money">$120</div>
+            </div>
+            <div data-hf-id="hf-brdq" class="dash-card dash-4">
+              <strong data-hf-id="hf-hxm0">PayPhone</strong>
+              <span data-hf-id="hf-f91h">movimientos</span>
+              <div data-hf-id="hf-ibko" class="money">$260</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section data-hf-id="hf-agns" id="s2" class="clip" data-start="8" data-duration="9">
+        <div data-hf-id="hf-i2q3" class="scene two-col">
+          <div data-hf-id="hf-u5on" class="stack copy">
+            <div data-hf-id="hf-3x3o" class="eyebrow"><span data-hf-id="hf-fia8" class="eyebrow-dot"></span>Entrada de datos</div>
+            <h2 data-hf-id="hf-qr31">Importa y registra sin friccion.</h2>
+            <p data-hf-id="hf-32yl" class="lead">
+              CSV, XLSX, registro manual y notas de voz para efectivo pasan por
+              una misma tuberia de validacion.
+            </p>
+          </div>
+          <div data-hf-id="hf-vcte" class="pipeline">
+            <svg data-hf-id="hf-e9zb" class="connector" width="860" height="620" viewBox="0 0 860 620" aria-hidden="true">
+              <path data-hf-id="hf-uzit" class="draw-path" d="M294 70 C430 70 478 250 520 300" />
+              <path data-hf-id="hf-5j8x" class="draw-path" d="M306 224 C420 224 476 282 520 304" />
+              <path data-hf-id="hf-7a3e" class="draw-path" d="M306 376 C425 376 474 326 520 314" />
+              <path data-hf-id="hf-93qb" class="draw-path" d="M318 530 C440 530 482 374 524 326" />
+            </svg>
+            <div data-hf-id="hf-dmov" class="source src-1"><span data-hf-id="hf-z2vm" class="icon">CSV</span>Estados de cuenta</div>
+            <div data-hf-id="hf-blvn" class="source src-2"><span data-hf-id="hf-jsly" class="icon">XLS</span>Excel bancario</div>
+            <div data-hf-id="hf-xuxq" class="source src-3"><span data-hf-id="hf-tq9n" class="icon">+</span>Registro manual</div>
+            <div data-hf-id="hf-diqi" class="source src-4"><span data-hf-id="hf-klo6" class="icon">VOZ</span>Efectivo por audio</div>
+            <div data-hf-id="hf-xozk" class="pipe-core">
+              <div data-hf-id="hf-ntp9" class="stack" style="place-items: center; gap: 12px">
+                <strong data-hf-id="hf-27lg">Parser + validacion</strong>
+                <span data-hf-id="hf-rstc">Normaliza proveedores, monedas, fechas y fuentes.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section data-hf-id="hf-rs19" id="s3" class="clip" data-start="17" data-duration="10">
+        <div data-hf-id="hf-hof2" class="scene two-col">
+          <div data-hf-id="hf-trdm" class="stack copy">
+            <div data-hf-id="hf-wjn1" class="eyebrow"><span data-hf-id="hf-ebd5" class="eyebrow-dot"></span>Movimientos</div>
+            <h2 data-hf-id="hf-hocy">Un modelo unico para cada movimiento.</h2>
+            <p data-hf-id="hf-muzf" class="lead">
+              Nexo separa monto y direccion, conserva la fuente y marca duplicados
+              exactos o probables antes de ensuciar tus reportes.
+            </p>
+          </div>
+          <div data-hf-id="hf-alxw" class="table">
+            <div data-hf-id="hf-03xv" class="row header">
+              <span data-hf-id="hf-bhnq">Fecha</span><span data-hf-id="hf-bvsa">Comercio</span><span data-hf-id="hf-kfuk">Monto</span><span data-hf-id="hf-f2lc">Fuente</span><span data-hf-id="hf-jnsz">Estado</span>
+            </div>
+            <div data-hf-id="hf-vku0" class="row tx">
+              <span data-hf-id="hf-kr4f">Hoy</span><span data-hf-id="hf-jq7x">Supermaxi</span><span data-hf-id="hf-0ly9" class="amount negative">-$48.20</span><span data-hf-id="hf-uckh"><span data-hf-id="hf-als4" class="pill mint">CSV</span></span><span data-hf-id="hf-l73p"><span data-hf-id="hf-2guv" class="pill green">OK</span></span>
+            </div>
+            <div data-hf-id="hf-wiz4" class="row tx">
+              <span data-hf-id="hf-rrsf">Hoy</span><span data-hf-id="hf-4gd5">Nomina</span><span data-hf-id="hf-vu7f" class="amount positive">+$1,250</span><span data-hf-id="hf-me0s"><span data-hf-id="hf-tpgj" class="pill amber">XLSX</span></span><span data-hf-id="hf-lzpr"><span data-hf-id="hf-ks0n" class="pill green">OK</span></span>
+            </div>
+            <div data-hf-id="hf-vc21" class="row tx">
+              <span data-hf-id="hf-ma60">Ayer</span><span data-hf-id="hf-7cfl">Cafe en efectivo</span><span data-hf-id="hf-x1tg" class="amount negative">-$2.50</span><span data-hf-id="hf-n6mu"><span data-hf-id="hf-7rk1" class="pill coral">Voz</span></span><span data-hf-id="hf-msbt"><span data-hf-id="hf-xob5" class="pill amber">Revisar</span></span>
+            </div>
+            <div data-hf-id="hf-vqd2" class="row tx">
+              <span data-hf-id="hf-9exc">Ayer</span><span data-hf-id="hf-3urj">Transferencia propia</span><span data-hf-id="hf-35p0" class="amount negative">-$120</span><span data-hf-id="hf-nz8w"><span data-hf-id="hf-i0ui" class="pill mint">Manual</span></span><span data-hf-id="hf-nkxv"><span data-hf-id="hf-tr7c" class="pill coral">Posible dup.</span></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section data-hf-id="hf-i2bf" id="s4" class="clip" data-start="27" data-duration="10">
+        <div data-hf-id="hf-ha41" class="scene two-col">
+          <div data-hf-id="hf-td2l" class="stack copy">
+            <div data-hf-id="hf-vpst" class="eyebrow"><span data-hf-id="hf-epo6" class="eyebrow-dot"></span>Categorizacion</div>
+            <h2 data-hf-id="hf-su9m">Reglas visibles. Correcciones que ensenan.</h2>
+            <p data-hf-id="hf-us4p" class="lead">
+              Cuando corriges una categoria, Nexo crea una regla de usuario y
+              respeta tu decision en los proximos movimientos.
+            </p>
+          </div>
+          <div data-hf-id="hf-m4ya" class="rules-board">
+            <svg data-hf-id="hf-ikq7" class="connector" width="900" height="640" viewBox="0 0 900 640" aria-hidden="true">
+              <path data-hf-id="hf-hcdz" class="draw-path" d="M350 118 C470 118 500 96 536 100" />
+              <path data-hf-id="hf-d3gi" class="draw-path" d="M350 306 C478 306 504 232 536 224" />
+              <path data-hf-id="hf-nfw5" class="draw-path" d="M350 492 C482 492 506 354 536 348" />
+            </svg>
+            <div data-hf-id="hf-trg1" class="merchant-card mer-1">
+              <strong data-hf-id="hf-4dk6">SUPERMAXI EL BOSQUE</strong>
+              <span data-hf-id="hf-15xu">tokens: supermaxi bosque</span>
+            </div>
+            <div data-hf-id="hf-xpk2" class="merchant-card mer-2">
+              <strong data-hf-id="hf-f51l">UBER TRIP</strong>
+              <span data-hf-id="hf-d2jo">patron: transporte recurrente</span>
+            </div>
+            <div data-hf-id="hf-1no3" class="merchant-card mer-3">
+              <strong data-hf-id="hf-xh6d">NETFLIX.COM</strong>
+              <span data-hf-id="hf-d1ee">suscripcion mensual</span>
+            </div>
+            <div data-hf-id="hf-106r" class="category-stack">
+              <div data-hf-id="hf-beu4" class="category cat"><span data-hf-id="hf-1yny" class="cat-dot" style="background: var(--lime)"></span>Supermercado</div>
+              <div data-hf-id="hf-ns30" class="category cat"><span data-hf-id="hf-i0qd" class="cat-dot" style="background: var(--teal)"></span>Transporte</div>
+              <div data-hf-id="hf-pkhk" class="category cat"><span data-hf-id="hf-9r0a" class="cat-dot" style="background: var(--coral)"></span>Suscripciones</div>
+            </div>
+            <div data-hf-id="hf-ququ" class="learning">
+              <strong data-hf-id="hf-x5fg">Aprendizaje local</strong>
+              <span data-hf-id="hf-x3dp">La regla queda visible, editable y nunca pisa una correccion manual.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section data-hf-id="hf-8iv9" id="s5" class="clip" data-start="37" data-duration="10">
+        <div data-hf-id="hf-gvt0" class="scene two-col">
+          <div data-hf-id="hf-w57s" class="stack copy">
+            <div data-hf-id="hf-2h9g" class="eyebrow"><span data-hf-id="hf-dir3" class="eyebrow-dot"></span>Insights</div>
+            <h2 data-hf-id="hf-h501">Senales utiles, no cajas negras.</h2>
+            <p data-hf-id="hf-0de2" class="lead">
+              Cada insight es una cuenta que el usuario podria rehacer: gasto del
+              mes, categoria top, suscripciones, ingresos contra egresos y cuentas
+              sin actualizar.
+            </p>
+          </div>
+          <div data-hf-id="hf-s4rk" class="insights-grid">
+            <div data-hf-id="hf-jpsf" class="insight-card insight">
+              <strong data-hf-id="hf-lahz">Gasto mensual</strong>
+              <div data-hf-id="hf-mdx1" class="metric" id="metric-spend">$0</div>
+              <svg data-hf-id="hf-0yid" class="spark" viewBox="0 0 260 68"><path data-hf-id="hf-t3qy" class="draw-path" d="M6 54 C42 20 68 44 98 30 C132 14 154 58 190 22 C220 2 238 18 254 10" /></svg>
+            </div>
+            <div data-hf-id="hf-ixdb" class="insight-card insight">
+              <strong data-hf-id="hf-bt4y">Categoria top</strong>
+              <div data-hf-id="hf-qhsv" class="metric">Comida</div>
+              <svg data-hf-id="hf-38bt" class="spark" viewBox="0 0 260 68"><path data-hf-id="hf-g2jk" class="draw-path" d="M8 54 L46 34 L88 38 L128 18 L172 24 L214 14 L254 22" /></svg>
+            </div>
+            <div data-hf-id="hf-ij2a" class="insight-card insight">
+              <strong data-hf-id="hf-176a">Suscripcion</strong>
+              <div data-hf-id="hf-ri8b" class="metric" id="metric-sub">$0</div>
+              <svg data-hf-id="hf-4f8w" class="spark" viewBox="0 0 260 68"><path data-hf-id="hf-8lxw" class="draw-path" d="M8 40 C54 40 54 40 100 40 C146 40 146 40 192 40 C224 40 234 40 254 40" /></svg>
+            </div>
+            <div data-hf-id="hf-i4r9" class="insight-card insight">
+              <strong data-hf-id="hf-rruc">Ingreso vs gasto</strong>
+              <div data-hf-id="hf-4a0j" class="metric" id="metric-ratio">0%</div>
+              <svg data-hf-id="hf-40xv" class="spark" viewBox="0 0 260 68"><path data-hf-id="hf-70dq" class="draw-path" d="M8 48 C60 12 98 60 142 24 C182 -2 218 46 254 18" /></svg>
+            </div>
+            <div data-hf-id="hf-kwwg" class="insight-card insight">
+              <strong data-hf-id="hf-g201">Cuenta quieta</strong>
+              <div data-hf-id="hf-qx5t" class="metric">12d</div>
+              <svg data-hf-id="hf-21eq" class="spark" viewBox="0 0 260 68"><path data-hf-id="hf-85n5" class="draw-path" d="M8 42 L254 42" /></svg>
+            </div>
+            <div data-hf-id="hf-kilf" class="insight-card insight">
+              <strong data-hf-id="hf-ewbf">Alerta</strong>
+              <div data-hf-id="hf-qibs" class="metric">Push</div>
+              <svg data-hf-id="hf-1n3p" class="spark" viewBox="0 0 260 68"><path data-hf-id="hf-2wrs" class="draw-path" d="M8 56 C42 16 68 56 100 16 C132 56 160 16 192 56 C220 24 238 18 254 14" /></svg>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section data-hf-id="hf-seyf" id="s6" class="clip" data-start="47" data-duration="10">
+        <div data-hf-id="hf-ghhz" class="scene two-col">
+          <div data-hf-id="hf-vqwr" class="stack copy">
+            <div data-hf-id="hf-v974" class="eyebrow"><span data-hf-id="hf-dx24" class="eyebrow-dot"></span>Movil</div>
+            <h2 data-hf-id="hf-7xd2">Una app pensada para el dia a dia.</h2>
+            <p data-hf-id="hf-ubsl" class="lead">
+              Inicio, movimientos, cuentas y perfil conviven con registro rapido
+              de efectivo por teclado, texto natural, voz y frecuentes.
+            </p>
+          </div>
+          <div data-hf-id="hf-sdpd" class="phone-wrap">
+            <div data-hf-id="hf-kda4" class="phone">
+              <div data-hf-id="hf-9o7x" class="phone-screen">
+                <div data-hf-id="hf-mf3a" class="phone-top"><span data-hf-id="hf-zwmt">9:41</span><span data-hf-id="hf-43e5">Nexo</span></div>
+                <div data-hf-id="hf-go6d" class="phone-title">Hola, Anderson</div>
+                <div data-hf-id="hf-ly83" class="phone-balance">
+                  <span data-hf-id="hf-swec">Saldo total estimado</span>
+                  <strong data-hf-id="hf-2voe">$2,846.20</strong>
+                </div>
+                <div data-hf-id="hf-f87a" class="mini-row"><span data-hf-id="hf-46mp">Supermaxi</span><span data-hf-id="hf-xy90">-$48.20</span></div>
+                <div data-hf-id="hf-symi" class="mini-row"><span data-hf-id="hf-y0l0">Transferencia</span><span data-hf-id="hf-uhbh">-$120.00</span></div>
+                <div data-hf-id="hf-tcxj" class="mini-row"><span data-hf-id="hf-w88d">Nomina</span><span data-hf-id="hf-rjt2">+$1,250</span></div>
+                <div data-hf-id="hf-tr8k" class="mini-row"><span data-hf-id="hf-kc9z">Voz: cafe efectivo</span><span data-hf-id="hf-lld5">-$2.50</span></div>
+              </div>
+              <div data-hf-id="hf-5rmk" class="tabs">
+                <div data-hf-id="hf-olf6" class="tab active">Inicio</div>
+                <div data-hf-id="hf-alnp" class="tab">Mov.</div>
+                <div data-hf-id="hf-31lc" class="tab">Ctas.</div>
+                <div data-hf-id="hf-7qk3" class="tab">Perfil</div>
+              </div>
+            </div>
+            <div data-hf-id="hf-z3n2" class="privacy-bubbles">
+              <div data-hf-id="hf-h7uo" class="bubble">Registrar por voz</div>
+              <div data-hf-id="hf-yivo" class="bubble">Exportar datos</div>
+              <div data-hf-id="hf-35n3" class="bubble">Eliminar cuenta</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section data-hf-id="hf-rex3" id="s7" class="clip" data-start="57" data-duration="9">
+        <div data-hf-id="hf-meaj" class="scene center">
+          <div data-hf-id="hf-21ve" class="infra">
+            <div data-hf-id="hf-8apr" class="node infra-node"><strong data-hf-id="hf-3rkn">API .NET</strong><span data-hf-id="hf-4ahp">Minimal APIs, auth con refresh rotado, SignalR y health checks.</span></div>
+            <div data-hf-id="hf-y8u7" class="node infra-node"><strong data-hf-id="hf-6wps">PostgreSQL</strong><span data-hf-id="hf-rv28">Modelo persistente, indices y migraciones para produccion.</span></div>
+            <div data-hf-id="hf-xuj6" class="node infra-node"><strong data-hf-id="hf-fkk7">Privacidad</strong><span data-hf-id="hf-r1sz">Exportar datos, borrar movimientos, eliminar cuentas y cerrar sesion.</span></div>
+            <div data-hf-id="hf-xg85" class="node infra-node"><strong data-hf-id="hf-qtkk">Operacion</strong><span data-hf-id="hf-g172">Docker, health checks, migraciones y despliegue de API.</span></div>
+          </div>
+          <div data-hf-id="hf-gcvj" class="final-lockup">
+            <div data-hf-id="hf-q130" class="eyebrow" style="margin: 0 auto"><span data-hf-id="hf-cq51" class="eyebrow-dot"></span>Estado real</div>
+            <h2 data-hf-id="hf-ydkl">Nexo muestra el MVP que ya esta construido.</h2>
+            <div data-hf-id="hf-nxsz" class="status-strip">
+              <span data-hf-id="hf-7jyi" class="status-chip">MVP funcional</span>
+              <span data-hf-id="hf-m49a" class="status-chip">No custodia dinero</span>
+              <span data-hf-id="hf-09b1" class="status-chip">PostgreSQL en produccion</span>
+              <span data-hf-id="hf-7u2x" class="status-chip">Efectivo por voz</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div data-hf-id="hf-6xem" class="comet comet-1"></div>
+      <div data-hf-id="hf-2zal" class="comet comet-2"></div>
+      <div data-hf-id="hf-27ms" class="comet comet-3"></div>
+    </div>
+
+    <script>
+      const tl = gsap.timeline({ paused: true });
+
+      function enter(selector, at, vars = {}) {
+        tl.fromTo(
+          selector,
+          { y: 52, opacity: 0, scale: 0.98 },
+          {
+            y: 0,
+            opacity: 1,
+            scale: 1,
+            duration: 0.76,
+            stagger: 0.08,
+            ease: "power3.out",
+            ...vars,
+          },
+          at,
+        );
+      }
+
+      function exit(selector, at) {
+        tl.to(selector, { y: -36, opacity: 0, duration: 0.42, stagger: 0.04, ease: "power2.in" }, at);
+      }
+
+      function pulse(selector, at, duration, cycle) {
+        tl.to(
+          selector,
+          {
+            scale: 1.045,
+            duration: cycle / 2,
+            repeat: Math.max(0, Math.floor(duration / cycle) - 1),
+            yoyo: true,
+            ease: "sine.inOut",
+          },
+          at,
+        );
+      }
+
+      function countText(selector, from, to, prefix, suffix, at, duration) {
+        const state = { value: from };
+        tl.to(
+          state,
+          {
+            value: to,
+            duration,
+            ease: "power2.out",
+            onUpdate: () => {
+              const value = Math.round(state.value);
+              document.querySelector(selector).textContent = `${prefix}${value.toLocaleString("en-US")}${suffix}`;
+            },
+          },
+          at,
+        );
+      }
+
+      gsap.set(".copy > *, .dash-card, .radar", { opacity: 0, y: 40 });
+      gsap.set(".source, .pipe-core", { opacity: 0, y: 42 });
+      gsap.set(".connector .draw-path, .spark .draw-path", { strokeDasharray: 1000, strokeDashoffset: 1000 });
+      gsap.set(".row", { opacity: 0, x: 70 });
+      gsap.set(".merchant-card, .category, .learning", { opacity: 0, y: 42 });
+      gsap.set(".insight-card", { opacity: 0, y: 48, scale: 0.96 });
+      gsap.set(".phone", { opacity: 0, y: 68, rotate: -4 });
+      gsap.set(".privacy-bubbles .bubble", { opacity: 0, x: 52 });
+      gsap.set(".infra-node, .final-lockup > *", { opacity: 0, y: 46 });
+      gsap.set(".comet", { opacity: 0, x: -220, y: 0 });
+
+      enter("#s1 .copy > *", 0.3);
+      enter("#s1 .dash-card", 0.8, { stagger: 0.13 });
+      enter("#s1 .radar", 1.15);
+      pulse("#s1 .radar-core", 2.1, 4.8, 1.6);
+      tl.to(".dash-1", { x: 34, y: 14, duration: 3.2, ease: "sine.inOut" }, 2.0);
+      tl.to(".dash-2", { x: -28, y: 26, duration: 3.0, ease: "sine.inOut" }, 2.1);
+      tl.to(".dash-3", { x: 40, y: -22, duration: 3.4, ease: "sine.inOut" }, 2.2);
+      tl.to(".dash-4", { x: -38, y: -18, duration: 3.1, ease: "sine.inOut" }, 2.3);
+      exit("#s1 .copy > *, #s1 .dash-card, #s1 .radar", 7.35);
+
+      enter("#s2 .copy > *", 8.2);
+      enter("#s2 .source", 8.7, { stagger: 0.12 });
+      enter("#s2 .pipe-core", 9.28);
+      tl.to("#s2 .draw-path", { strokeDashoffset: 0, duration: 1.25, stagger: 0.11, ease: "power2.out" }, 9.55);
+      pulse("#s2 .pipe-core", 11.1, 4.5, 1.4);
+      exit("#s2 .copy > *, #s2 .source, #s2 .pipe-core", 16.35);
+
+      enter("#s3 .copy > *", 17.2);
+      enter("#s3 .row", 17.65, { stagger: 0.12 });
+      tl.to("#s3 .tx", { x: -18, duration: 0.52, stagger: 0.22, ease: "power3.out" }, 19.0);
+      tl.to("#s3 .pill", { scale: 1.12, duration: 0.2, repeat: 1, yoyo: true, stagger: 0.08 }, 20.4);
+      tl.to("#s3 .row:nth-child(4)", { backgroundColor: "rgba(255, 209, 102, 0.16)", duration: 0.34 }, 22.1);
+      tl.to("#s3 .row:nth-child(5)", { backgroundColor: "rgba(255, 138, 100, 0.16)", duration: 0.34 }, 22.55);
+      exit("#s3 .copy > *, #s3 .row", 26.3);
+
+      enter("#s4 .copy > *", 27.2);
+      enter("#s4 .merchant-card", 27.7, { stagger: 0.14 });
+      enter("#s4 .category", 28.35, { stagger: 0.16 });
+      tl.to("#s4 .draw-path", { strokeDashoffset: 0, duration: 1.05, stagger: 0.16, ease: "power2.out" }, 29.2);
+      enter("#s4 .learning", 30.6);
+      tl.to("#s4 .cat", { x: -28, duration: 0.42, stagger: 0.18, ease: "back.out(1.7)" }, 31.4);
+      pulse("#s4 .learning", 33.0, 3.0, 1.3);
+      exit("#s4 .copy > *, #s4 .merchant-card, #s4 .category, #s4 .learning", 36.3);
+
+      enter("#s5 .copy > *", 37.2);
+      enter("#s5 .insight-card", 37.65, { stagger: 0.1 });
+      tl.to("#s5 .draw-path", { strokeDashoffset: 0, duration: 1.0, stagger: 0.06, ease: "power2.out" }, 38.65);
+      countText("#metric-spend", 0, 1240, "$", "", 39.0, 1.4);
+      countText("#metric-sub", 0, 19, "$", "", 39.25, 1.2);
+      countText("#metric-ratio", 0, 73, "", "%", 39.5, 1.2);
+      tl.to("#s5 .insight-card", { y: -18, duration: 0.5, stagger: 0.08, ease: "sine.inOut" }, 41.6);
+      tl.to("#s5 .insight-card", { y: 0, duration: 0.5, stagger: 0.08, ease: "sine.inOut" }, 42.2);
+      exit("#s5 .copy > *, #s5 .insight-card", 46.3);
+
+      enter("#s6 .copy > *", 47.2);
+      tl.fromTo("#s6 .phone", { opacity: 0, y: 80, rotate: -5 }, { opacity: 1, y: 0, rotate: 0, duration: 0.9, ease: "power3.out" }, 47.7);
+      enter("#s6 .privacy-bubbles .bubble", 48.75, { stagger: 0.14 });
+      tl.to("#s6 .tab", { y: -6, duration: 0.22, repeat: 1, yoyo: true, stagger: 0.11 }, 50.2);
+      tl.to("#s6 .phone", { rotate: 2.2, y: -16, duration: 1.2, ease: "sine.inOut" }, 51.4);
+      tl.to("#s6 .phone", { rotate: 0, y: 0, duration: 1.2, ease: "sine.inOut" }, 52.8);
+      exit("#s6 .copy > *, #s6 .phone, #s6 .privacy-bubbles .bubble", 56.3);
+
+      enter("#s7 .infra-node", 57.2, { stagger: 0.12 });
+      enter("#s7 .final-lockup > *", 59.4, { stagger: 0.12 });
+      tl.to(".comet-1", { opacity: 1, x: 2140, y: 340, duration: 1.25, ease: "power2.inOut" }, 60.0);
+      tl.to(".comet-2", { opacity: 1, x: 2200, y: 650, duration: 1.35, ease: "power2.inOut" }, 60.7);
+      tl.to(".comet-3", { opacity: 1, x: 2080, y: 120, duration: 1.2, ease: "power2.inOut" }, 61.45);
+      pulse("#s7 .status-chip", 62.2, 2.6, 1.3);
+
+      window.__timelines["nexo-product-tour"] = tl;
+    </script>
+  </body>
+</html>

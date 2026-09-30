@@ -4,6 +4,9 @@ import { useAuthStore } from '../store/authStore';
 import { AnalyticsEvent, track } from '../services/analytics';
 import type {
   AnalyticsPeriodCode,
+  BudgetPreviewRequest,
+  CreateBudgetRequest,
+  UpdateBudgetRequest,
   ConfirmWithdrawalRequest,
   CreateQuickTransactionRequest,
   SetCashBalanceRequest,
@@ -43,6 +46,17 @@ export const queryKeys = {
   categorizationRules: ['categorization-rules'] as const,
   // Registro rápido de efectivo: sugerencias y saldo de efectivo del sheet.
   quickEntryBootstrap: ['quick-entry', 'bootstrap'] as const,
+  // Presupuestos y Comprometido. Van DEBAJO de ['summary'] a propósito: todas
+  // las mutaciones que mueven dinero (registro rápido, importación, categoría,
+  // transferencias, borrar movimientos, tiempo real...) ya invalidan
+  // `queryKeys.summary`, y TanStack invalida por prefijo -- así Comprometido,
+  // Disponible y el gastado de cada presupuesto se refrescan con el mismo
+  // gesto, sin tener que acordarse de añadir una clave nueva en cada sitio.
+  committed: ['summary', 'committed'] as const,
+  budgets: (date?: string) => ['summary', 'budgets', 'list', date ?? 'today'] as const,
+  budget: (id: string, date?: string) => ['summary', 'budgets', 'detail', id, date ?? 'today'] as const,
+  budgetMovements: (id: string, date?: string) => ['summary', 'budgets', 'movements', id, date ?? 'today'] as const,
+  budgetPreview: (request: BudgetPreviewRequest) => ['summary', 'budgets', 'preview', request] as const,
 };
 
 /**
@@ -716,5 +730,78 @@ export function useWithdrawalScan(importId: string | undefined) {
     queryKey: importId ? queryKeys.withdrawalScan(importId) : ['transfers', 'withdrawals', 'scan', 'none'],
     queryFn: () => api.transfers.withdrawals.scan(importId!),
     enabled: Boolean(importId),
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Presupuestos y Comprometido
+// ---------------------------------------------------------------------------
+
+/** Tu dinero / Comprometido / Disponible con su desglose. Calculado solo en el backend. */
+export function useCommittedMoney(enabled = true) {
+  return useQuery({ queryKey: queryKeys.committed, queryFn: api.finance.committed, enabled });
+}
+
+export function useBudgets(date?: string) {
+  return useQuery({ queryKey: queryKeys.budgets(date), queryFn: () => api.budgets.list(date) });
+}
+
+export function useBudget(id: string | undefined, date?: string) {
+  return useQuery({
+    queryKey: id ? queryKeys.budget(id, date) : ['summary', 'budgets', 'detail', 'missing'],
+    queryFn: () => api.budgets.get(id!, date),
+    enabled: !!id,
+  });
+}
+
+export function useBudgetMovements(id: string | undefined, date?: string) {
+  return useQuery({
+    queryKey: id ? queryKeys.budgetMovements(id, date) : ['summary', 'budgets', 'movements', 'missing'],
+    queryFn: () => api.budgets.movements(id!, date),
+    enabled: !!id,
+  });
+}
+
+/**
+ * "Disponible después": lo calcula el MISMO motor del backend que el
+ * Comprometido real (POST /budgets/preview). `request` null = todavía no hay
+ * un monto válido que previsualizar.
+ */
+export function useBudgetPreview(request: BudgetPreviewRequest | null) {
+  return useQuery({
+    queryKey: request ? queryKeys.budgetPreview(request) : ['summary', 'budgets', 'preview', 'none'],
+    queryFn: () => api.budgets.preview(request!),
+    enabled: request !== null,
+    placeholderData: (previous) => previous,
+    staleTime: 15 * 1000,
+  });
+}
+
+function invalidateBudgets(client: ReturnType<typeof useQueryClient>): void {
+  // Prefijo ['summary']: Home, Comprometido y todos los presupuestos.
+  void client.invalidateQueries({ queryKey: queryKeys.summary });
+}
+
+export function useCreateBudget() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (request: CreateBudgetRequest) => api.budgets.create(request),
+    onSuccess: () => invalidateBudgets(client),
+  });
+}
+
+export function useUpdateBudget() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...request }: { id: string } & UpdateBudgetRequest) => api.budgets.update(id, request),
+    onSuccess: () => invalidateBudgets(client),
+  });
+}
+
+export function useDeleteBudget() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.budgets.remove(id),
+    onSuccess: () => invalidateBudgets(client),
   });
 }

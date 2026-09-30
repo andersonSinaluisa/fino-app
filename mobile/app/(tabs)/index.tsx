@@ -13,13 +13,14 @@ import { AccountsSummaryList } from '../../components/home/AccountsSummaryList';
 import { PendingSyncBanner } from '../../components/quick-entry/PendingSyncBanner';
 import { TransactionRow } from '../../components/transactions/TransactionRow';
 import { SectionHeader } from '../../components/ui/SectionHeader';
-import { useSummary, useAnalyticsDashboard, usePulses } from '../../hooks/queries';
+import { useSummary, useAnalyticsDashboard, usePulses, useCommittedMoney, useBudgets } from '../../hooks/queries';
+import { BudgetHomeCard } from '../../components/home/BudgetHomeCard';
 import { usePreferencesStore } from '../../store/preferencesStore';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useAuthStore } from '../../store/authStore';
 import { pickNextPayment } from '../../utils/recurringPayments';
 import { FirstAccountReadyCard } from '../../components/home/FirstAccountReadyCard';
-import { AnalyticsEvent, ValueSource, track } from '../../services/analytics';
+import { AnalyticsEvent, AnalyticsSource, ValueSource, track } from '../../services/analytics';
 import { trackFirstValueIfReached } from '../../services/analytics/firstValue';
 
 const MAX_RECENT_TRANSACTIONS = 3;
@@ -30,7 +31,7 @@ const MAX_RECENT_TRANSACTIONS = 3;
  * voy este mes?, ¿algo requiere mi atención?) y deja el resto a Movimientos,
  * Estadísticas y Cuentas. Ningún componente de negocio se duplicó: cada
  * sección reutiliza los mismos hooks/datos/lógica que ya usaban las pantallas
- * completas (useSummary, useAnalyticsDashboard, estimateAvailableMoney,
+ * completas (useSummary, useAnalyticsDashboard, useCommittedMoney, useBudgets,
  * pickNextPayment, accountBalanceStatus, etc.).
  */
 export default function HomeScreen() {
@@ -38,6 +39,9 @@ export default function HomeScreen() {
   const { data, isLoading, refetch, isRefetching } = useSummary();
   const { data: dashboard } = useAnalyticsDashboard({ period: 'month' });
   const { data: pulses } = usePulses();
+  // Presupuestos + Comprometido: calculados en el backend, nunca aquí.
+  const { data: committed } = useCommittedMoney();
+  const { data: budgetOverview } = useBudgets();
   const hidden = usePreferencesStore((state) => state.amountsHidden);
   const toggleAmounts = usePreferencesStore((state) => state.toggleAmounts);
   const onboarding = useAuthStore((state) => state.user?.onboarding);
@@ -129,7 +133,23 @@ export default function HomeScreen() {
             </View>
           ) : null}
 
-          <AvailableMoneySection summary={data} hidden={hidden} />
+          <AvailableMoneySection
+            summary={data}
+            committed={committed}
+            hidden={hidden}
+            onOpenCommitted={() => router.push({ pathname: '/comprometido', params: { source: AnalyticsSource.Home } })}
+          />
+
+          <View style={styles.budgetSection}>
+            <BudgetHomeCard
+              overview={budgetOverview}
+              hidden={hidden}
+              onOpenBudgets={() => router.push('/presupuestos')}
+              onOpenBudget={(id) =>
+                router.push({ pathname: '/presupuestos/[id]', params: { id, source: AnalyticsSource.Home } })
+              }
+            />
+          </View>
 
           <View style={styles.section}>
             <MonthSummaryCard
@@ -219,6 +239,9 @@ const styles = StyleSheet.create({
   },
   section: {
     marginTop: spacing.xxl,
+  },
+  budgetSection: {
+    marginBottom: spacing.md,
   },
   topSection: {
     marginTop: spacing.xxl,

@@ -64,3 +64,11 @@ describe('resolución de pantallas', () => {
     expect(resolveScreen('/registrar')).toBeNull();
   });
 });
+
+describe('pantallas de presupuestos', () => {
+  it('la lista, el detalle (sin id) y el desglose de Comprometido', () => {
+    expect(resolveScreen('/presupuestos')).toBe(AnalyticsScreen.Budgets);
+    expect(resolveScreen('/presupuestos/01a0f001-d9a0-78ef-873c-6e478754633a')).toBe(AnalyticsScreen.BudgetDetail);
+    expect(resolveScreen('/comprometido')).toBe(AnalyticsScreen.Committed);
+  });
+});

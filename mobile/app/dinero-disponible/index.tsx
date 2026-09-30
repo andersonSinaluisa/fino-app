@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing, typography } from '../../theme';
 import { Badge, Button, Card, EmptyState, Screen, SkeletonCard, Typo } from '../../components/ui';
-import { useSummary } from '../../hooks/queries';
-import { estimateAvailableMoney, monthRangeLabel } from '../../utils/planCalculations';
+import { useCommittedMoney, useSummary } from '../../hooks/queries';
+import { monthRangeLabel } from '../../utils/planCalculations';
 import { formatCurrency } from '../../utils/format';
 import { AnalyticsEvent, AnalyticsSource, track } from '../../services/analytics';
 
@@ -14,16 +14,19 @@ export default function AvailableMoneyScreen() {
   const { data, isLoading, refetch, isRefetching } = useSummary();
   const [simulationText, setSimulationText] = useState('');
 
-  const estimate = useMemo(() => (data ? estimateAvailableMoney(data) : null), [data]);
+  // Tu dinero / Comprometido / Disponible: una sola fuente, el backend
+  // (GET /finance/committed). Antes esta pantalla proyectaba el ritmo de gasto
+  // por su cuenta y podía contradecir a Home.
+  const { data: estimate } = useCommittedMoney();
   const simulatedSpend = Number(simulationText.replace(',', '.'));
   const simulatedAvailable = estimate && Number.isFinite(simulatedSpend)
-    ? Math.max(estimate.availableUntilMonthEnd - simulatedSpend, 0)
+    ? Math.max(estimate.available - simulatedSpend, 0)
     : null;
 
   // §16: adopción de la proyección. `hasData` distingue "la abrió y vio algo"
   // de "la abrió y estaba vacía", que son dos cosas muy distintas para
   // decidir si la función vale la pena. El importe estimado no sale.
-  const hasEstimate = estimate !== null;
+  const hasEstimate = Boolean(estimate);
 
   useEffect(() => {
     track(AnalyticsEvent.ProjectionViewed, {
@@ -45,7 +48,7 @@ export default function AvailableMoneyScreen() {
         <Badge label="Estimación inteligente" tone="accent" />
         <Typo variant="title">Dinero disponible</Typo>
         <Typo variant="body" color={colors.textSecondary}>
-          Calculado con tu saldo real y el ritmo de gastos que ya existe en Nexo.
+          Tu saldo real menos el dinero que ya tiene destino: presupuestos reservados y próximos pagos.
         </Typo>
       </View>
 
@@ -72,10 +75,10 @@ export default function AvailableMoneyScreen() {
               </Typo>
             </View>
             <Typo variant="display" tabular>
-              {formatCurrency(estimate.availableUntilMonthEnd)}
+              {formatCurrency(estimate.available)}
             </Typo>
             <Typo variant="body" color={colors.textSecondary}>
-              Disponible estimado hasta fin de mes, después de proyectar tu ritmo actual de gastos.
+              Disponible hasta fin de mes, después de apartar lo comprometido.
             </Typo>
 
             <View style={styles.dailyBox}>
@@ -85,11 +88,11 @@ export default function AvailableMoneyScreen() {
                   <Typo variant="bodyStrong">Ritmo seguro sugerido</Typo>
                 </View>
                 <Typo variant="bodyStrong" tabular>
-                  {formatCurrency(estimate.recommendedDailySpend)} / día
+                  {formatCurrency(estimate.dailyAvailable ?? estimate.available)} / día
                 </Typo>
               </View>
               <Typo variant="caption" color={colors.textSecondary}>
-                Corte en {estimate.daysRemaining} día{estimate.daysRemaining === 1 ? '' : 's'}.
+                Corte en {estimate.daysRemainingInMonth} día{estimate.daysRemainingInMonth === 1 ? '' : 's'}.
               </Typo>
             </View>
           </Card>
@@ -106,15 +109,21 @@ export default function AvailableMoneyScreen() {
               icon="wallet-outline"
               label="Saldo total en cuentas"
               hint={`${data.accountCount} cuenta${data.accountCount === 1 ? '' : 's'} activa${data.accountCount === 1 ? '' : 's'}`}
-              amount={data.totalBalance}
+              amount={estimate.currentMoney}
               positive
             />
-            <BreakdownRow
-              icon="receipt-outline"
-              label="Gasto proyectado restante"
-              hint={`Ritmo actual: ${formatCurrency(data.month.expense)} gastados`}
-              amount={-estimate.projectedRemainingExpense}
-            />
+            <Pressable
+              onPress={() => router.push({ pathname: '/comprometido', params: { source: AnalyticsSource.Home } })}
+              accessibilityRole="button"
+              accessibilityHint="Muestra de dónde sale el dinero comprometido"
+            >
+              <BreakdownRow
+                icon="lock-closed-outline"
+                label="Comprometido"
+                hint="Presupuestos reservados y próximos pagos · ver detalle"
+                amount={-estimate.committed}
+              />
+            </Pressable>
             <View style={styles.totalRow}>
               <View style={styles.equalIcon}>
                 <Ionicons name="reorder-two-outline" size={18} color={colors.onAccent} />
@@ -123,7 +132,7 @@ export default function AvailableMoneyScreen() {
                 Disponible real estimado
               </Typo>
               <Typo variant="heading" color={colors.accent} tabular>
-                {formatCurrency(estimate.availableUntilMonthEnd)}
+                {formatCurrency(estimate.available)}
               </Typo>
             </View>
           </Card>

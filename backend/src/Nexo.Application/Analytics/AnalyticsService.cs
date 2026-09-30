@@ -33,10 +33,7 @@ public interface IAnalyticsService
 /// </summary>
 public sealed class AnalyticsService(INexoDbContext db, IClock clock) : IAnalyticsService
 {
-    /// <summary>A merchant recurs if its amount stays within this fraction of its own average.</summary>
-    private const decimal RecurringAmountTolerance = 0.25m;
-
-    private const int RecurringLookbackMonths = 6;
+    private const int RecurringLookbackMonths = RecurringPaymentDetector.LookbackMonths;
 
     private static readonly CultureInfo Spanish = CultureInfo.GetCultureInfo("es-EC");
 
@@ -79,7 +76,7 @@ public sealed class AnalyticsService(INexoDbContext db, IClock clock) : IAnalyti
         // selected period -- a single month of history is not enough to tell a
         // subscription from a one-off purchase.
         var lookbackStart = dates.StartOfMonth(now).AddMonths(-(RecurringLookbackMonths - 1));
-        var recurringMerchants = await DetectRecurringMerchantsAsync(userId, accountIds, lookbackStart, now, cancellationToken);
+        var recurringMerchants = await DetectRecurringMerchantsAsync(userId, accountIds, lookbackStart, now, dates, cancellationToken);
 
         var moneyFlow = await BuildMoneyFlowAsync(userId, accountIds, from, to, income, recurringMerchants, cancellationToken);
 
@@ -247,18 +244,17 @@ public sealed class AnalyticsService(INexoDbContext db, IClock clock) : IAnalyti
                         && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending))
             .WhereIdIn(t => t.FinancialAccountId, accountIds);
 
-    private sealed record RecurringMerchant(string Merchant, string Key, string? CategoryName, decimal AverageAmount, int Occurrences, DateTimeOffset LastSeenAt);
-
     private async Task<List<RecurringMerchant>> DetectRecurringMerchantsAsync(
         Guid userId,
         IReadOnlyCollection<Guid> accountIds,
         DateTimeOffset from,
         DateTimeOffset to,
+        StatementDateInterpreter dates,
         CancellationToken cancellationToken)
     {
         var rows = await ScopedTransactions(userId, accountIds, from, to)
             .Where(t => t.Direction == TransactionDirection.Expense && !t.IsInternalTransfer && t.Merchant != null)
-            .Select(t => new { t.Merchant, t.Amount, t.TransactionDate, t.CategoryId })
+            .Select(t => new RecurringCandidateRow(t.Merchant!, t.Amount, t.TransactionDate, t.CategoryId))
             .ToListAsync(cancellationToken);
 
         if (rows.Count == 0)
@@ -268,56 +264,13 @@ public sealed class AnalyticsService(INexoDbContext db, IClock clock) : IAnalyti
 
         var categories = await LoadCategoryNamesAsync(userId, cancellationToken);
 
-        var groups = rows
-            .Where(r => !string.IsNullOrWhiteSpace(r.Merchant))
-            .GroupBy(r => TextNormalizer.NormalizeForMatching(r.Merchant!));
-
-        var result = new List<RecurringMerchant>();
-        foreach (var group in groups)
+        // Shared with Comprometido ("Próximos pagos") so both screens agree on
+        // what "recurrente" means.
+        return RecurringPaymentDetector.Detect(rows, categories, instant =>
         {
-            var distinctMonths = group.Select(r => (r.TransactionDate.Year, r.TransactionDate.Month)).Distinct().Count();
-            if (distinctMonths < 2)
-            {
-                continue;
-            }
-
-            var amounts = group.Select(r => r.Amount).ToList();
-            var average = amounts.Average();
-            if (average <= 0m)
-            {
-                continue;
-            }
-
-            var maxDeviation = amounts.Max(a => Math.Abs(a - average));
-            if (maxDeviation / average > RecurringAmountTolerance)
-            {
-                continue;
-            }
-
-            var displayName = group
-                .GroupBy(r => r.Merchant)
-                .OrderByDescending(g => g.Count())
-                .First().Key!;
-
-            var categoryId = group
-                .Where(r => r.CategoryId is not null)
-                .GroupBy(r => r.CategoryId!.Value)
-                .OrderByDescending(g => g.Count())
-                .Select(g => (Guid?)g.Key)
-                .FirstOrDefault();
-
-            categories.TryGetValue(categoryId ?? Guid.Empty, out var categoryName);
-
-            result.Add(new RecurringMerchant(
-                displayName,
-                group.Key,
-                categoryName,
-                average,
-                group.Count(),
-                group.Max(r => r.TransactionDate)));
-        }
-
-        return result;
+            var local = dates.ToLocal(instant);
+            return (local.Year, local.Month);
+        });
     }
 
     private async Task<MoneyFlowDto> BuildMoneyFlowAsync(

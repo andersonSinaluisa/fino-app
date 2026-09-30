@@ -153,6 +153,27 @@ public sealed class PrivacyService(INexoDbContext db, IClock clock) : IPrivacySe
             .Select(i => new { i.Id, i.Code, i.Title, i.Body, i.PeriodStart, i.PeriodEnd, i.CreatedAt })
             .ToListAsync(cancellationToken);
 
+        // Presupuestos: the plan only (spent/reserved are derived, not stored).
+        var budgets = await db.Budgets.AsNoTracking()
+            .Where(b => b.UserId == userId)
+            .Select(b => new
+            {
+                b.Id,
+                b.Name,
+                b.CategoryId,
+                b.Amount,
+                b.Currency,
+                Period = b.Period.ToString(),
+                b.StartDate,
+                b.EndDate,
+                b.IsRecurring,
+                b.ReserveFunds,
+                Priority = b.Priority.ToString(),
+                b.IsActive,
+                b.CreatedAt,
+            })
+            .ToListAsync(cancellationToken);
+
         var notifications = await db.Notifications.AsNoTracking()
             .Where(n => n.UserId == userId)
             .Select(n => new { n.Id, Type = n.Type.ToString(), n.Title, n.Body, IsRead = n.ReadAt != null, n.CreatedAt })
@@ -187,6 +208,7 @@ public sealed class PrivacyService(INexoDbContext db, IClock clock) : IPrivacySe
             emailConnections,
             categories,
             categorizationRules,
+            budgets,
             insights,
             notifications,
             sessions,

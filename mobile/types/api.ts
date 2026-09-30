@@ -799,3 +799,176 @@ export interface WithdrawalScan {
   candidateCount: number;
   highConfidenceCount: number;
 }
+
+// ---------------------------------------------------------------------------
+// Presupuestos y Comprometido. Mirrors Nexo.Application.Budgets.BudgetContracts.
+// Every figure here is computed by the backend (BudgetCalculator /
+// CommittedMoneyCalculator); the app only formats and displays them.
+// ---------------------------------------------------------------------------
+
+export type BudgetPeriod = 'Weekly' | 'Biweekly' | 'Monthly' | 'Custom';
+export type BudgetPriority = 'Essential' | 'Important' | 'Flexible';
+/** Normal < 70% · Attention 70–89% · NearLimit 90–99% · Exceeded ≥ 100%. Decided by the backend. */
+export type BudgetUsageLevel = 'Normal' | 'Attention' | 'NearLimit' | 'Exceeded';
+
+export interface BudgetWindow {
+  /** Local calendar date, yyyy-MM-dd. */
+  start: string;
+  end: string;
+  /** "Septiembre 2026" or "7 – 13 sept". */
+  label: string;
+}
+
+export interface BudgetProgress {
+  amount: number;
+  spent: number;
+  remaining: number;
+  overspent: number;
+  percentUsed: number;
+  level: BudgetUsageLevel;
+  /** What this budget currently adds to Comprometido. */
+  reserved: number;
+  daysInWindow: number;
+  daysElapsed: number;
+  daysRemaining: number;
+  dailyAllowance: number | null;
+  projectedSpend: number | null;
+  isCurrentWindow: boolean;
+}
+
+export interface Budget {
+  id: string;
+  name: string;
+  /** Current amount of the definition; `progress.amount` is the one that applied to the shown window. */
+  amount: number;
+  categoryId: string | null;
+  categoryName: string | null;
+  categoryIcon: string | null;
+  categoryColor: string | null;
+  period: BudgetPeriod;
+  startDate: string;
+  endDate: string | null;
+  isRecurring: boolean;
+  reserveFunds: boolean;
+  priority: BudgetPriority;
+  isActive: boolean;
+  currency: string;
+  window: BudgetWindow | null;
+  progress: BudgetProgress | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BudgetInsight {
+  kind: 'Exceeded' | 'PaceWillExceed' | 'HighUsage' | 'DailyAllowance' | 'ComparedToPrevious';
+  budgetId: string;
+  message: string;
+  /** Same insight without money figures, for "ocultar montos". */
+  messageWithoutAmounts: string;
+}
+
+export interface BudgetOverview {
+  date: string;
+  label: string;
+  isCurrent: boolean;
+  totals: { budgeted: number; spent: number; remaining: number; reserved: number; exceededCount: number };
+  budgets: Budget[];
+  topInsight: BudgetInsight | null;
+}
+
+export interface BudgetHistoryItem {
+  window: BudgetWindow;
+  amount: number;
+  spent: number;
+  percentUsed: number;
+  level: BudgetUsageLevel;
+}
+
+export interface BudgetDetail {
+  budget: Budget;
+  insights: BudgetInsight[];
+  history: BudgetHistoryItem[];
+}
+
+export interface BudgetMovements {
+  window: BudgetWindow | null;
+  items: TransactionListItem[];
+}
+
+export interface CreateBudgetRequest {
+  amount: number;
+  categoryId?: string | null;
+  name?: string | null;
+  period?: BudgetPeriod;
+  startDate?: string | null;
+  endDate?: string | null;
+  isRecurring?: boolean;
+  reserveFunds: boolean;
+  priority?: BudgetPriority;
+}
+
+export interface UpdateBudgetRequest {
+  amount: number;
+  categoryId: string | null;
+  name?: string | null;
+  endDate?: string | null;
+  reserveFunds: boolean;
+  priority?: BudgetPriority;
+  isActive: boolean;
+}
+
+export interface BudgetPreviewRequest {
+  amount: number;
+  categoryId?: string | null;
+  period?: BudgetPeriod;
+  startDate?: string | null;
+  endDate?: string | null;
+  isRecurring?: boolean;
+  reserveFunds: boolean;
+  /** Present when previewing an edit, so the budget's current reserve is replaced, not added twice. */
+  budgetId?: string | null;
+}
+
+export interface BudgetPreview {
+  currentMoney: number;
+  committedNow: number;
+  availableNow: number;
+  budgetContribution: number;
+  committedAfter: number;
+  availableAfter: number;
+  overcommittedAfter: number;
+  alreadySpent: number;
+}
+
+export type CommittedSourceType = 'reserved_budget' | 'upcoming_payment';
+
+export interface CommittedItem {
+  label: string;
+  amount: number;
+  grossAmount: number;
+  budgetId: string | null;
+  categoryId: string | null;
+  coveredByBudgetName: string | null;
+  expectedDate: string | null;
+}
+
+export interface CommittedSource {
+  type: CommittedSourceType;
+  label: string;
+  description: string;
+  amount: number;
+  items: CommittedItem[];
+}
+
+/** GET /api/v1/finance/committed -- the ONLY source of Tu dinero / Comprometido / Disponible. */
+export interface CommittedMoney {
+  currentMoney: number;
+  committed: number;
+  available: number;
+  overcommitted: number;
+  isOvercommitted: boolean;
+  currency: string;
+  sources: CommittedSource[];
+  daysRemainingInMonth: number;
+  dailyAvailable: number | null;
+}

@@ -1,6 +1,14 @@
 import { request, upload } from './apiClient';
 import type {
   Account,
+  BudgetDetail,
+  BudgetMovements,
+  BudgetOverview,
+  BudgetPreview,
+  BudgetPreviewRequest,
+  CommittedMoney,
+  CreateBudgetRequest,
+  UpdateBudgetRequest,
   AnalyticsDashboard,
   AnalyticsPeriodCode,
   AppNotification,
@@ -286,6 +294,32 @@ export const api = {
   insights: {
     list: () => request<Insight[]>('/api/v1/insights'),
     refresh: () => request<Insight[]>('/api/v1/insights/refresh', { method: 'POST' }),
+  },
+
+  /**
+   * Presupuestos. `date` is a LOCAL calendar date (yyyy-MM-dd); omitted = today.
+   * Every figure (spent, remaining, reserved, level) comes computed from the
+   * backend -- the app never re-derives them.
+   */
+  budgets: {
+    list: (date?: string) =>
+      request<BudgetOverview>(`/api/v1/budgets${date ? `?date=${encodeURIComponent(date)}` : ''}`),
+    get: (id: string, date?: string) =>
+      request<BudgetDetail>(`/api/v1/budgets/${id}${date ? `?date=${encodeURIComponent(date)}` : ''}`),
+    movements: (id: string, date?: string) =>
+      request<BudgetMovements>(`/api/v1/budgets/${id}/movements${date ? `?date=${encodeURIComponent(date)}` : ''}`),
+    create: (body: CreateBudgetRequest) => request<BudgetDetail>('/api/v1/budgets', { method: 'POST', body }),
+    update: (id: string, body: UpdateBudgetRequest) =>
+      request<BudgetDetail>(`/api/v1/budgets/${id}`, { method: 'PUT', body }),
+    remove: (id: string) => request<void>(`/api/v1/budgets/${id}`, { method: 'DELETE' }),
+    /** Same engine as the real Comprometido: "¿cómo queda mi Disponible si guardo esto?". */
+    preview: (body: BudgetPreviewRequest) =>
+      request<BudgetPreview>('/api/v1/budgets/preview', { method: 'POST', body }),
+  },
+
+  finance: {
+    /** Tu dinero → Comprometido (con su desglose) → Disponible. Única fuente de verdad. */
+    committed: () => request<CommittedMoney>('/api/v1/finance/committed'),
   },
 
   /** PULSO FASE 1/2: read-only from the app -- PulseEvaluationWorker is what creates pulses server-side. */

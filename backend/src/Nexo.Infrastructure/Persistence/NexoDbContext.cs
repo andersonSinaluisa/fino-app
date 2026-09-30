@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Nexo.Application.Abstractions;
 using Nexo.Domain.Accounts;
 using Nexo.Domain.Audit;
+using Nexo.Domain.Budgets;
 using Nexo.Domain.Categories;
 using Nexo.Domain.Common;
 using Nexo.Domain.EmailIngestion;
@@ -73,6 +74,8 @@ public sealed class NexoDbContext : DbContext, INexoDbContext
     public DbSet<FinancialPulse> Pulses => Set<FinancialPulse>();
 
     public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();
+
+    public DbSet<Budget> Budgets => Set<Budget>();
 
     public IQueryable<T> IgnoringUserFilter<T>()
         where T : class => Set<T>().IgnoreQueryFilters();

@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,14 +5,15 @@ import { colors, spacing } from '../../theme';
 import { Badge, Button, Card, EmptyState, Screen, SectionHeader, SkeletonCard, Typo } from '../../components/ui';
 import { CategoryBreakdown } from '../../components/home/CategoryBreakdown';
 import { InsightCard } from '../../components/home/InsightCard';
-import { useSummary } from '../../hooks/queries';
-import { estimateAvailableMoney, monthRangeLabel } from '../../utils/planCalculations';
+import { useCommittedMoney, useSummary } from '../../hooks/queries';
+import { monthRangeLabel } from '../../utils/planCalculations';
 import { formatCurrency } from '../../utils/format';
 
 export default function PlanScreen() {
   const router = useRouter();
   const { data, isLoading, refetch, isRefetching } = useSummary();
-  const estimate = useMemo(() => (data ? estimateAvailableMoney(data) : null), [data]);
+  // Disponible/Comprometido: del backend (GET /finance/committed), nunca proyectados aquí.
+  const { data: estimate } = useCommittedMoney();
 
   return (
     <Screen refreshing={isRefetching} onRefresh={() => void refetch()}>
@@ -55,10 +55,10 @@ export default function PlanScreen() {
               <Badge label="Libre de culpas" tone="positive" />
             </View>
             <Typo variant="display" tabular>
-              {formatCurrency(estimate.availableUntilMonthEnd)}
+              {formatCurrency(estimate.available)}
             </Typo>
             <Typo variant="caption" color={colors.textSecondary}>
-              Quedan {estimate.daysRemaining} día{estimate.daysRemaining === 1 ? '' : 's'} en el ciclo {monthRangeLabel()}.
+              Quedan {estimate.daysRemainingInMonth} día{estimate.daysRemainingInMonth === 1 ? '' : 's'} en el ciclo {monthRangeLabel()}.
             </Typo>
 
             <View style={styles.planLine}>
@@ -66,14 +66,14 @@ export default function PlanScreen() {
                 Ritmo sugerido
               </Typo>
               <Typo variant="caption" color={colors.text} tabular>
-                {formatCurrency(estimate.recommendedDailySpend)} / día
+                {formatCurrency(estimate.dailyAvailable ?? estimate.available)} / día
               </Typo>
             </View>
             <View style={styles.track}>
               <View
                 style={[
                   styles.fill,
-                  { width: `${Math.min(100, Math.max(6, (data.month.expense / Math.max(estimate.projectedMonthlyExpense, 1)) * 100))}%` },
+                  { width: `${Math.min(100, Math.max(6, (estimate.committed / Math.max(estimate.currentMoney, 1)) * 100))}%` },
                 ]}
               />
             </View>

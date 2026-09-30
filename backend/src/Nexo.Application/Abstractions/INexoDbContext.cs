@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Nexo.Domain.Accounts;
 using Nexo.Domain.Audit;
+using Nexo.Domain.Budgets;
 using Nexo.Domain.Categories;
 using Nexo.Domain.EmailIngestion;
 using Nexo.Domain.Imports;
@@ -55,6 +56,9 @@ public interface INexoDbContext
     DbSet<FinancialPulse> Pulses { get; }
 
     DbSet<AuditLogEntry> AuditLog { get; }
+
+    /// <summary>Presupuestos: only the plan. Spent/reserved/committed are always derived from Transactions.</summary>
+    DbSet<Budget> Budgets { get; }
 
     /// <summary>Escape hatch for the few queries that must see every user's rows (workers, admin jobs).</summary>
     IQueryable<T> IgnoringUserFilter<T>()

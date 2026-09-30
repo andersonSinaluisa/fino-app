@@ -91,6 +91,13 @@ export default function ProfileScreen() {
         />
         <Divider />
         <Row
+          icon="pie-chart-outline"
+          label="Presupuestos"
+          hint="Cuánto planeas gastar y cuánto dinero reservas."
+          onPress={() => router.push('/presupuestos')}
+        />
+        <Divider />
+        <Row
           icon="notifications-outline"
           label="Notificaciones"
           hint="Historial y qué quieres que te avisemos."

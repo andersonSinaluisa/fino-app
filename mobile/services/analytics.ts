@@ -23,6 +23,8 @@ export {
   AnalyticsScreen,
   AnalyticsSource,
   ANALYTICS_SCHEMA_VERSION,
+  BudgetFlow,
+  BudgetPeriodValue,
   CategorySource,
   CountBucket,
   DurationBucket,

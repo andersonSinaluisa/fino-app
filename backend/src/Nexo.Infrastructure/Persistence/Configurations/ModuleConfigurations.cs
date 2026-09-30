@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Nexo.Domain.Budgets;
 using Nexo.Domain.Categories;
 using Nexo.Domain.EmailIngestion;
 using Nexo.Domain.Imports;
@@ -313,5 +314,80 @@ public sealed class FinancialPulseConfiguration : IEntityTypeConfiguration<Finan
             .WithMany()
             .HasForeignKey(p => p.UserId)
             .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+/// <summary>
+/// Presupuestos. Only the plan is persisted; spent/remaining/reserved/committed are
+/// derived from transactions on read, so there is no column that could drift out
+/// of sync with the movements.
+/// </summary>
+public sealed class BudgetConfiguration : IEntityTypeConfiguration<Budget>
+{
+    public void Configure(EntityTypeBuilder<Budget> builder)
+    {
+        builder.ToTable("budgets", table =>
+        {
+            table.HasCheckConstraint("ck_budgets_amount_positive", "\"Amount\" > 0");
+            table.HasCheckConstraint("ck_budgets_end_after_start", "\"EndDate\" IS NULL OR \"EndDate\" >= \"StartDate\"");
+        });
+        builder.HasKey(b => b.Id);
+
+        builder.Property(b => b.Name).HasMaxLength(Budget.NameMaxLength).IsRequired();
+        builder.Property(b => b.Amount).HasPrecision(18, 2);
+        builder.Property(b => b.Currency).HasMaxLength(3).IsRequired();
+        builder.Property(b => b.Period).HasConversion<string>().HasMaxLength(16).IsRequired();
+        builder.Property(b => b.Priority).HasConversion<string>().HasMaxLength(16).IsRequired();
+
+        // The list/overview query: "this user's active budgets".
+        builder.HasIndex(b => new { b.UserId, b.IsActive });
+
+        // The overlap rule and "budgets for this category": (user, category, active)
+        // plus the date columns the rule compares.
+        builder.HasIndex(b => new { b.UserId, b.CategoryId, b.IsActive, b.StartDate, b.EndDate });
+
+        builder.HasIndex(b => b.CategoryId);
+
+        builder.HasMany(b => b.Revisions)
+            .WithOne()
+            .HasForeignKey(r => r.BudgetId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Navigation(b => b.Revisions)
+            .UsePropertyAccessMode(PropertyAccessMode.Field)
+            .HasField("_revisions");
+
+        // A budget is personal financial planning: it goes with the account.
+        builder.HasOne<User>()
+            .WithMany()
+            .HasForeignKey(b => b.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Deleting a user's own category deletes the budgets that tracked it rather
+        // than silently turning them into a "general" budget with another meaning.
+        builder.HasOne<Category>()
+            .WithMany()
+            .HasForeignKey(b => b.CategoryId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public sealed class BudgetAmountRevisionConfiguration : IEntityTypeConfiguration<BudgetAmountRevision>
+{
+    public void Configure(EntityTypeBuilder<BudgetAmountRevision> builder)
+    {
+        builder.ToTable("budget_amount_revisions", table =>
+            table.HasCheckConstraint("ck_budget_amount_revisions_amount_positive", "\"Amount\" > 0"));
+        builder.HasKey(r => r.Id);
+
+        // Revisions are created inside the Budget aggregate with their UUID v7 already
+        // set and reach the context through the Budget.Revisions navigation, not through
+        // DbSet.Add. With EF's default "Guid keys are generated on add", a new revision
+        // with a key would be mistaken for an existing row and UPDATEd (0 rows -> 500).
+        builder.Property(r => r.Id).ValueGeneratedNever();
+        builder.Property(r => r.Amount).HasPrecision(18, 2);
+
+        // One amount per budget per effective date; also the lookup "amount for window".
+        builder.HasIndex(r => new { r.BudgetId, r.EffectiveFrom }).IsUnique();
     }
 }

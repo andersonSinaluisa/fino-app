@@ -275,6 +275,23 @@ el significado de un bucket), y el cambio se anota aquí abajo.
 |---|---|---|
 | 1 | 2026-09 | Catálogo inicial. |
 
+## Presupuestos y Comprometido
+
+| Evento | Propiedades | Cuándo |
+| --- | --- | --- |
+| `budget_created` | `period`, `reserves`, `hasCategory`, `priority` | Se guardó un presupuesto nuevo. |
+| `budget_updated` | `reserves`, `paused` | Se guardó una edición (incluye pausar/reanudar). |
+| `budget_deleted` | — | Se eliminó un presupuesto. |
+| `budget_reserve_enabled` | `flow` (`create`/`edit`) | Se guardó con "Reservar este dinero" activado donde antes no lo estaba. |
+| `budget_exceeded` | `period` | La app mostró por primera vez en la sesión un presupuesto excedido. |
+| `budget_opened` | `source`, `level` | Se abrió el detalle de un presupuesto. |
+| `committed_breakdown_opened` | `source`, `hasData` | Se abrió el desglose de Comprometido. |
+
+Nunca viajan el monto, el gastado, el porcentaje, el nombre del presupuesto ni
+el de la categoría (una categoría puede ser personalizada y decir algo de la
+persona). `period`, `priority` y `level` son enums cerrados; `reserves`,
+`hasCategory`, `paused` y `hasData` son booleanos.
+
 ## Cómo añadir un evento nuevo
 
 1. Añádelo a `AnalyticsEvent` en `events.ts`, en snake_case.

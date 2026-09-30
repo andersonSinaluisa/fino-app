@@ -175,6 +175,9 @@ export default function RootLayout() {
           <Stack.Screen name="cuentas/reconectar" options={{ presentation: 'modal' }} />
           <Stack.Screen name="dinero-disponible/index" options={{ presentation: 'card' }} />
           <Stack.Screen name="plan/index" options={{ presentation: 'card' }} />
+          <Stack.Screen name="presupuestos/index" options={{ presentation: 'card' }} />
+          <Stack.Screen name="presupuestos/[id]" options={{ presentation: 'card' }} />
+          <Stack.Screen name="comprometido/index" options={{ presentation: 'card' }} />
           <Stack.Screen name="analisis-gastos/index" options={{ presentation: 'card' }} />
           <Stack.Screen name="transferencias/index" options={{ presentation: 'card' }} />
           <Stack.Screen name="alertas-financieras/index" options={{ presentation: 'card' }} />

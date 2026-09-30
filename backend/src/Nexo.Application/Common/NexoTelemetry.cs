@@ -50,4 +50,10 @@ public static class NexoTelemetry
         "nexo.deduplication.checks",
         unit: "{check}",
         description: "Deduplication checks performed by DeduplicationService, by match type.");
+
+    /// <summary>Tagged by <c>action</c>: "created", "updated" or "deleted". Never the amount or the name.</summary>
+    public static readonly Counter<long> BudgetsChanged = Meter.CreateCounter<long>(
+        "nexo.budgets.changed",
+        unit: "{budget}",
+        description: "Budget definitions created, updated or deleted.");
 }

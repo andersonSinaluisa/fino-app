@@ -40,6 +40,12 @@ public interface ITransactionService
 
     Task<HomeSummaryDto> GetHomeSummaryAsync(Guid userId, CancellationToken cancellationToken);
 
+    /// <summary>
+    /// Presupuestos: maps a known set of the user's movements (newest first), so the
+    /// "Movimientos de este presupuesto" list is exactly what the budget summed.
+    /// </summary>
+    Task<IReadOnlyList<TransactionListItemDto>> ListByIdsAsync(Guid userId, IReadOnlyCollection<Guid> transactionIds, CancellationToken cancellationToken);
+
     Task<IReadOnlyList<CategoryBreakdownItemDto>> GetCategoryBreakdownAsync(
         Guid userId,
         DateTimeOffset from,
@@ -92,6 +98,40 @@ public sealed class TransactionService(
             filter.Page.NormalizedPage,
             filter.Page.NormalizedPageSize,
             total);
+    }
+
+    public async Task<IReadOnlyList<TransactionListItemDto>> ListByIdsAsync(
+        Guid userId,
+        IReadOnlyCollection<Guid> transactionIds,
+        CancellationToken cancellationToken)
+    {
+        if (transactionIds.Count == 0)
+        {
+            return [];
+        }
+
+        var rows = await db.Transactions
+            .AsNoTracking()
+            .Where(t => t.UserId == userId)
+            .WhereIdIn(t => t.Id, transactionIds)
+            .ToListAsync(cancellationToken);
+
+        rows = rows
+            .OrderByDescending(t => t.TransactionDate)
+            .ThenByDescending(t => t.CreatedAt)
+            .ToList();
+
+        var categories = await LoadCategoryLookupAsync(userId, cancellationToken);
+        var brandColors = await LoadBrandColorsAsync(rows.Select(t => t.ProviderCode), cancellationToken);
+        var aliases = await LoadAccountAliasesAsync(userId, rows.Select(t => t.FinancialAccountId), cancellationToken);
+
+        return rows
+            .Select(t => MapListItem(
+                t,
+                aliases.TryGetValue(t.FinancialAccountId, out var alias) ? alias : "Cuenta",
+                brandColors,
+                categories))
+            .ToList();
     }
 
     public async Task<TransactionDetailDto> GetAsync(

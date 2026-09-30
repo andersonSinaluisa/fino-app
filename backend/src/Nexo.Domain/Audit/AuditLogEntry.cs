@@ -104,4 +104,9 @@ public static class AuditActions
 
     /// <summary>Entregable 22: a login during the grace period undid a pending deletion.</summary>
     public const string AccountDeletionCancelled = "privacy.account_deletion_cancelled";
+
+    /// <summary>Presupuestos: only the budget id is recorded, never its amount or name.</summary>
+    public const string BudgetCreated = "budget.created";
+    public const string BudgetUpdated = "budget.updated";
+    public const string BudgetDeleted = "budget.deleted";
 }

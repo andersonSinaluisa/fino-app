@@ -32,6 +32,8 @@ const SCREEN_BY_PATH: Record<string, AnalyticsScreenName> = {
   '/cuentas/importar': AnalyticsScreen.Import,
   '/dinero-disponible': AnalyticsScreen.Projection,
   '/plan': AnalyticsScreen.Subscription,
+  '/presupuestos': AnalyticsScreen.Budgets,
+  '/comprometido': AnalyticsScreen.Committed,
 };
 
 export function resolveScreen(pathname: string): AnalyticsScreenName | null {
@@ -43,6 +45,11 @@ export function resolveScreen(pathname: string): AnalyticsScreenName | null {
   // `/pulso/<id>` -- el id nunca viaja, solo el hecho de estar en el detalle.
   if (pathname.startsWith('/pulso/')) {
     return AnalyticsScreen.PulseDetail;
+  }
+
+  // `/presupuestos/<id>` -- igual: el id del presupuesto no viaja.
+  if (pathname.startsWith('/presupuestos/')) {
+    return AnalyticsScreen.BudgetDetail;
   }
 
   return null;

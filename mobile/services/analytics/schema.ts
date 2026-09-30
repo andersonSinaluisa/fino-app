@@ -118,6 +118,18 @@ export const EVENT_SCHEMA: Record<AnalyticsEventName, readonly string[]> = {
   [AnalyticsEvent.StatisticsPeriodChanged]: ['period'],
   [AnalyticsEvent.StatisticsAccountFilterChanged]: ['filterKind'],
 
+  // --- Presupuestos y Comprometido ----------------------------------------
+  // Solo forma y uso: período (enum), si reserva (bool), si tiene categoría
+  // (bool), prioridad (enum), nivel (enum). JAMÁS el monto, el nombre del
+  // presupuesto ni el de la categoría (puede ser personalizado).
+  [AnalyticsEvent.BudgetCreated]: ['period', 'reserves', 'hasCategory', 'priority'],
+  [AnalyticsEvent.BudgetUpdated]: ['reserves', 'paused'],
+  [AnalyticsEvent.BudgetDeleted]: [],
+  [AnalyticsEvent.BudgetReserveEnabled]: ['flow'],
+  [AnalyticsEvent.BudgetExceeded]: ['period'],
+  [AnalyticsEvent.BudgetOpened]: ['source', 'level'],
+  [AnalyticsEvent.CommittedBreakdownOpened]: ['source', 'hasData'],
+
   // --- Pulso ---------------------------------------------------------------
   // `pulseKind` es el TIPO de pulso (un enum del backend), nunca su texto.
   [AnalyticsEvent.PulseCardViewed]: ['pulseKind', 'source'],

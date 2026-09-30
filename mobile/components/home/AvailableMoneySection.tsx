@@ -1,32 +1,44 @@
-import { StyleSheet, View } from 'react-native';
-import { colors, spacing } from '../../theme';
-import { Typo } from '../ui/Typo';
+import { Pressable, StyleSheet, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, radius, spacing } from '../../theme';
+import { Skeleton, Typo } from '../ui';
 import { formatCurrency } from '../../utils/format';
-import { estimateAvailableMoney } from '../../utils/planCalculations';
-import type { HomeSummary } from '../../types/api';
+import type { CommittedMoney, HomeSummary } from '../../types/api';
 
 interface AvailableMoneySectionProps {
   summary: HomeSummary;
+  /** GET /finance/committed. `undefined` mientras carga. */
+  committed: CommittedMoney | undefined;
   hidden: boolean;
+  onOpenCommitted: () => void;
 }
 
 /**
- * Rediseño de Home (2026-09): el concepto que de verdad importa en Fino no es
- * "cuánto hay en el banco" (eso ya lo dice BalanceHeader) sino "cuánto puedo
- * gastar de verdad" -- el mismo cálculo que ya usa la pantalla
- * app/dinero-disponible (estimateAvailableMoney), reutilizado aquí sin
- * duplicar su lógica. El breakdown "Tu dinero / Comprometido / Disponible"
- * solo se muestra cuando hay gasto proyectado real que comprometa parte del
- * dinero -- si no, mostrarlo sería inventar una cifra de "$0 comprometidos"
- * que no aporta nada.
+ * "Disponible ahora": Tu dinero − Comprometido. Los tres números salen tal
+ * cual de GET /finance/committed (CommittedMoneyCalculator en el backend); la
+ * app ya no proyecta nada por su cuenta, así que Home, el desglose y la
+ * previsualización de un presupuesto no pueden decir cosas distintas.
+ *
+ * "Comprometido" se puede tocar: lleva al desglose por origen, porque un
+ * número sin explicación en una app de dinero genera desconfianza.
  */
-export function AvailableMoneySection({ summary, hidden }: AvailableMoneySectionProps) {
+export function AvailableMoneySection({ summary, committed, hidden, onOpenCommitted }: AvailableMoneySectionProps) {
   if (summary.accountCount === 0) {
     return null;
   }
 
-  const estimate = estimateAvailableMoney(summary);
-  const hasCommitted = estimate.projectedRemainingExpense >= 1;
+  if (!committed) {
+    return (
+      <View style={styles.wrapper}>
+        <Typo variant="caption" color={colors.textSecondary}>
+          Disponible ahora
+        </Typo>
+        <Skeleton height={34} width="55%" />
+      </View>
+    );
+  }
+
+  const hasCommitted = committed.committed > 0;
 
   return (
     <View style={styles.wrapper}>
@@ -34,16 +46,46 @@ export function AvailableMoneySection({ summary, hidden }: AvailableMoneySection
         Disponible ahora
       </Typo>
       <Typo variant="title" tabular>
-        {hidden ? '••••••' : formatCurrency(estimate.availableUntilMonthEnd)}
+        {formatCurrency(committed.available, { hidden })}
       </Typo>
 
       {hasCommitted ? (
         <View style={styles.breakdown}>
-          <BreakdownRow label="Tu dinero" value={summary.totalBalance} hidden={hidden} />
-          <BreakdownRow label="Comprometido" value={estimate.projectedRemainingExpense} hidden={hidden} muted />
+          <BreakdownRow label="Tu dinero" value={committed.currentMoney} hidden={hidden} />
+          <Pressable
+            onPress={onOpenCommitted}
+            accessibilityRole="button"
+            accessibilityLabel={`Comprometido ${formatCurrency(committed.committed, { hidden })}`}
+            accessibilityHint="Muestra de dónde sale el dinero comprometido"
+            style={({ pressed }) => [styles.row, styles.pressableRow, pressed ? styles.pressed : null]}
+          >
+            <View style={styles.inline}>
+              <Typo variant="caption" color={colors.textSecondary}>
+                Comprometido
+              </Typo>
+              <Ionicons name="information-circle-outline" size={14} color={colors.textSecondary} />
+            </View>
+            <View style={styles.inline}>
+              <Typo variant="body" tabular color={colors.textSecondary}>
+                {formatCurrency(committed.committed, { hidden })}
+              </Typo>
+              <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
+            </View>
+          </Pressable>
           <View style={styles.divider} />
-          <BreakdownRow label="Disponible" value={estimate.availableUntilMonthEnd} hidden={hidden} strong />
+          <BreakdownRow label="Disponible" value={committed.available} hidden={hidden} strong />
         </View>
+      ) : null}
+
+      {committed.isOvercommitted ? (
+        <Pressable onPress={onOpenCommitted} accessibilityRole="alert" style={styles.alert}>
+          <Ionicons name="warning-outline" size={16} color={colors.danger} />
+          <Typo variant="caption" color={colors.text} style={styles.flex}>
+            {hidden
+              ? 'Tienes más comprometido de lo que tienes disponible.'
+              : `Tienes ${formatCurrency(committed.overcommitted)} más comprometidos de lo que tienes disponible.`}
+          </Typo>
+        </Pressable>
       ) : null}
     </View>
   );
@@ -54,25 +96,19 @@ function BreakdownRow({
   value,
   hidden,
   strong,
-  muted,
 }: {
   label: string;
   value: number;
   hidden: boolean;
   strong?: boolean;
-  muted?: boolean;
 }) {
   return (
     <View style={styles.row}>
       <Typo variant="caption" color={strong ? colors.text : colors.textSecondary}>
         {label}
       </Typo>
-      <Typo
-        variant={strong ? 'bodyStrong' : 'body'}
-        tabular
-        color={muted ? colors.textSecondary : colors.text}
-      >
-        {hidden ? '••••' : formatCurrency(value)}
+      <Typo variant={strong ? 'bodyStrong' : 'body'} tabular color={colors.text}>
+        {formatCurrency(value, { hidden })}
       </Typo>
     </View>
   );
@@ -92,9 +128,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
+  pressableRow: {
+    minHeight: 32,
+  },
+  pressed: {
+    opacity: 0.6,
+  },
+  inline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
   divider: {
     height: 1,
     backgroundColor: colors.border,
     marginVertical: spacing.xs,
+  },
+  alert: {
+    marginTop: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: 'rgba(216, 102, 91, 0.10)',
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  flex: {
+    flex: 1,
   },
 });
