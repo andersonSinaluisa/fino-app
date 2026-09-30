@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/authStore';
 import { AnalyticsEvent, track } from '../services/analytics';
 import type {
   AnalyticsPeriodCode,
+  ReplaceSplitsRequest,
   BudgetPreviewRequest,
   CreateBudgetRequest,
   UpdateBudgetRequest,
@@ -266,6 +267,37 @@ export function useSetCategory(transactionId: string) {
 }
 
 /** Punto 6/19: "si creo esta regla, ¿qué movimientos coincidirían?", antes de guardar nada. */
+/**
+ * Movimientos divididos: cambiar la división cambia el desglose por categoría,
+ * las estadísticas, los presupuestos y los insights -- nunca el saldo. Se
+ * refresca lo mismo que tras una recategorización (summary arrastra, por
+ * prefijo, presupuestos y Comprometido).
+ */
+function invalidateAfterSplit(client: ReturnType<typeof useQueryClient>, transactionId: string): void {
+  void client.invalidateQueries({ queryKey: queryKeys.transaction(transactionId) });
+  void client.invalidateQueries({ queryKey: ['transactions'] });
+  void client.invalidateQueries({ queryKey: queryKeys.summary });
+  void client.invalidateQueries({ queryKey: ['analytics'] });
+  void client.invalidateQueries({ queryKey: queryKeys.insights });
+}
+
+export function useReplaceSplits(transactionId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (request: ReplaceSplitsRequest) => api.transactions.replaceSplits(transactionId, request),
+    onSuccess: () => invalidateAfterSplit(client, transactionId),
+  });
+}
+
+export function useRemoveSplits(transactionId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ categoryId, expectedVersion }: { categoryId: string | null; expectedVersion?: number }) =>
+      api.transactions.removeSplits(transactionId, categoryId, expectedVersion),
+    onSuccess: () => invalidateAfterSplit(client, transactionId),
+  });
+}
+
 export function useRulePreview() {
   return useMutation({
     mutationFn: (request: { transactionId: string; categoryId: string }) => api.categorizationRules.preview(request),

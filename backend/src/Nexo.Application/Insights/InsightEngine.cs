@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Nexo.Application.Transactions;
 using Nexo.Application.Abstractions;
 using Nexo.Application.Imports.Parsing.Tabular;
 using Nexo.Domain.Accounts;
@@ -26,6 +27,7 @@ public sealed class InsightEngine(INexoDbContext db, IClock clock) : IInsightEng
     private const int LookbackDays = 120;
 
     private sealed record Movement(
+        Guid Id,
         DateTimeOffset Date,
         decimal Amount,
         TransactionDirection Direction,
@@ -57,13 +59,16 @@ public sealed class InsightEngine(INexoDbContext db, IClock clock) : IInsightEng
         // excluded the same way GetHomeSummaryAsync excludes it -- every insight
         // below (gasto del mes, ingreso vs. gasto, categoría principal, etc.) would
         // otherwise be distorted by money that never left the household.
-        var movements = await db.Transactions
+        var scope = db.Transactions
             .AsNoTracking()
             .Where(t => t.UserId == userId
                         && t.TransactionDate >= since
                         && !t.IsInternalTransfer
-                        && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending))
+                        && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending));
+
+        var movements = await scope
             .Select(t => new Movement(
+                t.Id,
                 t.TransactionDate,
                 t.Amount,
                 t.Direction,
@@ -71,6 +76,9 @@ public sealed class InsightEngine(INexoDbContext db, IClock clock) : IInsightEng
                 t.NormalizedDescription,
                 t.Merchant))
             .ToListAsync(cancellationToken);
+
+        // Movimientos divididos: used ONLY for per-category figures below.
+        var splits = await CategoryAllocations.LoadSplitsAsync(db, scope, cancellationToken);
 
         var categories = await db.Categories
             .AsNoTracking()
@@ -137,7 +145,15 @@ public sealed class InsightEngine(INexoDbContext db, IClock clock) : IInsightEng
                 displayOrder: order++));
         }
 
-        var topCategory = currentExpenses
+        // Per category, a divided movement counts its parts -- never itself too.
+        var currentByAllocation = CategoryAllocations
+            .ExpandInMemory(currentExpenses, m => m.Id, splits, (m, category, amount) => m with { CategoryId = category, Amount = amount })
+            .ToList();
+        var previousByAllocation = CategoryAllocations
+            .ExpandInMemory(previousExpenses, m => m.Id, splits, (m, category, amount) => m with { CategoryId = category, Amount = amount })
+            .ToList();
+
+        var topCategory = currentByAllocation
             .Where(m => m.CategoryId is not null)
             .GroupBy(m => m.CategoryId!.Value)
             .Select(g => new { CategoryId = g.Key, Total = MoneyMath.Round(g.Sum(x => x.Amount)) })
@@ -161,7 +177,7 @@ public sealed class InsightEngine(INexoDbContext db, IClock clock) : IInsightEng
                 displayOrder: order++));
 
             var previousCategoryTotal = MoneyMath.Round(
-                previousExpenses.Where(m => m.CategoryId == topCategory.CategoryId).Sum(m => m.Amount));
+                previousByAllocation.Where(m => m.CategoryId == topCategory.CategoryId).Sum(m => m.Amount));
 
             var categoryPercent = MoneyMath.PercentChange(previousCategoryTotal, topCategory.Total);
             if (previousCategoryTotal > 0m && categoryPercent is not null && Math.Abs(categoryPercent.Value) >= 10m)

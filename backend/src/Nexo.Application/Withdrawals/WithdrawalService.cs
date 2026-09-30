@@ -300,7 +300,11 @@ public sealed class WithdrawalService(
         // §10 "Fue un gasto": se marca como decidido a mano. Eso lo saca de la
         // bandeja para siempre SIN cambiar su categoría ni su clasificación -- si ya
         // tenía una categoría acertada, la conserva.
-        if (transaction.CategoryId is { } categoryId)
+        if (transaction.IsSplit)
+        {
+            // Movimientos divididos: ya es una decisión manual (su división); nada que marcar.
+        }
+        else if (transaction.CategoryId is { } categoryId)
         {
             transaction.SetCategoryManually(categoryId, now);
         }

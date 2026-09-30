@@ -1,6 +1,7 @@
 import { request, upload } from './apiClient';
 import type {
   Account,
+  ReplaceSplitsRequest,
   BudgetDetail,
   BudgetMovements,
   BudgetOverview,
@@ -164,6 +165,19 @@ export const api = {
         method: 'PUT',
         body: { categoryId, createRule, applyToExistingMatches },
       }),
+
+    // Movimientos divididos: siempre la división completa en UNA petición; el
+    // backend la valida y la guarda en una sola transacción de base de datos.
+    replaceSplits: (id: string, body: ReplaceSplitsRequest) =>
+      request<TransactionDetail>(`/api/v1/transactions/${id}/splits`, { method: 'PUT', body }),
+
+    removeSplits: (id: string, categoryId: string | null, expectedVersion?: number) => {
+      const params = new URLSearchParams();
+      if (categoryId) params.set('categoryId', categoryId);
+      if (expectedVersion !== undefined) params.set('expectedVersion', String(expectedVersion));
+      const query = params.toString();
+      return request<TransactionDetail>(`/api/v1/transactions/${id}/splits${query ? `?${query}` : ''}`, { method: 'DELETE' });
+    },
 
     setNote: (id: string, note: string | null) =>
       request<TransactionDetail>(`/api/v1/transactions/${id}/note`, {

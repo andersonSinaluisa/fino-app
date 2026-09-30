@@ -114,6 +114,34 @@ export interface TransactionListItem {
    * insights -- moving your own money is neither spending nor earning.
    */
   isInternalTransfer: boolean;
+  /**
+   * Movimientos divididos: cuando es true, `categoryId` es null y `splits`
+   * trae las partes. Sigue siendo UN movimiento en cualquier lista.
+   */
+  isSplit: boolean;
+  splits: TransactionSplit[];
+}
+
+/**
+ * Una parte de un movimiento dividido. `amount` es magnitud positiva, igual
+ * que el `amount` del movimiento (el signo vive en `direction`).
+ * `categoryId` null = "Sin categoría".
+ */
+export interface TransactionSplit {
+  id: string;
+  categoryId: string | null;
+  categoryName: string;
+  categoryIcon: string;
+  categoryColor: string;
+  amount: number;
+  note: string | null;
+}
+
+/** PUT /transactions/{id}/splits: la división COMPLETA, reemplazada de forma atómica. */
+export interface ReplaceSplitsRequest {
+  splits: { categoryId: string | null; amount: number; note?: string | null }[];
+  /** La versión que se editó; si otra edición llegó antes, el backend responde 409. */
+  expectedVersion?: number;
 }
 
 /**
@@ -121,7 +149,7 @@ export interface TransactionListItem {
  * tiene, para que la UI lo pueda explicar (punto 11) en vez de dejar que la
  * persona adivine.
  */
-export type CategorySource = 'Uncategorized' | 'SystemRule' | 'UserRule' | 'Imported' | 'Manual';
+export type CategorySource = 'Uncategorized' | 'SystemRule' | 'UserRule' | 'Imported' | 'Manual' | 'ManualSplit';
 
 export interface TransactionDetail extends Omit<TransactionListItem, 'brandColor' | 'categoryIcon' | 'categoryColor'> {
   providerName: string;
@@ -152,6 +180,8 @@ export interface TransactionDetail extends Omit<TransactionListItem, 'brandColor
    * cualquier otra lectura de la transacción.
    */
   recategorizedCount: number | null;
+  /** Movimientos divididos: versión de la división, para detectar ediciones simultáneas. */
+  splitVersion: number;
 }
 
 /**

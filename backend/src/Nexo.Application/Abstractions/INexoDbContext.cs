@@ -30,6 +30,9 @@ public interface INexoDbContext
 
     DbSet<Transaction> Transactions { get; }
 
+    /// <summary>Movimientos divididos: per-category parts of a movement. See Transaction.IsSplit.</summary>
+    DbSet<TransactionSplit> TransactionSplits { get; }
+
     DbSet<Category> Categories { get; }
 
     DbSet<CategorizationRule> CategorizationRules { get; }

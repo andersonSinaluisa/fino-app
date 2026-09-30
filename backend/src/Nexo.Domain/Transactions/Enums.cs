@@ -79,4 +79,11 @@ public enum CategorySource
 
     /// <summary>The person picked the category by hand. Rules never overwrite this.</summary>
     Manual = 4,
+
+    /// <summary>
+    /// The person divided the movement into several categories
+    /// (<see cref="Transaction.Splits"/>). The movement itself has no single
+    /// category; rules and automatic categorisation never touch it.
+    /// </summary>
+    ManualSplit = 5,
 }

@@ -85,6 +85,15 @@ export default function TabsLayout() {
         }}
       />
       <Tabs.Screen
+        name="presupuestos"
+        options={{
+          title: 'Presupuestos',
+          tabBarIcon: ({ color, focused }) => (
+            <Ionicons name={focused ? 'pie-chart' : 'pie-chart-outline'} size={22} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="cuentas"
         options={{
           title: 'Cuentas',

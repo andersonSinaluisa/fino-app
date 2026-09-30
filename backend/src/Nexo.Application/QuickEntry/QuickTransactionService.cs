@@ -192,7 +192,14 @@ public sealed class QuickTransactionService(
             NormalizeDate(request.OccurredAt, now),
             now);
 
-        if (request.LeaveUncategorized)
+        // Movimientos divididos: la categoría de un movimiento dividido vive en su
+        // división (PUT /transactions/{id}/splits). Editar monto/descripción/fecha
+        // desde aquí no debe borrarla ni reemplazarla por una sola categoría.
+        if (transaction.IsSplit)
+        {
+            // Nada que hacer con la categoría.
+        }
+        else if (request.LeaveUncategorized)
         {
             transaction.ClearCategoryManually(now);
         }

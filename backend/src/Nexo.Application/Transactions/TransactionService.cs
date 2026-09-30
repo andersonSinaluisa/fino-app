@@ -84,13 +84,15 @@ public sealed class TransactionService(
         var categories = await LoadCategoryLookupAsync(userId, cancellationToken);
         var brandColors = await LoadBrandColorsAsync(rows.Select(t => t.ProviderCode), cancellationToken);
         var aliases = await LoadAccountAliasesAsync(userId, rows.Select(t => t.FinancialAccountId), cancellationToken);
+        var splits = await LoadSplitsAsync(rows, cancellationToken);
 
         var items = rows
             .Select(t => MapListItem(
                 t,
                 aliases.TryGetValue(t.FinancialAccountId, out var alias) ? alias : "Cuenta",
                 brandColors,
-                categories))
+                categories,
+                splits))
             .ToList();
 
         return new PagedResult<TransactionListItemDto>(
@@ -124,13 +126,15 @@ public sealed class TransactionService(
         var categories = await LoadCategoryLookupAsync(userId, cancellationToken);
         var brandColors = await LoadBrandColorsAsync(rows.Select(t => t.ProviderCode), cancellationToken);
         var aliases = await LoadAccountAliasesAsync(userId, rows.Select(t => t.FinancialAccountId), cancellationToken);
+        var splits = await LoadSplitsAsync(rows, cancellationToken);
 
         return rows
             .Select(t => MapListItem(
                 t,
                 aliases.TryGetValue(t.FinancialAccountId, out var alias) ? alias : "Cuenta",
                 brandColors,
-                categories))
+                categories,
+                splits))
             .ToList();
     }
 
@@ -150,6 +154,13 @@ public sealed class TransactionService(
         CancellationToken cancellationToken)
     {
         var transaction = await RequireTransactionAsync(userId, transactionId, cancellationToken);
+
+        // Movimientos divididos: "Cambiar" on a divided movement means editing the
+        // division; a single category must never silently replace it.
+        if (transaction.IsSplit)
+        {
+            throw new ConflictException("Este movimiento está dividido en varias categorías. Edita la división o quítala primero.");
+        }
 
         var category = await db.Categories
             .FirstOrDefaultAsync(
@@ -437,8 +448,11 @@ public sealed class TransactionService(
             query = query.Where(t => t.FinancialAccountId == id);
         }
 
-        var grouped = await query
-            .GroupBy(t => t.CategoryId)
+        // Movimientos divididos: grouped by category ALLOCATION, not by the
+        // movement's own CategoryId -- a divided movement contributes its parts
+        // (Esposa $70 + Comida $150), never itself (Comida $220) as well.
+        var grouped = await CategoryAllocations.Expand(query, db)
+            .GroupBy(a => a.CategoryId)
             .Select(g => new { CategoryId = g.Key, Total = g.Sum(x => x.Amount), Count = g.Count() })
             .ToListAsync(cancellationToken);
 
@@ -484,7 +498,10 @@ public sealed class TransactionService(
 
         if (filter.CategoryId is { } categoryId)
         {
-            query = query.Where(t => t.CategoryId == categoryId);
+            // Movimientos divididos: a divided movement matches every category it
+            // contains, and still appears once (it is one row of `transactions`).
+            query = query.Where(t => t.CategoryId == categoryId
+                                     || (t.IsSplit && db.TransactionSplits.Any(s => s.TransactionId == t.Id && s.CategoryId == categoryId)));
         }
 
         if (!string.IsNullOrWhiteSpace(filter.Direction)
@@ -571,11 +588,55 @@ public sealed class TransactionService(
         return providers.ToDictionary(p => p.Code, p => p.BrandColor, StringComparer.Ordinal);
     }
 
+    /// <summary>Movimientos divididos: the parts of the divided movements among <paramref name="rows"/>.</summary>
+    private async Task<ILookup<Guid, TransactionSplit>> LoadSplitsAsync(
+        IReadOnlyCollection<Transaction> rows,
+        CancellationToken cancellationToken)
+    {
+        var ids = rows.Where(t => t.IsSplit).Select(t => t.Id).ToArray();
+        if (ids.Length == 0)
+        {
+            return Array.Empty<TransactionSplit>().ToLookup(s => s.TransactionId);
+        }
+
+        var splits = await db.TransactionSplits
+            .AsNoTracking()
+            .WhereIdIn(s => s.TransactionId, ids)
+            .ToListAsync(cancellationToken);
+
+        return splits.OrderBy(s => s.Position).ToLookup(s => s.TransactionId);
+    }
+
+    internal static IReadOnlyList<TransactionSplitDto> MapSplits(
+        IEnumerable<TransactionSplit> splits,
+        IReadOnlyDictionary<Guid, Category> categories) =>
+        splits
+            .OrderBy(s => s.Position)
+            .Select(s =>
+            {
+                Category? category = null;
+                if (s.CategoryId is { } id)
+                {
+                    categories.TryGetValue(id, out category);
+                }
+
+                return new TransactionSplitDto(
+                    s.Id,
+                    s.CategoryId,
+                    category?.Name ?? "Sin categoría",
+                    category?.Icon ?? "circle",
+                    category?.Color ?? "#ECE9E1",
+                    s.Amount,
+                    s.Note);
+            })
+            .ToList();
+
     private static TransactionListItemDto MapListItem(
         Transaction transaction,
         string accountAlias,
         IReadOnlyDictionary<string, string> brandColors,
-        IReadOnlyDictionary<Guid, Category> categories)
+        IReadOnlyDictionary<Guid, Category> categories,
+        ILookup<Guid, TransactionSplit> splits)
     {
         Category? category = null;
         if (transaction.CategoryId is { } categoryId)
@@ -604,10 +665,12 @@ public sealed class TransactionService(
             category?.Color,
             transaction.Status.ToString(),
             transaction.Source.ToString(),
-            transaction.IsInternalTransfer);
+            transaction.IsInternalTransfer,
+            transaction.IsSplit,
+            transaction.IsSplit ? MapSplits(splits[transaction.Id], categories) : []);
     }
 
-    private async Task<TransactionDetailDto> MapDetailAsync(
+    internal async Task<TransactionDetailDto> MapDetailAsync(
         Guid userId,
         Transaction transaction,
         CancellationToken cancellationToken)
@@ -628,6 +691,16 @@ public sealed class TransactionService(
                 .Where(c => c.Id == categoryId)
                 .Select(c => c.Name)
                 .FirstOrDefaultAsync(cancellationToken);
+        }
+
+        IReadOnlyList<TransactionSplitDto> splitDtos = [];
+        if (transaction.IsSplit)
+        {
+            var parts = await db.TransactionSplits
+                .AsNoTracking()
+                .Where(s => s.TransactionId == transaction.Id)
+                .ToListAsync(cancellationToken);
+            splitDtos = MapSplits(parts, await LoadCategoryLookupAsync(userId, cancellationToken));
         }
 
         return new TransactionDetailDto(
@@ -659,7 +732,10 @@ public sealed class TransactionService(
             transaction.ImportId,
             transaction.CreatedAt,
             transaction.IsInternalTransfer,
-            transaction.InternalTransferLinkId);
+            transaction.InternalTransferLinkId,
+            transaction.IsSplit,
+            transaction.SplitVersion,
+            splitDtos);
     }
 
     private async Task<Dictionary<Guid, string>> LoadAccountAliasesAsync(

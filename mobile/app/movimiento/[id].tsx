@@ -32,6 +32,7 @@ import type { Category, RulePreview } from '../../types/api';
  */
 const categorySourceLabel: Record<string, string | null> = {
   Manual: null,
+  ManualSplit: null,
   UserRule: 'Automática, según una regla creada por ti',
   SystemRule: 'Automática, según las reglas de Fino',
   Imported: null,
@@ -352,41 +353,92 @@ export default function TransactionDetailScreen() {
         <Field label="Origen" value={sourceLabel[data.source] ?? data.source} />
       </Card>
 
-      <View style={styles.section}>
-        <SectionHeader
-          title="Categoría"
-          actionLabel={editingCategory ? 'Cancelar' : 'Cambiar'}
-          onAction={() => setEditingCategory(!editingCategory)}
-        />
-
-        {!editingCategory ? (
-          <Card>
-            <View style={styles.categoryRow}>
-              <Typo variant="body">{data.categoryName ?? 'Sin categoría'}</Typo>
-              {data.categoryManuallySet ? <Badge label="Ajustada por ti" tone="accent" /> : null}
-            </View>
-            {/* "Categorización personal" (punto 11): explica de dónde salió la
-               categoría cuando eso aporta algo -- nunca para una corrección
-               manual (ya lo dice el badge de arriba) ni para el resultado sin
-               interés de un fallback sin regla. */}
-            {categorySourceHint ? (
-              <Typo variant="caption" color={colors.textSecondary} style={styles.categorySourceHint}>
-                {categorySourceHint}
-              </Typo>
-            ) : null}
-          </Card>
-        ) : (
-          <CategoryChipList
-            categories={categories ?? []}
-            selectedId={data.categoryId}
-            onSelect={chooseCategory}
-            onCreateNew={openCreateCategory}
-            onEdit={openEditCategory}
-            disabled={rulePreview.isPending || setCategory.isPending}
-            loading={rulePreview.isPending}
+      {data.isSplit ? (
+        // Movimientos divididos: las partes reemplazan a la categoría única, y
+        // "Editar división" es el único camino para cambiarlas -- nunca una
+        // categoría global que borre la división sin querer.
+        <View style={styles.section}>
+          <SectionHeader
+            title="Categorías"
+            actionLabel="Editar división"
+            onAction={() => router.push(`/movimiento/dividir/${data.id}`)}
           />
-        )}
-      </View>
+          <Card>
+            {data.splits.map((split, index) => (
+              <View key={split.id}>
+                {index > 0 ? <Divider /> : null}
+                <View style={styles.splitRow}>
+                  <View style={styles.splitText}>
+                    <Typo variant="body">{split.categoryName}</Typo>
+                    {split.note ? (
+                      <Typo variant="caption" color={colors.textSecondary} numberOfLines={1}>
+                        {split.note}
+                      </Typo>
+                    ) : null}
+                  </View>
+                  <Typo variant="bodyStrong" tabular>
+                    {formatCurrency(split.amount)}
+                  </Typo>
+                </View>
+              </View>
+            ))}
+            <Typo variant="caption" color={colors.textSecondary} style={styles.categorySourceHint}>
+              {data.splits.length} categorías · {formatCurrency(data.amount)} distribuido
+            </Typo>
+          </Card>
+        </View>
+      ) : (
+        <View style={styles.section}>
+          <SectionHeader
+            title="Categoría"
+            actionLabel={editingCategory ? 'Cancelar' : 'Cambiar'}
+            onAction={() => setEditingCategory(!editingCategory)}
+          />
+
+          {!editingCategory ? (
+            <Card>
+              <View style={styles.categoryRow}>
+                <Typo variant="body">{data.categoryName ?? 'Sin categoría'}</Typo>
+                {data.categoryManuallySet ? <Badge label="Ajustada por ti" tone="accent" /> : null}
+              </View>
+              {/* "Categorización personal" (punto 11): explica de dónde salió la
+                 categoría cuando eso aporta algo -- nunca para una corrección
+                 manual (ya lo dice el badge de arriba) ni para el resultado sin
+                 interés de un fallback sin regla. */}
+              {categorySourceHint ? (
+                <Typo variant="caption" color={colors.textSecondary} style={styles.categorySourceHint}>
+                  {categorySourceHint}
+                </Typo>
+              ) : null}
+            </Card>
+          ) : (
+            <CategoryChipList
+              categories={categories ?? []}
+              selectedId={data.categoryId}
+              onSelect={chooseCategory}
+              onCreateNew={openCreateCategory}
+              onEdit={openEditCategory}
+              disabled={rulePreview.isPending || setCategory.isPending}
+              loading={rulePreview.isPending}
+            />
+          )}
+
+          {!editingCategory && !data.isInternalTransfer ? (
+            <Pressable
+              onPress={() => router.push(`/movimiento/dividir/${data.id}`)}
+              accessibilityRole="button"
+              accessibilityHint="Reparte este movimiento entre varias categorías"
+              style={styles.splitAction}
+              hitSlop={6}
+            >
+              <Ionicons name="pie-chart-outline" size={15} color={colors.textSecondary} />
+              <Typo variant="caption" color={colors.textSecondary}>
+                Dividir movimiento
+              </Typo>
+            </Pressable>
+          ) : null}
+        </View>
+      )}
 
       <View style={styles.section}>
         <SectionHeader title="Comercio" />
@@ -482,6 +534,23 @@ function Divider() {
 }
 
 const styles = StyleSheet.create({
+  splitRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  splitText: {
+    flex: 1,
+  },
+  splitAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    gap: spacing.xs,
+    marginTop: spacing.md,
+  },
   withdrawalBlock: {
     marginBottom: spacing.lg,
   },

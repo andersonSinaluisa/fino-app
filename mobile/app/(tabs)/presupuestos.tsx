@@ -18,6 +18,9 @@ import { reportExceededOnce } from '../../components/budgets/exceededTracking';
  * llega calculado del backend (GET /budgets); esta pantalla solo lo ordena.
  * Las flechas del encabezado piden otro mes -- los períodos pasados se
  * reconstruyen desde los movimientos, nunca se borran.
+ *
+ * Vive como pestaña del menú principal (app/(tabs)), así que no lleva botón
+ * "Volver"; el detalle (app/presupuestos/[id]) sí se apila encima.
  */
 export default function BudgetsScreen() {
   const router = useRouter();
@@ -43,13 +46,6 @@ export default function BudgetsScreen() {
 
   return (
     <Screen refreshing={isRefetching} onRefresh={() => void refetch()}>
-      <Pressable onPress={() => router.back()} hitSlop={12} style={styles.back} accessibilityRole="button" accessibilityLabel="Volver">
-        <Ionicons name="chevron-back" size={20} color={colors.text} />
-        <Typo variant="caption" color={colors.textSecondary}>
-          Volver
-        </Typo>
-      </Pressable>
-
       <View style={styles.header}>
         <Typo variant="title">Presupuestos</Typo>
         <View style={styles.monthRow}>
@@ -179,12 +175,6 @@ function lastDayOfMonth(isoDate: string): string {
 }
 
 const styles = StyleSheet.create({
-  back: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    marginBottom: spacing.lg,
-  },
   header: {
     gap: spacing.xs,
     marginBottom: spacing.xl,

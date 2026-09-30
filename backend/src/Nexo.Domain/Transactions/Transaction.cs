@@ -8,6 +8,13 @@ namespace Nexo.Domain.Transactions;
 /// </summary>
 public sealed class Transaction : Entity, IUserOwned
 {
+    /// <summary>A division needs at least this many parts; one part is just a category.</summary>
+    public const int MinimumSplitParts = 2;
+
+    public const int MaximumSplitParts = 20;
+
+    private readonly List<TransactionSplit> _splits = [];
+
     private Transaction()
     {
     }
@@ -102,6 +109,25 @@ public sealed class Transaction : Entity, IUserOwned
 
     /// <summary>The matching movement on the other account, once confirmed.</summary>
     public Guid? InternalTransferLinkId { get; private set; }
+
+    /// <summary>
+    /// Movimientos divididos: true when the movement is distributed across
+    /// <see cref="Splits"/>. While true, <see cref="CategoryId"/> is null and every
+    /// per-category figure (breakdown, statistics, budgets, filters) reads the splits
+    /// instead -- never both, so nothing is counted twice. The movement's own
+    /// amount, date, description, reference, account, import and fingerprint are
+    /// never altered by splitting.
+    /// </summary>
+    public bool IsSplit { get; private set; }
+
+    /// <summary>
+    /// Optimistic-concurrency token for the division: bumped on every change to the
+    /// splits, so two simultaneous edits cannot both win and leave $270 distributed
+    /// over a $220 movement.
+    /// </summary>
+    public int SplitVersion { get; private set; }
+
+    public IReadOnlyCollection<TransactionSplit> Splits => _splits;
 
     /// <summary>Positive for income, negative for expense. Never persisted; derived on read.</summary>
     public decimal SignedAmount => Direction == TransactionDirection.Income ? Amount : -Amount;
@@ -220,6 +246,13 @@ public sealed class Transaction : Entity, IUserOwned
 
         var cleanDescription = DomainException.RequireText(description, nameof(description), 400);
 
+        if (IsSplit && magnitude != Amount)
+        {
+            throw new DomainException(
+                "transaction_split",
+                "Este movimiento está dividido. Edita o quita la división antes de cambiar el monto.");
+        }
+
         Amount = magnitude;
         Direction = direction;
         Description = cleanDescription;
@@ -248,7 +281,7 @@ public sealed class Transaction : Entity, IUserOwned
         CategorySource source = CategorySource.Imported,
         Guid? categorizationRuleId = null)
     {
-        if (CategoryManuallySet)
+        if (CategoryManuallySet || IsSplit)
         {
             return false;
         }
@@ -268,6 +301,7 @@ public sealed class Transaction : Entity, IUserOwned
     /// </summary>
     public void ClearCategoryManually(DateTimeOffset now)
     {
+        EnsureNotSplit();
         CategoryId = null;
         CategoryManuallySet = true;
         CategorySource = CategorySource.Uncategorized;
@@ -277,6 +311,7 @@ public sealed class Transaction : Entity, IUserOwned
 
     public void SetCategoryManually(Guid categoryId, DateTimeOffset now)
     {
+        EnsureNotSplit();
         CategoryId = categoryId;
         CategoryManuallySet = true;
         CategorySource = CategorySource.Manual;
@@ -354,6 +389,11 @@ public sealed class Transaction : Entity, IUserOwned
     /// </summary>
     public void UpgradeFrom(Transaction authoritative, DateTimeOffset now)
     {
+        if (IsSplit && authoritative.Amount != Amount)
+        {
+            RebalanceSplits(authoritative.Amount, now);
+        }
+
         Amount = authoritative.Amount;
         TransactionDate = authoritative.TransactionDate;
         Description = authoritative.Description;
@@ -367,5 +407,137 @@ public sealed class Transaction : Entity, IUserOwned
         ImportId = authoritative.ImportId ?? ImportId;
         Fingerprint = authoritative.Fingerprint;
         Stamp(now);
+    }
+
+    /// <summary>
+    /// Divides the movement. The whole division is replaced atomically: validated
+    /// here, persisted by one SaveChanges. Rules:
+    /// <list type="bullet">
+    /// <item>At least <see cref="MinimumSplitParts"/> parts (one part is just a category).</item>
+    /// <item>Every part &gt; 0, at most 2 decimals.</item>
+    /// <item>No category twice (null = "Sin categoría" counts as one category).</item>
+    /// <item>The parts add up EXACTLY to <see cref="Amount"/>: "Falta asignar" and
+    /// "Te pasaste" are both rejected, so a stored division is always complete.</item>
+    /// </list>
+    /// </summary>
+    public void Split(IReadOnlyList<SplitLine> lines, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(lines);
+
+        if (lines.Count < MinimumSplitParts)
+        {
+            throw new DomainException("split_too_few_parts", "Una división necesita al menos dos partes.");
+        }
+
+        if (lines.Count > MaximumSplitParts)
+        {
+            throw new DomainException("split_too_many_parts", $"Una división puede tener como máximo {MaximumSplitParts} partes.");
+        }
+
+        foreach (var line in lines)
+        {
+            if (line.Amount <= 0m)
+            {
+                throw new DomainException("split_invalid_amount", "Cada parte debe ser mayor que cero.");
+            }
+
+            if (decimal.Round(line.Amount, 2) != line.Amount)
+            {
+                throw new DomainException("split_invalid_amount", "Cada parte puede tener como máximo dos decimales.");
+            }
+        }
+
+        if (lines.GroupBy(l => l.CategoryId).Any(g => g.Count() > 1))
+        {
+            throw new DomainException("split_duplicate_category", "Cada categoría puede aparecer una sola vez en la división.");
+        }
+
+        var total = lines.Sum(l => l.Amount);
+        if (total < Amount)
+        {
+            throw new DomainException(
+                "split_incomplete",
+                $"Falta asignar ${MoneyMath.Round(Amount - total).ToString("#,##0.00", System.Globalization.CultureInfo.InvariantCulture)}.");
+        }
+
+        if (total > Amount)
+        {
+            throw new DomainException(
+                "split_exceeds_total",
+                $"Te pasaste por ${MoneyMath.Round(total - Amount).ToString("#,##0.00", System.Globalization.CultureInfo.InvariantCulture)}.");
+        }
+
+        _splits.Clear();
+        for (var i = 0; i < lines.Count; i++)
+        {
+            _splits.Add(TransactionSplit.Create(this, lines[i].CategoryId, lines[i].Amount, lines[i].Note, i, now));
+        }
+
+        IsSplit = true;
+        CategoryId = null;
+        CategoryManuallySet = true;
+        CategorySource = CategorySource.ManualSplit;
+        CategorizationRuleId = null;
+        SplitVersion++;
+        Stamp(now);
+    }
+
+    /// <summary>
+    /// "Quitar división": back to one category (or none). The bank movement is not
+    /// touched -- only the analytic distribution goes away.
+    /// </summary>
+    public void RemoveSplit(Guid? categoryId, DateTimeOffset now)
+    {
+        if (!IsSplit)
+        {
+            throw new DomainException("transaction_not_split", "Este movimiento no está dividido.");
+        }
+
+        _splits.Clear();
+        IsSplit = false;
+        CategoryId = categoryId;
+        CategoryManuallySet = true;
+        CategorySource = categoryId is null ? CategorySource.Uncategorized : CategorySource.Manual;
+        CategorizationRuleId = null;
+        SplitVersion++;
+        Stamp(now);
+    }
+
+    private void EnsureNotSplit()
+    {
+        if (IsSplit)
+        {
+            throw new DomainException(
+                "transaction_split",
+                "Este movimiento está dividido en varias categorías. Edita la división en lugar de cambiar la categoría.");
+        }
+    }
+
+    /// <summary>
+    /// The authoritative statement row arrived with a slightly different amount than
+    /// the email that created this movement. The person's division is kept: the
+    /// difference goes to (or comes from) the largest part. Only if that would leave
+    /// the part at zero or below does the division collapse into that part's category
+    /// -- never silently into "no category".
+    /// </summary>
+    private void RebalanceSplits(decimal newAmount, DateTimeOffset now)
+    {
+        var delta = newAmount - Amount;
+        var largest = _splits.OrderByDescending(s => s.Amount).ThenBy(s => s.Position).First();
+        var adjusted = largest.Amount + delta;
+
+        if (adjusted > 0m)
+        {
+            largest.ChangeAmount(adjusted, now);
+            SplitVersion++;
+            return;
+        }
+
+        var keep = largest.CategoryId;
+        _splits.Clear();
+        IsSplit = false;
+        CategoryId = keep;
+        CategorySource = keep is null ? CategorySource.Uncategorized : CategorySource.Manual;
+        SplitVersion++;
     }
 }

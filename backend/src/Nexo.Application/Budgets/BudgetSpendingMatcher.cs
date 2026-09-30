@@ -78,7 +78,8 @@ public static class BudgetSpendingMatcher
             ids.Add(row.TransactionId);
         }
 
-        return new SpendingMatch(expenses, refunds, ids);
+        // A divided movement can contribute more than one row; it is still one movement.
+        return new SpendingMatch(expenses, refunds, ids.Distinct().ToList());
     }
 
     private static bool Belongs(

@@ -24,7 +24,40 @@ public sealed record TransactionListItemDto(
     // Entregable 13: true once the person confirmed this is one leg of a
     // transfer between their own accounts -- it moves the account's balance
     // but is excluded from net income/expense totals and insights.
-    bool IsInternalTransfer);
+    bool IsInternalTransfer,
+    // Movimientos divididos: when true, CategoryId is null and Splits holds the
+    // parts. Still ONE movement in every list.
+    bool IsSplit,
+    IReadOnlyList<TransactionSplitDto> Splits);
+
+/// <summary>One part of a divided movement. Amount is a positive magnitude, like the movement's.</summary>
+public sealed record TransactionSplitDto(
+    Guid Id,
+    Guid? CategoryId,
+    string CategoryName,
+    string CategoryIcon,
+    string CategoryColor,
+    decimal Amount,
+    string? Note);
+
+/// <summary>
+/// PUT /transactions/{id}/splits: the WHOLE division, replaced atomically. Parts must
+/// add up exactly to the movement's amount. A null CategoryId is "Sin categoría".
+/// </summary>
+public sealed record ReplaceSplitsRequest(
+    IReadOnlyList<SplitLineRequest> Splits,
+    /// <summary>The SplitVersion the client edited; a stale one is rejected with 409.</summary>
+    int? ExpectedVersion = null);
+
+public sealed record SplitLineRequest(Guid? CategoryId, decimal Amount, string? Note = null);
+
+public sealed record TransactionSplitsDto(
+    Guid TransactionId,
+    decimal Amount,
+    string Direction,
+    bool IsSplit,
+    int Version,
+    IReadOnlyList<TransactionSplitDto> Splits);
 
 public sealed record TransactionDetailDto(
     Guid Id,
@@ -64,6 +97,10 @@ public sealed record TransactionDetailDto(
     // Entregable 13: mirrors Transaction.IsInternalTransfer/InternalTransferLinkId.
     bool IsInternalTransfer,
     Guid? InternalTransferLinkId,
+    // Movimientos divididos.
+    bool IsSplit,
+    int SplitVersion,
+    IReadOnlyList<TransactionSplitDto> Splits,
     // Set only by UpdateCategoryAsync when ApplyToExistingMatches was requested:
     // how many OTHER movements were just recategorised by the same rule (point 7).
     // Null on every other read of a transaction.

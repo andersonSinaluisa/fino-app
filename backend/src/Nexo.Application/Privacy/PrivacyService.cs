@@ -86,6 +86,7 @@ public sealed class PrivacyService(INexoDbContext db, IClock clock) : IPrivacySe
                 t.IsInternalTransfer,
                 t.InternalTransferLinkId,
                 t.CategoryId,
+                t.IsSplit,
                 Source = t.Source.ToString(),
                 Status = t.Status.ToString(),
                 t.ExternalReference,
@@ -153,6 +154,12 @@ public sealed class PrivacyService(INexoDbContext db, IClock clock) : IPrivacySe
             .Select(i => new { i.Id, i.Code, i.Title, i.Body, i.PeriodStart, i.PeriodEnd, i.CreatedAt })
             .ToListAsync(cancellationToken);
 
+        // Movimientos divididos: how each divided movement was distributed.
+        var transactionSplits = await db.TransactionSplits.AsNoTracking()
+            .Where(s => s.UserId == userId)
+            .Select(s => new { s.Id, s.TransactionId, s.CategoryId, s.Amount, s.Note, s.CreatedAt })
+            .ToListAsync(cancellationToken);
+
         // Presupuestos: the plan only (spent/reserved are derived, not stored).
         var budgets = await db.Budgets.AsNoTracking()
             .Where(b => b.UserId == userId)
@@ -204,6 +211,7 @@ public sealed class PrivacyService(INexoDbContext db, IClock clock) : IPrivacySe
             },
             accounts,
             transactions,
+            transactionSplits,
             imports,
             emailConnections,
             categories,

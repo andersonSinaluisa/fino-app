@@ -23,6 +23,8 @@ function movement(overrides: Partial<TransactionListItem> = {}): TransactionList
     status: 'Posted',
     source: 'Import',
     isInternalTransfer: false,
+    isSplit: false,
+    splits: [],
     ...overrides,
   };
 }
@@ -101,5 +103,26 @@ describe('TransactionRow', () => {
     fireEvent.press(screen.getByLabelText('SUPERMAXI ALBORADA, -$48.20'));
 
     expect(onPress).toHaveBeenCalledWith(transaction);
+  });
+  it('un movimiento dividido es UNA fila con sus categorías', async () => {
+    const divided = movement({
+      merchant: 'Transf Directa Chilan',
+      amount: 220,
+      signedAmount: -220,
+      categoryId: null,
+      categoryName: null,
+      categoryIcon: null,
+      categoryColor: null,
+      isSplit: true,
+      splits: [
+        { id: 's1', categoryId: 'c1', categoryName: 'Esposa', categoryIcon: 'people', categoryColor: '#D8665B', amount: 70, note: null },
+        { id: 's2', categoryId: 'c2', categoryName: 'Comida', categoryIcon: 'utensils', categoryColor: '#E4A853', amount: 150, note: null },
+      ],
+    });
+
+    const screen = await render(<TransactionRow transaction={divided} />);
+
+    expect(screen.getByText('Esposa + Comida')).toBeTruthy();
+    expect(screen.getAllByText('-$220.00')).toHaveLength(1);
   });
 });

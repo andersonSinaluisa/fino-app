@@ -39,7 +39,9 @@ public static class DependencyInjection
         services.AddScoped<IAuditActivityService, AuditActivityService>();
         services.AddScoped<IProviderCatalogService, ProviderCatalogService>();
         services.AddScoped<IAccountService, AccountService>();
-        services.AddScoped<ITransactionService, TransactionService>();
+        services.AddScoped<TransactionService>();
+        services.AddScoped<ITransactionService>(sp => sp.GetRequiredService<TransactionService>());
+        services.AddScoped<ITransactionSplitService, TransactionSplitService>();
         services.AddScoped<IAnalyticsService, AnalyticsService>();
         services.AddScoped<IInternalTransferService, InternalTransferService>();
 

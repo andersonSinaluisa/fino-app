@@ -160,6 +160,8 @@ export default function RootLayout() {
           <Stack.Screen name="(onboarding)" />
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="movimiento/[id]" options={{ presentation: 'card' }} />
+          {/* Movimientos divididos: flujo con principio y fin sobre un movimiento. */}
+          <Stack.Screen name="movimiento/dividir/[id]" options={{ presentation: 'modal' }} />
           {/* §22: "Más detalles". El formulario completo del registro manual. */}
           <Stack.Screen name="movimiento/nuevo" options={{ presentation: 'modal' }} />
           {/* §25: corregir el efectivo dejando rastro. */}
@@ -175,7 +177,6 @@ export default function RootLayout() {
           <Stack.Screen name="cuentas/reconectar" options={{ presentation: 'modal' }} />
           <Stack.Screen name="dinero-disponible/index" options={{ presentation: 'card' }} />
           <Stack.Screen name="plan/index" options={{ presentation: 'card' }} />
-          <Stack.Screen name="presupuestos/index" options={{ presentation: 'card' }} />
           <Stack.Screen name="presupuestos/[id]" options={{ presentation: 'card' }} />
           <Stack.Screen name="comprometido/index" options={{ presentation: 'card' }} />
           <Stack.Screen name="analisis-gastos/index" options={{ presentation: 'card' }} />

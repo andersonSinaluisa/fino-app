@@ -8,6 +8,7 @@ import { ProviderAvatar } from '../../components/ui/ProviderAvatar';
 import { useAccount, useImportHistory, useImportPreview, useTransactions } from '../../hooks/queries';
 import { balanceTypeLabel, formatCurrency, formatRelativeTime, maskLabel } from '../../utils/format';
 import type { ImportSummary, TransactionListItem } from '../../types/api';
+import { transactionCategoryLabel } from '../../utils/splits';
 
 export default function AccountReconciliationScreen() {
   const router = useRouter();
@@ -160,7 +161,7 @@ function ReviewRow({ transaction, onPress }: { transaction: TransactionListItem;
           {transaction.merchant ?? transaction.description}
         </Typo>
         <Typo variant="caption" color={colors.textSecondary}>
-          {transaction.categoryName ?? 'Sin categoría'} · Posible duplicado
+          {transactionCategoryLabel(transaction)} · Posible duplicado
         </Typo>
       </View>
       <Typo variant="bodyStrong" tabular>

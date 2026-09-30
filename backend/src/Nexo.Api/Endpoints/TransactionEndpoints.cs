@@ -81,6 +81,36 @@ public static class TransactionEndpoints
                 cancellationToken)))
             .WithSummary("Corrige la categoría y aprende una regla para la próxima vez.");
 
+        // Movimientos divididos. PUT replaces the WHOLE division atomically (never
+        // delete-all + post-one + post-another from the client); DELETE takes it
+        // off and leaves the chosen single category (or none).
+        group.MapGet("/transactions/{id:guid}/splits", async (
+            Guid id,
+            ITransactionSplitService splits,
+            ICurrentUser currentUser,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await splits.GetAsync(currentUser.RequireUserId(), id, cancellationToken)))
+            .WithSummary("La división de un movimiento (vacía si no está dividido).");
+
+        group.MapPut("/transactions/{id:guid}/splits", async (
+            Guid id,
+            ReplaceSplitsRequest request,
+            ITransactionSplitService splits,
+            ICurrentUser currentUser,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await splits.ReplaceAsync(currentUser.RequireUserId(), id, request, cancellationToken)))
+            .WithSummary("Divide el movimiento entre varias categorías. Las partes deben sumar exactamente el monto; 409 si la división cambió mientras se editaba.");
+
+        group.MapDelete("/transactions/{id:guid}/splits", async (
+            Guid id,
+            Guid? categoryId,
+            int? expectedVersion,
+            ITransactionSplitService splits,
+            ICurrentUser currentUser,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await splits.RemoveAsync(currentUser.RequireUserId(), id, categoryId, expectedVersion, cancellationToken)))
+            .WithSummary("Quita la división. El movimiento queda con la categoría indicada (o sin categoría). Nunca modifica el movimiento bancario.");
+
         group.MapPut("/transactions/{id:guid}/note", async (
             Guid id,
             UpdateNoteRequest request,

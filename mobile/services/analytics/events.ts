@@ -116,6 +116,11 @@ export const AnalyticsEvent = {
   BudgetOpened: 'budget_opened',
   CommittedBreakdownOpened: 'committed_breakdown_opened',
 
+  // --- Movimientos divididos ----------------------------------------------
+  TransactionSplitCreated: 'transaction_split_created',
+  TransactionSplitUpdated: 'transaction_split_updated',
+  TransactionSplitRemoved: 'transaction_split_removed',
+
   // --- Pulso ---------------------------------------------------------------
   PulseCardViewed: 'pulse_card_viewed',
   PulseOpened: 'pulse_opened',

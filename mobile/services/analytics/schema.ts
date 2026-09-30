@@ -130,6 +130,13 @@ export const EVENT_SCHEMA: Record<AnalyticsEventName, readonly string[]> = {
   [AnalyticsEvent.BudgetOpened]: ['source', 'level'],
   [AnalyticsEvent.CommittedBreakdownOpened]: ['source', 'hasData'],
 
+  // --- Movimientos divididos ----------------------------------------------
+  // `parts` es un tramo ('2' | '3' | '4_plus'), nunca montos, categorías,
+  // notas, descripción bancaria, destinatarios ni referencias.
+  [AnalyticsEvent.TransactionSplitCreated]: ['parts', 'transactionType', 'hasUncategorized'],
+  [AnalyticsEvent.TransactionSplitUpdated]: ['parts', 'transactionType', 'hasUncategorized'],
+  [AnalyticsEvent.TransactionSplitRemoved]: ['transactionType'],
+
   // --- Pulso ---------------------------------------------------------------
   // `pulseKind` es el TIPO de pulso (un enum del backend), nunca su texto.
   [AnalyticsEvent.PulseCardViewed]: ['pulseKind', 'source'],

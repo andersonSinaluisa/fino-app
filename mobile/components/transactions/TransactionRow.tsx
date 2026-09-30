@@ -4,6 +4,7 @@ import { colors, radius, spacing } from '../../theme';
 import { Typo } from '../ui/Typo';
 import { formatCurrency } from '../../utils/format';
 import { iconForCategory } from '../../utils/categoryIcons';
+import { transactionCategoryLabel } from '../../utils/splits';
 import type { TransactionListItem } from '../../types/api';
 
 interface TransactionRowProps {
@@ -38,7 +39,7 @@ export function TransactionRow({ transaction, hidden = false, onPress }: Transac
 
         <View style={styles.metaRow}>
           <Typo variant="caption" color={colors.textSecondary} numberOfLines={1}>
-            {isTransfer ? 'Transferencia interna' : (transaction.categoryName ?? 'Sin categoría')}
+            {isTransfer ? 'Transferencia interna' : transactionCategoryLabel(transaction)}
           </Typo>
 
           {needsReview ? (
@@ -85,6 +86,11 @@ function Dot() {
 function iconName(transaction: TransactionListItem): keyof typeof Ionicons.glyphMap {
   if (transaction.isInternalTransfer) {
     return 'swap-horizontal-outline';
+  }
+
+  // Movimientos divididos: una sola fila, con un ícono que dice "varias categorías".
+  if (transaction.isSplit) {
+    return 'pie-chart-outline';
   }
 
   if (transaction.categoryIcon) {

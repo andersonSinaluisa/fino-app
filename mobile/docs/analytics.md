@@ -292,6 +292,17 @@ el de la categoría (una categoría puede ser personalizada y decir algo de la
 persona). `period`, `priority` y `level` son enums cerrados; `reserves`,
 `hasCategory`, `paused` y `hasData` son booleanos.
 
+## Movimientos divididos
+
+| Evento | Propiedades | Cuándo |
+| --- | --- | --- |
+| `transaction_split_created` | `parts` (`2`/`3`/`4_plus`), `transactionType`, `hasUncategorized` | Se guardó la primera división de un movimiento. |
+| `transaction_split_updated` | igual | Se guardó una división sobre un movimiento ya dividido. |
+| `transaction_split_removed` | `transactionType` | Se quitó la división. |
+
+Nunca viajan montos, categorías, notas, descripción bancaria, destinatarios ni
+referencias.
+
 ## Cómo añadir un evento nuevo
 
 1. Añádelo a `AnalyticsEvent` en `events.ts`, en snake_case.

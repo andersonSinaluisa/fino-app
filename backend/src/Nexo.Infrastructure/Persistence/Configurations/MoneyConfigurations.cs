@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
+using Nexo.Domain.Categories;
 using Nexo.Domain.Accounts;
 using Nexo.Domain.Providers;
 using Nexo.Domain.Transactions;
@@ -100,6 +101,21 @@ public sealed class TransactionConfiguration : IEntityTypeConfiguration<Transact
         // the same way ids.Contains(...) does (see ADR-009 / QueryableGuidExtensions).
         builder.Property(t => t.IsInternalTransfer).IsRequired();
 
+        // Movimientos divididos. SplitVersion is an optimistic-concurrency token:
+        // two simultaneous "guardar división" on the same movement cannot both
+        // succeed (the second UPDATE matches 0 rows and is rejected with 409).
+        builder.Property(t => t.IsSplit).IsRequired().HasDefaultValue(false);
+        builder.Property(t => t.SplitVersion).IsRequired().HasDefaultValue(0).IsConcurrencyToken();
+
+        builder.HasMany(t => t.Splits)
+            .WithOne()
+            .HasForeignKey(s => s.TransactionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.Navigation(t => t.Splits)
+            .UsePropertyAccessMode(PropertyAccessMode.Field)
+            .HasField("_splits");
+
         // The movements feed: user + date is the ordering used by every list query.
         builder.HasIndex(t => new { t.UserId, t.TransactionDate });
         builder.HasIndex(t => new { t.FinancialAccountId, t.TransactionDate });
@@ -139,5 +155,38 @@ public sealed class TransactionConfiguration : IEntityTypeConfiguration<Transact
             .WithMany()
             .HasForeignKey(t => t.FinancialAccountId)
             .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+/// <summary>
+/// Movimientos divididos: the analytic distribution of one movement. Deleting the
+/// movement deletes its splits (cascade). Deleting a category that a split still
+/// uses is refused by the database (NO ACTION) instead of silently rewriting or
+/// destroying historical financial data.
+/// </summary>
+public sealed class TransactionSplitConfiguration : IEntityTypeConfiguration<TransactionSplit>
+{
+    public void Configure(EntityTypeBuilder<TransactionSplit> builder)
+    {
+        builder.ToTable("transaction_splits", table =>
+            table.HasCheckConstraint("ck_transaction_splits_amount_positive", "\"Amount\" > 0"));
+        builder.HasKey(s => s.Id);
+
+        // Splits are created inside the Transaction aggregate with their UUID v7
+        // already set and reach the context through the navigation; see the same
+        // note on BudgetAmountRevision.
+        builder.Property(s => s.Id).ValueGeneratedNever();
+        builder.Property(s => s.Amount).HasPrecision(18, 2).IsRequired();
+        builder.Property(s => s.Note).HasMaxLength(TransactionSplit.NoteMaxLength);
+
+        builder.HasIndex(s => s.TransactionId);
+        builder.HasIndex(s => s.CategoryId);
+        builder.HasIndex(s => new { s.TransactionId, s.CategoryId });
+        builder.HasIndex(s => new { s.UserId, s.CategoryId });
+
+        builder.HasOne<Category>()
+            .WithMany()
+            .HasForeignKey(s => s.CategoryId)
+            .OnDelete(DeleteBehavior.NoAction);
     }
 }

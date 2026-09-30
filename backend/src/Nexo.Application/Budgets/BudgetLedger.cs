@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Nexo.Application.Abstractions;
 using Nexo.Application.Common;
 using Nexo.Application.Imports.Parsing.Tabular;
+using Nexo.Application.Transactions;
 using Nexo.Domain.Budgets;
 using Nexo.Domain.Categories;
 using Nexo.Domain.Common;
@@ -101,18 +102,21 @@ public sealed class BudgetLedger
         var toInstant = StartOf(to.AddDays(1));
         var userId = User.Id;
 
-        var raw = await _db.Transactions
+        var movements = _db.Transactions
             .AsNoTracking()
             .Where(t => t.UserId == userId
                         && t.TransactionDate >= fromInstant
                         && t.TransactionDate < toInstant
                         && !t.IsInternalTransfer
-                        && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending))
-            .Select(t => new { t.Id, t.CategoryId, t.Direction, t.Amount, t.TransactionDate })
-            .ToListAsync(cancellationToken);
+                        && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending));
+
+        // Movimientos divididos: one row per category ALLOCATION. A divided
+        // movement yields one row per part (Comida $150, Esposa $70), so the
+        // Comida budget consumes $150 -- never the whole $220.
+        var raw = await CategoryAllocations.Expand(movements, _db).ToListAsync(cancellationToken);
 
         return raw
-            .Select(t => new SpendingRow(t.Id, t.CategoryId, t.Direction, t.Amount, DateOnly.FromDateTime(Dates.ToLocalDate(t.TransactionDate))))
+            .Select(t => new SpendingRow(t.TransactionId, t.CategoryId, t.Direction, t.Amount, DateOnly.FromDateTime(Dates.ToLocalDate(t.TransactionDate))))
             .ToList();
     }
 

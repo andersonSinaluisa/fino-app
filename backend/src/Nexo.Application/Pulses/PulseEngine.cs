@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Nexo.Application.Transactions;
 using Nexo.Application.Abstractions;
 using Nexo.Application.Imports.Parsing.Tabular;
 using Nexo.Domain.Accounts;
@@ -115,14 +116,23 @@ public sealed class PulseEngine(INexoDbContext db, IClock clock) : IPulseEngine
         var now = clock.UtcNow;
         var since = now.AddDays(-HistoryLookbackDays);
 
-        var movements = await db.Transactions
+        var scope = db.Transactions
             .AsNoTracking()
             .Where(t => t.UserId == userId
                         && t.TransactionDate >= since
                         && !t.IsInternalTransfer
-                        && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending))
+                        && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending));
+
+        var movements = await scope
             .Select(t => new Movement(t.Id, t.TransactionDate, t.CreatedAt, t.Amount, t.Direction, t.CategoryId, t.FinancialAccountId, t.Merchant))
             .ToListAsync(cancellationToken);
+
+        // Movimientos divididos: only the category spike groups by category, and it
+        // must see a divided movement's parts, never the movement itself as well.
+        var splits = await CategoryAllocations.LoadSplitsAsync(db, scope, cancellationToken);
+        var movementsByCategory = CategoryAllocations
+            .ExpandInMemory(movements, m => m.Id, splits, (m, category, amount) => m with { CategoryId = category, Amount = amount })
+            .ToList();
 
         var categories = await db.Categories
             .AsNoTracking()
@@ -171,7 +181,7 @@ public sealed class PulseEngine(INexoDbContext db, IClock clock) : IPulseEngine
 
         await AddIfNewAsync(DetectUnusualExpense(userId, movements, now));
         await AddIfNewAsync(DetectNewIncome(userId, movements, now));
-        await AddIfNewAsync(DetectCategorySpike(userId, movements, categories, dates, now));
+        await AddIfNewAsync(DetectCategorySpike(userId, movementsByCategory, categories, dates, now));
         await AddIfNewAsync(DetectSpendingPace(userId, movements, dates, now));
         await AddIfNewAsync(DetectSpendingImprovement(userId, movements, dates, now));
         await AddIfNewAsync(DetectDailyClose(userId, movements, dates, now));

@@ -477,8 +477,12 @@ public sealed class AnalyticsService(INexoDbContext db, IClock clock) : IAnalyti
         DateTimeOffset to,
         CancellationToken cancellationToken)
     {
-        var grouped = await ScopedTransactions(userId, accountIds, from, to)
-            .Where(t => t.Direction == TransactionDirection.Expense && !t.IsInternalTransfer)
+        var expenses = ScopedTransactions(userId, accountIds, from, to)
+            .Where(t => t.Direction == TransactionDirection.Expense && !t.IsInternalTransfer);
+
+        // Movimientos divididos: by allocation, so a divided movement counts its
+        // parts and never itself on top of them.
+        var grouped = await CategoryAllocations.Expand(expenses, db)
             .GroupBy(t => t.CategoryId)
             .Select(g => new { CategoryId = g.Key, Total = g.Sum(x => x.Amount), Count = g.Count() })
             .ToListAsync(cancellationToken);

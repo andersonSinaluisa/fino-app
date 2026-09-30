@@ -49,6 +49,8 @@ public sealed class NexoDbContext : DbContext, INexoDbContext
 
     public DbSet<Transaction> Transactions => Set<Transaction>();
 
+    public DbSet<TransactionSplit> TransactionSplits => Set<TransactionSplit>();
+
     public DbSet<Category> Categories => Set<Category>();
 
     public DbSet<CategorizationRule> CategorizationRules => Set<CategorizationRule>();
