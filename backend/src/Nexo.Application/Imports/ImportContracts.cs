@@ -13,7 +13,18 @@ public sealed record ImportPreviewRowDto(
     Guid? MatchedTransactionId,
     Guid? SuggestedCategoryId,
     string? SuggestedCategoryName,
-    string? Error);
+    string? Error,
+    // Tarjetas de crédito: why a row is left out on purpose (an installment of a
+    // purchase already deferred in Fino). Null otherwise.
+    string? SkipReason = null);
+
+/// <summary>Tarjetas de crédito: the official figures read from a card statement header.</summary>
+public sealed record CardStatementSummaryDto(
+    DateOnly? ClosingDate,
+    DateOnly? DueDate,
+    decimal? StatementBalance,
+    decimal? MinimumPayment,
+    decimal? CreditLimit);
 
 public sealed record ImportPreviewDto(
     Guid ImportId,
@@ -48,7 +59,10 @@ public sealed record ImportPreviewDto(
     // a raw grid and let the person assign fecha/descripción/monto/etc. to a
     // column index via POST /imports/manual.
     IReadOnlyList<string>? UnmappedColumns = null,
-    IReadOnlyList<IReadOnlyList<string>>? UnmappedSampleRows = null);
+    IReadOnlyList<IReadOnlyList<string>>? UnmappedSampleRows = null,
+    // Tarjetas de crédito: present when the file is a card statement that prints
+    // corte / fecha máxima / total / mínimo / cupo. Declared on confirm.
+    CardStatementSummaryDto? CardStatement = null);
 
 public sealed record ConfirmImportRequest(
     IReadOnlyList<Guid>? ExcludedRowIds,

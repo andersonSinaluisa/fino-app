@@ -17,7 +17,10 @@ public sealed record AccountDto(
     DateTimeOffset? LastVerifiedAt,
     DateTimeOffset? LastTransactionAt,
     DateTimeOffset? LastSyncedAt,
-    bool IsArchived);
+    bool IsArchived,
+    // Tarjetas de crédito: true for a card. Its Balance is debt (negative when owed),
+    // never part of "Tu dinero".
+    bool IsLiability = false);
 
 public sealed record CreateAccountRequest(
     string ProviderCode,

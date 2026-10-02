@@ -87,3 +87,35 @@ public enum CategorySource
     /// </summary>
     ManualSplit = 5,
 }
+
+/// <summary>
+/// Tarjetas de crédito: qué es un movimiento de una tarjeta. Solo lo tienen los
+/// movimientos de una cuenta <see cref="Nexo.Domain.Accounts.AccountType.CreditCard"/>;
+/// en cualquier otra cuenta queda en null. Las reglas que derivan de él (qué
+/// dirección exige, si es gasto, si es neutro) viven en
+/// <see cref="Nexo.Domain.CreditCards.CreditCardMovementRules"/>, nunca repetidas en
+/// los servicios ni en el cliente.
+/// </summary>
+public enum CreditCardMovementType
+{
+    /// <summary>Consumo: aumenta la deuda y ES un gasto, con su categoría.</summary>
+    Purchase = 0,
+
+    /// <summary>Devolución de un consumo: baja la deuda y resta del gasto de su categoría. Nunca es un ingreso.</summary>
+    Refund = 1,
+
+    /// <summary>Pago a la tarjeta: baja la deuda. Es mover dinero propio (banco → tarjeta), no un ingreso ni un gasto.</summary>
+    Payment = 2,
+
+    /// <summary>Intereses: aumentan la deuda y son un costo financiero, separado del consumo.</summary>
+    Interest = 3,
+
+    /// <summary>Comisiones y cargos del emisor: aumentan la deuda, costo financiero.</summary>
+    Fee = 4,
+
+    /// <summary>Avance en efectivo: la deuda sube, pero el dinero pasa a tu efectivo -- no es un gasto todavía.</summary>
+    CashAdvance = 5,
+
+    /// <summary>Ajuste de la deuda (corrección del emisor o tuya). Ni gasto ni ingreso.</summary>
+    Adjustment = 6,
+}

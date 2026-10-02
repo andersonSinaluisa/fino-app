@@ -83,6 +83,24 @@ public sealed class Import : Entity, IUserOwned
 
     public int ImportedCount { get; private set; }
 
+    // Tarjetas de crédito: the official figures read from a card statement's
+    // header (corte, fecha máxima, total a pagar, pago mínimo, cupo). Kept on the
+    // import between preview and confirm, and as the trace of where a declared
+    // statement came from. All null for bank-account imports.
+    public DateOnly? CardPeriodStart { get; private set; }
+
+    public DateOnly? CardClosingDate { get; private set; }
+
+    public DateOnly? CardDueDate { get; private set; }
+
+    public decimal? CardStatementBalance { get; private set; }
+
+    public decimal? CardMinimumPayment { get; private set; }
+
+    public decimal? CardCreditLimit { get; private set; }
+
+    public bool HasCardStatementSummary => CardClosingDate is not null && CardDueDate is not null && CardStatementBalance is not null;
+
     public static Import Start(
         Guid userId,
         Guid financialAccountId,
@@ -133,6 +151,24 @@ public sealed class Import : Entity, IUserOwned
         PeriodEnd = periodEnd;
         DeclaredClosingBalance = declaredClosingBalance;
         Status = ImportStatus.PreviewReady;
+        Stamp(now);
+    }
+
+    public void AttachCardStatementSummary(
+        DateOnly? periodStart,
+        DateOnly? closingDate,
+        DateOnly? dueDate,
+        decimal? statementBalance,
+        decimal? minimumPayment,
+        decimal? creditLimit,
+        DateTimeOffset now)
+    {
+        CardPeriodStart = periodStart;
+        CardClosingDate = closingDate;
+        CardDueDate = dueDate;
+        CardStatementBalance = statementBalance is { } balance ? MoneyMath.Round(balance) : null;
+        CardMinimumPayment = minimumPayment is { } minimum ? MoneyMath.Round(minimum) : null;
+        CardCreditLimit = creditLimit is { } limit ? MoneyMath.Round(limit) : null;
         Stamp(now);
     }
 

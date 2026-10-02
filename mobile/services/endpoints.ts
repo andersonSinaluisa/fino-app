@@ -8,6 +8,18 @@ import type {
   BudgetPreview,
   BudgetPreviewRequest,
   CommittedMoney,
+  CardMovementType,
+  CardPaymentResult,
+  CardPaymentSuggestion,
+  CreateCreditCardRequest,
+  CreateInstallmentPlanRequest,
+  CreditCardDetail,
+  CreditCardList,
+  CreditCardStatement,
+  DeclareStatementRequest,
+  InstallmentPlan,
+  RegisterCardPaymentRequest,
+  UpdateCreditCardRequest,
   CreateBudgetRequest,
   UpdateBudgetRequest,
   AnalyticsDashboard,
@@ -329,6 +341,46 @@ export const api = {
     /** Same engine as the real Comprometido: "¿cómo queda mi Disponible si guardo esto?". */
     preview: (body: BudgetPreviewRequest) =>
       request<BudgetPreview>('/api/v1/budgets/preview', { method: 'POST', body }),
+  },
+
+  /**
+   * Tarjetas de crédito. `id` es el id de la CUENTA de la tarjeta: sus
+   * movimientos son `transactions.list({ accountId: id })`, sin endpoint aparte.
+   * Deuda, cupo, estados, cuotas y lo que va a Comprometido llegan calculados.
+   */
+  creditCards: {
+    list: (includeArchived = false) =>
+      request<CreditCardList>(`/api/v1/credit-cards${includeArchived ? '?includeArchived=true' : ''}`),
+    get: (id: string) => request<CreditCardDetail>(`/api/v1/credit-cards/${id}`),
+    create: (body: CreateCreditCardRequest) => request<CreditCardDetail>('/api/v1/credit-cards', { method: 'POST', body }),
+    update: (id: string, body: UpdateCreditCardRequest) =>
+      request<CreditCardDetail>(`/api/v1/credit-cards/${id}`, { method: 'PUT', body }),
+    setDebt: (id: string, currentDebt: number) =>
+      request<CreditCardDetail>(`/api/v1/credit-cards/${id}/debt`, { method: 'POST', body: { currentDebt } }),
+    archive: (id: string) => request<void>(`/api/v1/credit-cards/${id}`, { method: 'DELETE' }),
+    restore: (id: string) => request<CreditCardDetail>(`/api/v1/credit-cards/${id}/restore`, { method: 'POST' }),
+    statements: (id: string) => request<CreditCardStatement[]>(`/api/v1/credit-cards/${id}/statements`),
+    declareStatement: (id: string, body: DeclareStatementRequest) =>
+      request<CreditCardStatement[]>(`/api/v1/credit-cards/${id}/statements`, { method: 'PUT', body }),
+    removeStatement: (id: string, closingDate: string) =>
+      request<CreditCardStatement[]>(`/api/v1/credit-cards/${id}/statements/${encodeURIComponent(closingDate)}`, { method: 'DELETE' }),
+    installments: (id: string) => request<InstallmentPlan[]>(`/api/v1/credit-cards/${id}/installments`),
+    createInstallmentPlan: (id: string, body: CreateInstallmentPlanRequest) =>
+      request<InstallmentPlan>(`/api/v1/credit-cards/${id}/installments`, { method: 'POST', body }),
+    cancelInstallmentPlan: (id: string, planId: string) =>
+      request<InstallmentPlan>(`/api/v1/credit-cards/${id}/installments/${planId}/cancel`, { method: 'POST' }),
+    deleteInstallmentPlan: (id: string, planId: string) =>
+      request<void>(`/api/v1/credit-cards/${id}/installments/${planId}`, { method: 'DELETE' }),
+    pay: (id: string, body: RegisterCardPaymentRequest) =>
+      request<CardPaymentResult>(`/api/v1/credit-cards/${id}/payments`, { method: 'POST', body }),
+    paymentSuggestions: (id: string) => request<CardPaymentSuggestion[]>(`/api/v1/credit-cards/${id}/payments/suggestions`),
+    linkPayment: (id: string, bankTransactionId: string, cardTransactionId?: string | null) =>
+      request<CardPaymentResult>(`/api/v1/credit-cards/${id}/payments/link`, {
+        method: 'POST',
+        body: { bankTransactionId, cardTransactionId: cardTransactionId ?? null },
+      }),
+    reclassify: (id: string, transactionId: string, type: CardMovementType) =>
+      request<TransactionDetail>(`/api/v1/credit-cards/${id}/movements/${transactionId}/type`, { method: 'POST', body: { type } }),
   },
 
   finance: {

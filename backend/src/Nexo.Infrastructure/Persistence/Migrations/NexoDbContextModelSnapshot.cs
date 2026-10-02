@@ -424,6 +424,224 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.ToTable("category_corrections", (string)null);
                 });
 
+            modelBuilder.Entity("Nexo.Domain.CreditCards.CreditCard", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("AutoReserve")
+                        .HasColumnType("boolean");
+
+                    b.Property<int>("ClosingDay")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<decimal>("CreditLimit")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<Guid>("FinancialAccountId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Network")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<int>("PaymentDueDay")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FinancialAccountId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("credit_cards", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_credit_cards_closing_day", "\"ClosingDay\" BETWEEN 1 AND 31");
+
+                            t.HasCheckConstraint("ck_credit_cards_due_day", "\"PaymentDueDay\" BETWEEN 1 AND 31");
+
+                            t.HasCheckConstraint("ck_credit_cards_limit_positive", "\"CreditLimit\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Nexo.Domain.CreditCards.CreditCardStatement", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("ClosingDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreditCardId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("DueDate")
+                        .HasColumnType("date");
+
+                    b.Property<Guid?>("ImportId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal?>("MinimumPayment")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateOnly?>("PeriodStart")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<decimal>("StatementBalance")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("CreditCardId", "ClosingDate")
+                        .IsUnique();
+
+                    b.ToTable("credit_card_statements", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_credit_card_statements_balance", "\"StatementBalance\" >= 0");
+
+                            t.HasCheckConstraint("ck_credit_card_statements_due_after_closing", "\"DueDate\" > \"ClosingDate\"");
+                        });
+                });
+
+            modelBuilder.Entity("Nexo.Domain.CreditCards.Installment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateOnly>("ClosingDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly>("DueDate")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("InstallmentPlanId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InstallmentPlanId", "Number")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "ClosingDate");
+
+                    b.ToTable("installments", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_installments_amount_positive", "\"Amount\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("Nexo.Domain.CreditCards.InstallmentPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly?>("CancelledOn")
+                        .HasColumnType("date");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("CreditCardId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("InstallmentAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<decimal?>("InterestRate")
+                        .HasPrecision(5, 2)
+                        .HasColumnType("numeric(5,2)");
+
+                    b.Property<int>("NumberOfInstallments")
+                        .HasColumnType("integer");
+
+                    b.Property<decimal>("OriginalAmount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("TransactionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TransactionId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("CreditCardId", "Status");
+
+                    b.ToTable("installment_plans", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_installment_plans_amount_positive", "\"OriginalAmount\" > 0");
+
+                            t.HasCheckConstraint("ck_installment_plans_count", "\"NumberOfInstallments\" BETWEEN 2 AND 72");
+                        });
+                });
+
             modelBuilder.Entity("Nexo.Domain.EmailIngestion.EmailConnection", b =>
                 {
                     b.Property<Guid>("Id")
@@ -536,6 +754,27 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
+
+                    b.Property<DateOnly?>("CardClosingDate")
+                        .HasColumnType("date");
+
+                    b.Property<decimal?>("CardCreditLimit")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateOnly?>("CardDueDate")
+                        .HasColumnType("date");
+
+                    b.Property<decimal?>("CardMinimumPayment")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
+
+                    b.Property<DateOnly?>("CardPeriodStart")
+                        .HasColumnType("date");
+
+                    b.Property<decimal?>("CardStatementBalance")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("numeric(18,2)");
 
                     b.Property<DateTimeOffset?>("ConfirmedAt")
                         .HasColumnType("timestamp with time zone");
@@ -737,6 +976,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
 
                     b.Property<int>("RowNumber")
                         .HasColumnType("integer");
+
+                    b.Property<string>("SkipReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
 
                     b.Property<string>("Status")
                         .IsRequired()
@@ -1135,6 +1378,10 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("numeric(18,2)");
 
+                    b.Property<string>("CardMovementType")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<Guid?>("CategorizationRuleId")
                         .HasColumnType("uuid");
 
@@ -1530,6 +1777,48 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("Nexo.Domain.CreditCards.CreditCard", b =>
+                {
+                    b.HasOne("Nexo.Domain.Accounts.FinancialAccount", null)
+                        .WithMany()
+                        .HasForeignKey("FinancialAccountId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Nexo.Domain.CreditCards.CreditCardStatement", b =>
+                {
+                    b.HasOne("Nexo.Domain.CreditCards.CreditCard", null)
+                        .WithMany()
+                        .HasForeignKey("CreditCardId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Nexo.Domain.CreditCards.Installment", b =>
+                {
+                    b.HasOne("Nexo.Domain.CreditCards.InstallmentPlan", null)
+                        .WithMany("Installments")
+                        .HasForeignKey("InstallmentPlanId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Nexo.Domain.CreditCards.InstallmentPlan", b =>
+                {
+                    b.HasOne("Nexo.Domain.CreditCards.CreditCard", null)
+                        .WithMany()
+                        .HasForeignKey("CreditCardId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("Nexo.Domain.Transactions.Transaction", null)
+                        .WithMany()
+                        .HasForeignKey("TransactionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("Nexo.Domain.EmailIngestion.EmailConnection", b =>
                 {
                     b.HasOne("Nexo.Domain.Users.User", null)
@@ -1643,6 +1932,11 @@ namespace Nexo.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Nexo.Domain.Budgets.Budget", b =>
                 {
                     b.Navigation("Revisions");
+                });
+
+            modelBuilder.Entity("Nexo.Domain.CreditCards.InstallmentPlan", b =>
+                {
+                    b.Navigation("Installments");
                 });
 
             modelBuilder.Entity("Nexo.Domain.Transactions.Transaction", b =>

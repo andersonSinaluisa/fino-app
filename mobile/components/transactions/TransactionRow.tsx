@@ -5,6 +5,7 @@ import { Typo } from '../ui/Typo';
 import { formatCurrency } from '../../utils/format';
 import { iconForCategory } from '../../utils/categoryIcons';
 import { transactionCategoryLabel } from '../../utils/splits';
+import { MOVEMENT_TYPE_LABELS } from '../../utils/creditCards';
 import type { TransactionListItem } from '../../types/api';
 
 interface TransactionRowProps {
@@ -20,6 +21,9 @@ export function TransactionRow({ transaction, hidden = false, onPress }: Transac
   // Entregable 13: a confirmed transfer still shows in the list (it really did
   // move money) but reads as neither income nor an expense.
   const isTransfer = transaction.isInternalTransfer;
+  // Tarjetas de crédito: una devolución de tarjeta devuelve un gasto; no es un
+  // ingreso, así que no se pinta como tal.
+  const isCardRefund = transaction.cardMovementType === 'Refund';
 
   return (
     <Pressable
@@ -39,7 +43,7 @@ export function TransactionRow({ transaction, hidden = false, onPress }: Transac
 
         <View style={styles.metaRow}>
           <Typo variant="caption" color={colors.textSecondary} numberOfLines={1}>
-            {isTransfer ? 'Transferencia interna' : transactionCategoryLabel(transaction)}
+            {metaLabel(transaction)}
           </Typo>
 
           {needsReview ? (
@@ -66,12 +70,33 @@ export function TransactionRow({ transaction, hidden = false, onPress }: Transac
         // §22: un retiro conciliado no es un gasto ni un ingreso, es dinero
         // cambiando de sitio. La pata de efectivo se pintaba en verde de ingreso,
         // que hacía parecer que había entrado dinero nuevo al patrimonio.
-        color={isTransfer ? colors.textSecondary : income ? colors.success : colors.text}
+        color={isTransfer ? colors.textSecondary : income && !isCardRefund ? colors.success : colors.text}
       >
         {hidden ? '••••' : formatCurrency(transaction.signedAmount, { signed: true })}
       </Typo>
     </Pressable>
   );
+}
+
+/**
+ * Qué es el movimiento, en una línea. Los movimientos neutros de una tarjeta
+ * (pago, avance, ajuste) dicen lo que son en lugar de "Transferencia interna".
+ */
+function metaLabel(transaction: TransactionListItem): string {
+  const cardType = transaction.cardMovementType;
+  if (cardType === 'Payment' || cardType === 'CashAdvance' || cardType === 'Adjustment') {
+    return MOVEMENT_TYPE_LABELS[cardType];
+  }
+
+  if (transaction.isInternalTransfer) {
+    return 'Transferencia interna';
+  }
+
+  if (cardType === 'Refund') {
+    return `${MOVEMENT_TYPE_LABELS.Refund} · ${transactionCategoryLabel(transaction)}`;
+  }
+
+  return transactionCategoryLabel(transaction);
 }
 
 function Dot() {

@@ -25,6 +25,7 @@ function movement(overrides: Partial<TransactionListItem> = {}): TransactionList
     isInternalTransfer: false,
     isSplit: false,
     splits: [],
+    cardMovementType: null,
     ...overrides,
   };
 }
@@ -124,5 +125,39 @@ describe('TransactionRow', () => {
 
     expect(screen.getByText('Esposa + Comida')).toBeTruthy();
     expect(screen.getAllByText('-$220.00')).toHaveLength(1);
+  });
+
+  it('un pago de tarjeta dice lo que es y no se pinta como ingreso', async () => {
+    const payment = movement({
+      direction: 'Income',
+      amount: 220,
+      signedAmount: 220,
+      merchant: 'Pago desde Banco Pichincha',
+      categoryName: null,
+      categoryIcon: null,
+      categoryColor: null,
+      isInternalTransfer: true,
+      cardMovementType: 'Payment',
+    });
+
+    const screen = await render(<TransactionRow transaction={payment} />);
+
+    expect(screen.getByText('Pago a la tarjeta')).toBeTruthy();
+    expect(screen.queryByText('Transferencia interna')).toBeNull();
+  });
+
+  it('una devolución de tarjeta se ve como devolución de su categoría', async () => {
+    const refund = movement({
+      direction: 'Income',
+      amount: 30,
+      signedAmount: 30,
+      merchant: 'Devolucion Restaurante',
+      categoryName: 'Comida',
+      cardMovementType: 'Refund',
+    });
+
+    const screen = await render(<TransactionRow transaction={refund} />);
+
+    expect(screen.getByText('Devolución · Comida')).toBeTruthy();
   });
 });

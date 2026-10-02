@@ -55,7 +55,8 @@ public interface IWithdrawalService
 public sealed class WithdrawalService(
     INexoDbContext db,
     IClock clock,
-    ICashAccountProvisioner cashAccounts) : IWithdrawalService
+    ICashAccountProvisioner cashAccounts,
+    Nexo.Application.CreditCards.ICardMovementClassifier cardMovements) : IWithdrawalService
 {
     /// <summary>Hasta dónde mira hacia atrás la bandeja. Mismo criterio que InternalTransferService.</summary>
     private const int LookbackDays = 180;
@@ -267,6 +268,15 @@ public sealed class WithdrawalService(
         }
 
         // A partir de aquí es una transferencia interna como cualquier otra.
+        // Tarjetas de crédito: sacar efectivo con la tarjeta es un avance -- sube la
+        // deuda pero no es un gasto. Tipado antes de vincular, igual que en las
+        // transferencias, para que el estado de la tarjeta lo vea como tal.
+        var sourceAccount = await db.FinancialAccounts.FirstAsync(a => a.Id == bank.FinancialAccountId && a.UserId == userId, cancellationToken);
+        if (sourceAccount.IsLiability)
+        {
+            await cardMovements.ApplyAsync(sourceAccount, bank, CreditCardMovementType.CashAdvance, now, cancellationToken);
+        }
+
         bank.MarkAsInternalTransfer(cashLeg.Id, now);
         cashLeg.MarkAsInternalTransfer(bank.Id, now);
 

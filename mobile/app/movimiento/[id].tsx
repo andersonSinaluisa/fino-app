@@ -4,11 +4,12 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { WithdrawalCard } from '../../components/transactions/WithdrawalCard';
 import { colors, radius, spacing, typography } from '../../theme';
-import { Badge, Button, Card, EmptyState, Screen, SectionHeader, SkeletonCard, Typo } from '../../components/ui';
+import { Badge, Button, Card, EmptyState, Screen, SectionHeader, SelectSheet, SkeletonCard, Typo } from '../../components/ui';
 import {
   useCategories,
   useClearInternalTransfer,
   useCreateCategory,
+  useReclassifyCardMovement,
   useResolveDuplicate,
   useRulePreview,
   useSetCategory,
@@ -22,7 +23,11 @@ import { CategoryChipList } from '../../components/categories/CategoryChipList';
 import { CategoryFormSheet } from '../../components/categories/CategoryFormSheet';
 import { ApiError } from '../../services/apiClient';
 import { formatCurrency, formatFullDateTime, maskLabel } from '../../utils/format';
-import type { Category, RulePreview } from '../../types/api';
+import { MOVEMENT_TYPE_HINTS, MOVEMENT_TYPE_LABELS } from '../../utils/creditCards';
+import type { CardMovementType, Category, RulePreview } from '../../types/api';
+
+const CARD_TYPES: CardMovementType[] = ['Purchase', 'Refund', 'Payment', 'Interest', 'Fee', 'CashAdvance', 'Adjustment'];
+const NEUTRAL_CARD_TYPES: ReadonlySet<CardMovementType> = new Set(['Payment', 'CashAdvance', 'Adjustment']);
 
 /**
  * "Categorización personal" (punto 11): por qué el movimiento tiene la
@@ -66,6 +71,8 @@ export default function TransactionDetailScreen() {
   const setMerchant = useSetMerchant(id ?? '');
   const clearTransfer = useClearInternalTransfer();
   const resolveDuplicate = useResolveDuplicate(id ?? '');
+  const reclassify = useReclassifyCardMovement();
+  const [typePickerVisible, setTypePickerVisible] = useState(false);
 
   // §10: el retiro se busca en la lista de candidatos que la bandeja ya consulta, en
   // vez de pedirle al servidor que evalúe este movimiento suelto. Una petición menos,
@@ -327,16 +334,72 @@ export default function TransactionDetailScreen() {
           <View style={styles.transferNoticeRow}>
             <Ionicons name="swap-horizontal" size={17} color={colors.textSecondary} />
             <Typo variant="caption" color={colors.textSecondary} style={styles.warningText}>
-              Confirmaste que esto es una transferencia entre tus cuentas: mueve el saldo de la cuenta, pero no
-              cuenta como gasto ni como ingreso.
+              {data.cardMovementType === 'Payment'
+                ? 'Pago a tu tarjeta: baja la deuda y no cuenta como gasto ni como ingreso -- el gasto fueron las compras.'
+                : data.cardMovementType && NEUTRAL_CARD_TYPES.has(data.cardMovementType)
+                  ? `${MOVEMENT_TYPE_LABELS[data.cardMovementType]}: cambia la deuda de la tarjeta, pero no es gasto ni ingreso.`
+                  : 'Confirmaste que esto es una transferencia entre tus cuentas: mueve el saldo de la cuenta, pero no cuenta como gasto ni como ingreso.'}
             </Typo>
           </View>
-          <Button
-            label="Deshacer transferencia"
-            compact
-            variant="ghost"
-            loading={clearTransfer.isPending}
-            onPress={() => clearTransfer.mutate(data.id)}
+          {data.internalTransferLinkId ? (
+            <Button
+              label={data.cardMovementType === 'Payment' ? 'Desvincular del débito del banco' : 'Deshacer transferencia'}
+              compact
+              variant="ghost"
+              loading={clearTransfer.isPending}
+              onPress={() => clearTransfer.mutate(data.id)}
+            />
+          ) : null}
+        </View>
+      ) : null}
+
+      {data.accountIsCreditCard ? (
+        <View style={styles.section}>
+          <SectionHeader title="Tarjeta" actionLabel="Cambiar tipo" onAction={() => setTypePickerVisible(true)} />
+          <Card>
+            <Typo variant="bodyStrong">{data.cardMovementType ? MOVEMENT_TYPE_LABELS[data.cardMovementType] : 'Sin tipo'}</Typo>
+            {data.cardMovementType ? (
+              <Typo variant="caption" color={colors.textSecondary}>
+                {MOVEMENT_TYPE_HINTS[data.cardMovementType]}
+              </Typo>
+            ) : null}
+            {data.cardMovementType === 'Purchase' && data.installmentPlanId === null && data.status !== 'Ignored' ? (
+              <Button
+                label="Diferir en cuotas"
+                variant="secondary"
+                compact
+                onPress={() =>
+                  router.push({ pathname: '/tarjetas/diferir', params: { id: data.financialAccountId, transactionId: data.id } })
+                }
+              />
+            ) : null}
+            {data.installmentPlanId ? (
+              <Button
+                label="Ver sus cuotas"
+                variant="secondary"
+                compact
+                onPress={() =>
+                  router.push({ pathname: '/tarjetas/[id]', params: { id: data.financialAccountId, tab: 'installments' } })
+                }
+              />
+            ) : null}
+          </Card>
+          <SelectSheet
+            visible={typePickerVisible}
+            title="¿Qué es este movimiento?"
+            options={CARD_TYPES.map((value) => ({ value, label: MOVEMENT_TYPE_LABELS[value] }))}
+            selectedValue={data.cardMovementType ?? 'Purchase'}
+            onSelect={(value) => {
+              setTypePickerVisible(false);
+              if (value === data.cardMovementType) {
+                return;
+              }
+              reclassify.mutate(
+                { id: data.financialAccountId, transactionId: data.id, type: value },
+                { onError: (error) => Alert.alert('No pudimos cambiar el tipo', error.message) },
+              );
+            }}
+            onClose={() => setTypePickerVisible(false)}
           />
         </View>
       ) : null}

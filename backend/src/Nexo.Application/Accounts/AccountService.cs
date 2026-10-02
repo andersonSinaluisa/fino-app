@@ -252,6 +252,7 @@ public sealed class AccountService(INexoDbContext db, IClock clock) : IAccountSe
             account.LastVerifiedAt,
             account.LastTransactionAt,
             account.LastSyncedAt,
-            account.IsArchived);
+            account.IsArchived,
+            account.IsLiability);
     }
 }

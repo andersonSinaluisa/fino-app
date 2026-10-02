@@ -2,6 +2,8 @@ using Microsoft.EntityFrameworkCore;
 using Nexo.Application.Abstractions;
 using Nexo.Application.Analytics;
 using Nexo.Application.Common;
+using Nexo.Application.CreditCards;
+using Nexo.Domain.Accounts;
 using Nexo.Domain.Budgets;
 using Nexo.Domain.Common;
 using Nexo.Domain.Transactions;
@@ -31,14 +33,21 @@ public interface ICommittedMoneyService
 /// <item><b>Próximos pagos</b>: recurring payments (same detector as Estadísticas)
 /// seen last month and not yet this month, whose expected date is not already
 /// long past.</item>
+/// <item><b>Tarjetas</b>: the next payment of every card with auto-reserve on, as
+/// computed by CreditCardCalculator (via <see cref="CreditCardLedger"/>) -- the pending
+/// part of the last statement, or the projected one of the open cycle. Never the
+/// whole debt: installments of later statements are future debt, not money to set
+/// aside today.</item>
 /// </list>
-/// Fino has no persisted obligations/bill-schedule entity yet; when one is added it
-/// becomes a third candidate source here and nowhere else.
+/// "Tu dinero" is the money in the person's accounts only: a card's debt is not
+/// subtracted from it (that is what the card's Comprometido line is for) and its
+/// available credit is never added to it.
 /// </summary>
-public sealed class CommittedMoneyService(INexoDbContext db, BudgetLedgerFactory ledgers) : ICommittedMoneyService
+public sealed class CommittedMoneyService(INexoDbContext db, BudgetLedgerFactory ledgers, CreditCardLedger cards) : ICommittedMoneyService
 {
     public const string ReservedBudgetType = "reserved_budget";
     public const string UpcomingPaymentType = "upcoming_payment";
+    public const string CreditCardType = "credit_card";
 
     /// <summary>
     /// An expected payment that is more than this many days late is no longer
@@ -52,6 +61,7 @@ public sealed class CommittedMoneyService(INexoDbContext db, BudgetLedgerFactory
         var ledger = await ledgers.OpenAsync(userId, cancellationToken);
         var currentMoney = await CurrentMoneyAsync(userId, cancellationToken);
         var (candidates, upcoming) = await BuildCandidatesAsync(ledger, cancellationToken);
+        var cardDueDates = await AddCardCandidatesAsync(userId, candidates, cancellationToken);
 
         var result = CommittedMoneyCalculator.Calculate(currentMoney, candidates);
 
@@ -94,6 +104,28 @@ public sealed class CommittedMoneyService(INexoDbContext db, BudgetLedgerFactory
                     .ToList()));
         }
 
+        var cardLines = result.Lines.Where(l => l.Source == CommitmentSource.CreditCard).ToList();
+        if (cardLines.Count > 0)
+        {
+            sources.Add(new CommittedSourceDto(
+                CreditCardType,
+                "Tarjetas",
+                "El próximo pago de las tarjetas en las que elegiste reservarlo. Solo lo que vence en el próximo estado, no toda la deuda.",
+                result.TotalFor(CommitmentSource.CreditCard),
+                cardLines
+                    .OrderBy(l => cardDueDates.TryGetValue(l.ReferenceKey, out var due) ? due : DateOnly.MaxValue)
+                    .Select(l => new CommittedItemDto(
+                        l.Label,
+                        l.CountedAmount,
+                        l.GrossAmount,
+                        null,
+                        null,
+                        null,
+                        cardDueDates.TryGetValue(l.ReferenceKey, out var due) ? due : null,
+                        l.ReferenceId))
+                    .ToList()));
+        }
+
         var lastDay = new DateOnly(ledger.Today.Year, ledger.Today.Month, DateTime.DaysInMonth(ledger.Today.Year, ledger.Today.Month));
         var daysRemaining = lastDay.DayNumber - ledger.Today.DayNumber + 1;
 
@@ -126,6 +158,7 @@ public sealed class CommittedMoneyService(INexoDbContext db, BudgetLedgerFactory
 
         var currentMoney = await CurrentMoneyAsync(userId, cancellationToken);
         var (candidates, _) = await BuildCandidatesAsync(ledger, cancellationToken);
+        await AddCardCandidatesAsync(userId, candidates, cancellationToken);
         var before = CommittedMoneyCalculator.Calculate(currentMoney, candidates);
 
         // Editing: the budget's current reserve is REPLACED by the new one, never added twice.
@@ -174,17 +207,47 @@ public sealed class CommittedMoneyService(INexoDbContext db, BudgetLedgerFactory
 
     /// <summary>
     /// "Tu dinero": the same figure Home shows as the total -- the sum of every
-    /// non-archived account's current balance (see TransactionService.GetHomeSummaryAsync).
+    /// non-archived account's current balance (see TransactionService.GetHomeSummaryAsync),
+    /// credit cards excluded: their balance is debt and their available credit is not money.
     /// </summary>
     private async Task<decimal> CurrentMoneyAsync(Guid userId, CancellationToken cancellationToken)
     {
         var balances = await db.FinancialAccounts
             .AsNoTracking()
-            .Where(a => a.UserId == userId && !a.IsArchived)
+            .Where(a => a.UserId == userId && !a.IsArchived && a.AccountType != AccountKinds.LiabilityType)
             .Select(a => a.EstimatedBalance)
             .ToListAsync(cancellationToken);
 
         return MoneyMath.Round(balances.Sum());
+    }
+
+    /// <summary>Tarjetas: one candidate per active card whose next payment is reserved. Returns each one's due date by key.</summary>
+    private async Task<Dictionary<string, DateOnly>> AddCardCandidatesAsync(
+        Guid userId,
+        List<CommitmentCandidate> candidates,
+        CancellationToken cancellationToken)
+    {
+        var dueDates = new Dictionary<string, DateOnly>(StringComparer.Ordinal);
+        var context = await cards.OpenAsync(userId, cancellationToken);
+        foreach (var state in await cards.LoadAsync(context, includeArchived: false, cancellationToken))
+        {
+            if (state.Snapshot is not { CommittedContribution: > 0m, NextPayment: { } next } snapshot)
+            {
+                continue;
+            }
+
+            var key = "card:" + state.Account.Id.ToString("N");
+            dueDates[key] = next.DueDate;
+            candidates.Add(new CommitmentCandidate(
+                CommitmentSource.CreditCard,
+                key,
+                state.Account.Alias,
+                null,
+                snapshot.CommittedContribution,
+                state.Account.Id));
+        }
+
+        return dueDates;
     }
 
     private async Task<(List<CommitmentCandidate> Candidates, Dictionary<string, DateOnly> ExpectedDates)> BuildCandidatesAsync(

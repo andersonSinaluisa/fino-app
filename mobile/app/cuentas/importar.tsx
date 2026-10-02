@@ -32,6 +32,7 @@ import {
   trackOnce,
 } from '../../services/analytics';
 import { formatCurrency, formatDayHeading } from '../../utils/format';
+import { formatDueDate } from '../../utils/creditCards';
 import { ACCEPTED_EXTENSIONS, extensionOf, guessMimeType } from '../../lib/importFileTypes';
 import type { ImportPreview, ImportResult, ManualColumnMapping } from '../../types/api';
 
@@ -551,6 +552,15 @@ export default function ImportScreen() {
         durationBucket: elapsedImportBucket(),
       });
 
+      // Tarjetas de crédito: solo el hecho y si el archivo traía las cifras del
+      // estado -- nunca montos, banco ni dígitos.
+      if (account?.isLiability) {
+        track(AnalyticsEvent.CreditCardStatementImported, {
+          fileFormat: toFileFormat(pickedAsset?.name),
+          hasSummary: Boolean(preview?.cardStatement),
+        });
+      }
+
       void trackOnce(AnalyticsEvent.FirstImportCompleted, {
         fileFormat: toFileFormat(pickedAsset?.name),
       });
@@ -684,11 +694,36 @@ export default function ImportScreen() {
                 </View>
               ) : null}
 
-              <View style={styles.summaryRow}>
-                <Summary label="Ingresos" value={formatCurrency(preview.incomeTotal)} tone={colors.success} />
-                <Summary label="Gastos" value={formatCurrency(preview.expenseTotal)} tone={colors.text} />
-                <Summary label="Duplicados" value={String(preview.duplicateRows)} tone={colors.textSecondary} />
-              </View>
+              {account?.isLiability ? (
+                // Tarjetas de crédito: en una tarjeta lo que entra son abonos (pagos,
+                // devoluciones) y lo que sale son cargos (compras, intereses) -- no
+                // "ingresos" ni "gastos" todavía; eso lo decide el tipo de cada uno.
+                <View style={styles.summaryRow}>
+                  <Summary label="Cargos" value={formatCurrency(preview.expenseTotal)} tone={colors.text} />
+                  <Summary label="Abonos" value={formatCurrency(preview.incomeTotal)} tone={colors.text} />
+                  <Summary label="Duplicados" value={String(preview.duplicateRows)} tone={colors.textSecondary} />
+                </View>
+              ) : (
+                <View style={styles.summaryRow}>
+                  <Summary label="Ingresos" value={formatCurrency(preview.incomeTotal)} tone={colors.success} />
+                  <Summary label="Gastos" value={formatCurrency(preview.expenseTotal)} tone={colors.text} />
+                  <Summary label="Duplicados" value={String(preview.duplicateRows)} tone={colors.textSecondary} />
+                </View>
+              )}
+
+              {preview.cardStatement ? (
+                <View style={styles.noticeBox}>
+                  <Ionicons name="document-text-outline" size={17} color={colors.text} />
+                  <Typo variant="caption" color={colors.textSecondary} style={styles.flex}>
+                    Estado de tarjeta
+                    {preview.cardStatement.closingDate ? ` · corte ${formatDueDate(preview.cardStatement.closingDate)}` : ''}
+                    {preview.cardStatement.dueDate ? ` · paga hasta ${formatDueDate(preview.cardStatement.dueDate)}` : ''}
+                    {preview.cardStatement.statementBalance !== null ? ` · total ${formatCurrency(preview.cardStatement.statementBalance)}` : ''}
+                    {preview.cardStatement.minimumPayment !== null ? ` · mínimo ${formatCurrency(preview.cardStatement.minimumPayment)}` : ''}
+                    . Al importar, Fino usará estas cifras oficiales.
+                  </Typo>
+                </View>
+              ) : null}
 
               {preview.previouslyImportedFile ? (
                 <View style={styles.noticeBox}>
@@ -725,23 +760,31 @@ export default function ImportScreen() {
                   const isExcluded = excluded.has(row.id);
                   const isDuplicate = row.status === 'ExactDuplicate';
                   const invalid = row.status === 'Invalid';
+                  // Tarjetas de crédito: "CUOTA 4/12" de una compra que ya está diferida en Fino.
+                  const coveredInstallment = row.status === 'Skipped' && row.skipReason !== null;
 
                   return (
                     <Pressable
                       key={row.id}
-                      onPress={() => (isDuplicate || invalid ? undefined : toggleRow(row.id))}
-                      style={[styles.row, isExcluded || isDuplicate || invalid ? styles.rowMuted : null]}
+                      onPress={() => (isDuplicate || invalid || coveredInstallment ? undefined : toggleRow(row.id))}
+                      style={[styles.row, isExcluded || isDuplicate || invalid || coveredInstallment ? styles.rowMuted : null]}
                     >
                       <View style={styles.flex}>
                         <Typo variant="body" numberOfLines={1}>
                           {row.description ?? `Fila ${row.rowNumber}`}
                         </Typo>
                         <Typo variant="caption" color={colors.textSecondary}>
-                          {row.transactionDate ? formatDayHeading(row.transactionDate) : (row.error ?? 'Sin fecha')}
+                          {coveredInstallment
+                            ? row.skipReason
+                            : row.transactionDate
+                              ? formatDayHeading(row.transactionDate)
+                              : (row.error ?? 'Sin fecha')}
                         </Typo>
                       </View>
 
-                      {isDuplicate ? (
+                      {coveredInstallment ? (
+                        <Badge label="Cuota ya registrada" tone="neutral" />
+                      ) : isDuplicate ? (
                         <Badge label="Ya lo tienes" tone="neutral" />
                       ) : row.status === 'ProbableDuplicate' ? (
                         <Badge label="Revisar" tone="attention" />
@@ -751,7 +794,7 @@ export default function ImportScreen() {
                         <Typo
                           variant="bodyStrong"
                           tabular
-                          color={row.direction === 'Income' ? colors.success : colors.text}
+                          color={row.direction === 'Income' && !account?.isLiability ? colors.success : colors.text}
                         >
                           {row.amount === null
                             ? '—'

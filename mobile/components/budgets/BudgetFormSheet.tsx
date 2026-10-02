@@ -259,6 +259,54 @@ function BudgetForm({ budget, initialCategoryId, hidden, onClose, onSaved }: Bud
             </View>
           ) : null}
 
+          {/* "Reservar este dinero": la decisión que cambia el Disponible, así que
+              va como tarjeta grande y tocable entera -- no como un switch perdido
+              al final. El estado se dice con texto e ícono, no solo con color. */}
+          <Pressable
+            onPress={() => setReserveFunds((value) => !value)}
+            accessibilityRole="switch"
+            accessibilityState={{ checked: reserveFunds }}
+            accessibilityLabel="Reservar este dinero"
+            accessibilityHint={reserveFunds ? 'Toca para que solo controle el gasto' : 'Toca para apartar este dinero de tu Disponible'}
+            style={({ pressed }) => [
+              styles.reserveCard,
+              reserveFunds ? styles.reserveCardOn : null,
+              pressed ? styles.reservePressed : null,
+            ]}
+          >
+            <View style={[styles.reserveIcon, reserveFunds ? styles.reserveIconOn : null]}>
+              <Ionicons
+                name={reserveFunds ? 'lock-closed' : 'lock-open-outline'}
+                size={20}
+                color={reserveFunds ? colors.onAccent : colors.text}
+              />
+            </View>
+            <View style={styles.flex}>
+              <View style={styles.reserveTitleRow}>
+                <Typo variant="bodyStrong">Reservar este dinero</Typo>
+                <View style={[styles.reserveState, reserveFunds ? styles.reserveStateOn : null]}>
+                  <Typo variant="overline" color={reserveFunds ? colors.onPrimary : colors.textSecondary}>
+                    {reserveFunds ? 'SÍ' : 'NO'}
+                  </Typo>
+                </View>
+              </View>
+              <Typo variant="caption" color={reserveFunds ? colors.text : colors.textSecondary}>
+                {reserveFunds
+                  ? 'Este dinero se tendrá en cuenta para calcular cuánto tienes realmente disponible.'
+                  : 'Solo controla cuánto gastas. Actívalo para apartar este dinero de tu Disponible (alquiler, servicios…).'}
+              </Typo>
+            </View>
+            <Switch
+              value={reserveFunds}
+              onValueChange={setReserveFunds}
+              trackColor={{ true: colors.primary, false: colors.borderStrong }}
+              thumbColor={reserveFunds ? colors.accent : colors.surface}
+              ios_backgroundColor={colors.borderStrong}
+              accessibilityElementsHidden
+              importantForAccessibility="no"
+            />
+          </Pressable>
+
           <Typo variant="caption" color={colors.textSecondary} style={styles.label}>
             Nombre (opcional)
           </Typo>
@@ -278,23 +326,6 @@ function BudgetForm({ budget, initialCategoryId, hidden, onClose, onSaved }: Bud
             {PRIORITIES.map((value) => (
               <Chip key={value} label={PRIORITY_LABELS[value]} selected={priority === value} onPress={() => setPriority(value)} />
             ))}
-          </View>
-
-          <View style={styles.reserveRow}>
-            <View style={styles.flex}>
-              <Typo variant="bodyStrong">Reservar este dinero</Typo>
-              <Typo variant="caption" color={colors.textSecondary}>
-                {reserveFunds
-                  ? 'Este dinero se tendrá en cuenta para calcular cuánto tienes realmente disponible.'
-                  : 'Solo controla cuánto gastas. No cambia tu Disponible.'}
-              </Typo>
-            </View>
-            <Switch
-              value={reserveFunds}
-              onValueChange={setReserveFunds}
-              trackColor={{ true: colors.primary, false: colors.surfaceSecondary }}
-              accessibilityLabel="Reservar este dinero"
-            />
           </View>
 
           {previewWanted && amount !== null && customValid ? (
@@ -440,14 +471,49 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.sm,
   },
-  reserveRow: {
+  reserveCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
     backgroundColor: colors.surface,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
+    borderWidth: 2,
+    borderColor: colors.borderStrong,
     padding: spacing.lg,
     marginBottom: spacing.lg,
+  },
+  reserveCardOn: {
+    borderColor: colors.primary,
+    backgroundColor: 'rgba(199, 243, 107, 0.28)',
+  },
+  reservePressed: {
+    opacity: 0.85,
+  },
+  reserveIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.surfaceSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reserveIconOn: {
+    backgroundColor: colors.accent,
+  },
+  reserveTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: 2,
+  },
+  reserveState: {
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceSecondary,
+  },
+  reserveStateOn: {
+    backgroundColor: colors.primary,
   },
   preview: {
     backgroundColor: colors.surfaceSecondary,

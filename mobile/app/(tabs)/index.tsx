@@ -14,7 +14,6 @@ import { PendingSyncBanner } from '../../components/quick-entry/PendingSyncBanne
 import { TransactionRow } from '../../components/transactions/TransactionRow';
 import { SectionHeader } from '../../components/ui/SectionHeader';
 import { useSummary, useAnalyticsDashboard, usePulses, useCommittedMoney, useBudgets } from '../../hooks/queries';
-import { BudgetHomeCard } from '../../components/home/BudgetHomeCard';
 import { usePreferencesStore } from '../../store/preferencesStore';
 import { useOnboardingStore } from '../../store/onboardingStore';
 import { useAuthStore } from '../../store/authStore';
@@ -133,23 +132,20 @@ export default function HomeScreen() {
             </View>
           ) : null}
 
+          {/* Disponible = Tu dinero − Comprometido, armado desde los presupuestos
+              (reservas) y los próximos pagos, con cómo vas en el mes. Todo viene
+              calculado del backend. */}
           <AvailableMoneySection
             summary={data}
             committed={committed}
+            budgets={budgetOverview}
             hidden={hidden}
             onOpenCommitted={() => router.push({ pathname: '/comprometido', params: { source: AnalyticsSource.Home } })}
+            onOpenBudgets={() => router.push('/presupuestos')}
+            onOpenBudget={(id) =>
+              router.push({ pathname: '/presupuestos/[id]', params: { id, source: AnalyticsSource.Home } })
+            }
           />
-
-          <View style={styles.budgetSection}>
-            <BudgetHomeCard
-              overview={budgetOverview}
-              hidden={hidden}
-              onOpenBudgets={() => router.push('/presupuestos')}
-              onOpenBudget={(id) =>
-                router.push({ pathname: '/presupuestos/[id]', params: { id, source: AnalyticsSource.Home } })
-              }
-            />
-          </View>
 
           <View style={styles.section}>
             <MonthSummaryCard
@@ -183,7 +179,9 @@ export default function HomeScreen() {
 
           <View style={styles.section}>
             <AccountsSummaryList
-              accounts={data.accounts}
+              // Tarjetas de crédito: "Tus cuentas" en Home es tu dinero. Las
+              // tarjetas (deuda) viven en Cuentas y su próximo pago en Comprometido.
+              accounts={data.accounts.filter((account) => !account.isLiability)}
               hidden={hidden}
               onSeeAll={() => router.push('/(tabs)/cuentas')}
               onPressAccount={() => router.push('/(tabs)/cuentas')}
@@ -239,9 +237,6 @@ const styles = StyleSheet.create({
   },
   section: {
     marginTop: spacing.xxl,
-  },
-  budgetSection: {
-    marginBottom: spacing.md,
   },
   topSection: {
     marginTop: spacing.xxl,

@@ -45,6 +45,19 @@ public static class AccountStaleness
     public const int ThresholdDays = 7;
 }
 
+/// <summary>
+/// Which account types hold the person's money and which hold debt. The single
+/// place that decides it; EF queries use <see cref="LiabilityType"/> directly
+/// because a computed property cannot be translated to SQL.
+/// </summary>
+public static class AccountKinds
+{
+    /// <summary>The only liability type today.</summary>
+    public const AccountType LiabilityType = AccountType.CreditCard;
+
+    public static bool IsLiability(AccountType type) => type == LiabilityType;
+}
+
 public sealed class FinancialAccount : Entity, IUserOwned
 {
     private FinancialAccount()
@@ -79,6 +92,13 @@ public sealed class FinancialAccount : Entity, IUserOwned
     public bool IsArchived { get; private set; }
 
     public int DisplayOrder { get; private set; }
+
+    /// <summary>
+    /// Tarjetas de crédito: a card's balance is debt (a liability), not the person's
+    /// money. Liabilities are never part of "Tu dinero" or "Disponible" -- see
+    /// <see cref="AccountKinds"/> for the query-side form of this same rule.
+    /// </summary>
+    public bool IsLiability => AccountKinds.IsLiability(AccountType);
 
     public BalanceType BalanceKind =>
         LastVerifiedAt is null
@@ -184,6 +204,13 @@ public sealed class FinancialAccount : Entity, IUserOwned
     public void Rename(string alias, DateTimeOffset now)
     {
         Alias = DomainException.RequireText(alias, nameof(alias), 80);
+        Stamp(now);
+    }
+
+    /// <summary>Last digits only -- anything longer is cut to its last four.</summary>
+    public void ChangeMask(string? mask, DateTimeOffset now)
+    {
+        Mask = NormalizeMask(mask);
         Stamp(now);
     }
 

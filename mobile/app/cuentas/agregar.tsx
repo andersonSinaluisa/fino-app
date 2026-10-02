@@ -158,7 +158,13 @@ export default function AddAccountScreen() {
               {accountTypes.map((type) => (
                 <Pressable
                   key={type.code}
-                  onPress={() => setAccountType(type.code)}
+                  onPress={() =>
+                    // Tarjetas de crédito: una tarjeta es deuda, no una cuenta de
+                    // dinero -- tiene su propio formulario (cupo, corte, pago).
+                    type.code === 'CreditCard'
+                      ? router.push({ pathname: '/tarjetas/nueva', params: { providerCode: selected.code } })
+                      : setAccountType(type.code)
+                  }
                   style={[styles.typeChip, accountType === type.code ? styles.typeChipSelected : null]}
                 >
                   <Typo

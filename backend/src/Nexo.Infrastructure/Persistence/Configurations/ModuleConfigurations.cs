@@ -118,6 +118,12 @@ public sealed class ImportConfiguration : IEntityTypeConfiguration<Import>
         builder.Property(i => i.ExpenseTotal).HasPrecision(18, 2);
         builder.Property(i => i.DeclaredClosingBalance).HasPrecision(18, 2);
 
+        // Tarjetas de crédito: official figures read from a card statement header.
+        builder.Property(i => i.CardStatementBalance).HasPrecision(18, 2);
+        builder.Property(i => i.CardMinimumPayment).HasPrecision(18, 2);
+        builder.Property(i => i.CardCreditLimit).HasPrecision(18, 2);
+        builder.Ignore(i => i.HasCardStatementSummary);
+
         builder.HasIndex(i => new { i.UserId, i.CreatedAt });
         builder.HasIndex(i => new { i.FinancialAccountId, i.ContentHash });
 
@@ -134,6 +140,7 @@ public sealed class ImportRowConfiguration : IEntityTypeConfiguration<ImportRow>
     {
         builder.ToTable("import_rows");
         builder.HasKey(r => r.Id);
+        builder.Property(r => r.SkipReason).HasMaxLength(200);
 
         builder.Property(r => r.Status).HasConversion<string>().HasMaxLength(24).IsRequired();
         builder.Property(r => r.MatchType).HasConversion<string>().HasMaxLength(24).IsRequired();

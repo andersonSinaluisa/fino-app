@@ -6,6 +6,7 @@ using Nexo.Application.Abstractions;
 using Nexo.Application.Accounts;
 using Nexo.Application.Categorization;
 using Nexo.Application.Common;
+using Nexo.Application.CreditCards;
 using Nexo.Application.Deduplication;
 using Nexo.Application.Imports.Parsing;
 using Nexo.Application.Imports.Parsing.Parsers;
@@ -14,6 +15,7 @@ using Nexo.Application.Insights;
 using Nexo.Domain.Accounts;
 using Nexo.Domain.Audit;
 using Nexo.Domain.Common;
+using Nexo.Domain.CreditCards;
 using Nexo.Domain.Imports;
 using Nexo.Domain.Transactions;
 
@@ -104,7 +106,9 @@ public sealed class ImportService(
     IRealtimeNotifier realtime,
     IClock clock,
     IOptions<ImportOptions> options,
-    ILogger<ImportService> logger) : IImportService
+    ILogger<ImportService> logger,
+    ICardMovementClassifier cardMovements,
+    CreditCardService creditCards) : IImportService
 {
     private readonly ImportOptions _options = options.Value;
 
@@ -156,7 +160,7 @@ public sealed class ImportService(
                     savedMapping.FirstRowIsHeader);
 
                 var mappedResult = await mappedParser.ParseAsync(context, cancellationToken);
-                return await ApplyParsedStatementAsync(userId, import, account, mappedResult, now, cancellationToken);
+                return await ApplyParsedStatementAsync(userId, import, account, mappedResult, now, cancellationToken, table);
             }
 
             import.MarkFailed(
@@ -177,7 +181,7 @@ public sealed class ImportService(
         }
 
         var parsed = await parser.ParseAsync(context, cancellationToken);
-        return await ApplyParsedStatementAsync(userId, import, account, parsed, now, cancellationToken);
+        return await ApplyParsedStatementAsync(userId, import, account, parsed, now, cancellationToken, table);
     }
 
     public async Task<ImportPreviewDto> UploadManualAsync(
@@ -264,7 +268,7 @@ public sealed class ImportService(
         var manualParser = new ManualMappingStatementParser(account.ProviderCode, columnMap, mapping.FirstRowIsHeader);
         var parsed = await manualParser.ParseAsync(context, cancellationToken);
 
-        return await ApplyParsedStatementAsync(userId, import, account, parsed, now, cancellationToken);
+        return await ApplyParsedStatementAsync(userId, import, account, parsed, now, cancellationToken, table);
     }
 
     private static StatementColumnMap ToColumnMap(ImportColumnMapping mapping) => new()
@@ -350,13 +354,34 @@ public sealed class ImportService(
         FinancialAccount account,
         StatementParseResult parsed,
         DateTimeOffset now,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        TabularTable? table = null)
     {
         if (!parsed.Succeeded)
         {
             import.MarkFailed(parsed.FailureReason ?? "No pudimos procesar el archivo.", now);
             await db.SaveChangesAsync(cancellationToken);
             return await BuildPreviewAsync(userId, import, cancellationToken);
+        }
+
+        // Tarjetas de crédito: same pipeline, two card-specific steps -- purchases
+        // must raise the debt whatever sign convention the file used, and the
+        // statement's header figures (corte, fecha máxima, total, mínimo, cupo) are
+        // kept to declare the statement on confirm.
+        if (account.IsLiability)
+        {
+            (parsed, _) = CreditCardStatementImport.Orient(parsed);
+            if (table is not null && CreditCardStatementImport.ReadSummary(table) is { IsEmpty: false } summary)
+            {
+                import.AttachCardStatementSummary(
+                    null,
+                    summary.ClosingDate,
+                    summary.DueDate,
+                    summary.StatementBalance,
+                    summary.MinimumPayment,
+                    summary.CreditLimit,
+                    now);
+            }
         }
 
         var financialAccountId = account.Id;
@@ -380,7 +405,11 @@ public sealed class ImportService(
                     t.Description)))
             .ToList();
 
-        var matches = await deduplication.CheckBatchAsync(userId, movements, cancellationToken);
+        var matches = (await deduplication.CheckBatchAsync(userId, movements, cancellationToken)).ToList();
+        await ReconcileCardPaymentLegsAsync(userId, account, movements, matches, cancellationToken);
+        var coveredByPlans = account.IsLiability
+            ? await FindInstallmentLinesCoveredByPlansAsync(userId, account, movements, cancellationToken)
+            : new Dictionary<int, (Guid PurchaseId, string Reason)>();
         var session = await categorization.StartSessionAsync(userId, cancellationToken);
 
         var rows = new List<ImportRow>();
@@ -412,6 +441,15 @@ public sealed class ImportService(
             if (match.Match is not null && match.MatchType != DuplicateMatchType.NoMatch)
             {
                 row.MarkDuplicate(match.MatchType, match.Match.TransactionId, match.Match.Score, now);
+            }
+            else if (coveredByPlans.TryGetValue(i, out var covered))
+            {
+                // Tarjetas de crédito: "CUOTA 4/12" of a purchase Fino already has
+                // (with its plan). Left out on purpose and explained -- never counted twice.
+                row.MarkCoveredByInstallmentPlan(covered.PurchaseId, covered.Reason, now);
+                duplicates++;
+                rows.Add(row);
+                continue;
             }
 
             // Same merchant the resulting Transaction will actually store (see
@@ -629,6 +667,11 @@ public sealed class ImportService(
                 categorySource: row.SuggestedCategorySource,
                 categorizationRuleId: row.SuggestedCategorizationRuleId);
 
+            // Tarjetas de crédito: a card movement is stored with its type (compra,
+            // pago, devolución, interés...), so the payment line of a card statement is
+            // never read as income.
+            await cardMovements.ApplyAsync(account, transaction, null, now, cancellationToken);
+
             // A probable duplicate is imported but parked for review: never silently
             // dropped, never silently double-counted.
             if (row.Status == ImportRowStatus.ProbableDuplicate && row.MatchedTransactionId is { } matchedId)
@@ -651,7 +694,16 @@ public sealed class ImportService(
         import.MarkCompleted(imported + flagged + upgraded, now);
         account.MarkSynced(now);
 
-        if (request.ApplyDeclaredClosingBalance && import.DeclaredClosingBalance is { } closing)
+        // Tarjetas de crédito: the statement's official figures become the declared
+        // statement of that closing (traceable to this import).
+        if (account.IsLiability && import.HasCardStatementSummary)
+        {
+            await DeclareCardStatementAsync(userId, account, import, cancellationToken);
+        }
+
+        // A card's "saldo" in a file is not its debt in Fino's sign convention (and
+        // a statement total excludes deferred installments), so it never anchors a card.
+        if (request.ApplyDeclaredClosingBalance && !account.IsLiability && import.DeclaredClosingBalance is { } closing)
         {
             var asOf = import.PeriodEnd ?? now;
 
@@ -795,6 +847,187 @@ public sealed class ImportService(
         return accounts.ToDictionary(a => a.Id, a => a.Alias);
     }
 
+    /// <summary>
+    /// Tarjetas de crédito, conciliación: a payment registered by hand ("Pagar
+    /// tarjeta") has two legs -- "Pago tarjeta Visa" on the bank and "Pago desde
+    /// Banco" on the card. When the bank's or the card's statement later lists that
+    /// same payment ("PAGO TARJETA VISA", "SU PAGO GRACIAS"), the texts rarely look
+    /// alike, so the description-based matcher can miss it. Same account, same
+    /// direction, same amount, a few days apart, against a hand-registered leg of a
+    /// card payment: kept as a PROBABLE duplicate for the person to confirm -- never
+    /// merged automatically.
+    /// </summary>
+    private async Task ReconcileCardPaymentLegsAsync(
+        Guid userId,
+        FinancialAccount account,
+        IReadOnlyList<IncomingMovement> movements,
+        List<DuplicateCheckResult> matches,
+        CancellationToken cancellationToken)
+    {
+        var candidates = Enumerable.Range(0, movements.Count)
+            .Where(i => matches[i].MatchType == DuplicateMatchType.NoMatch
+                        && (account.IsLiability
+                            ? movements[i].Direction == TransactionDirection.Income
+                              && CreditCardMovementRules.Classify(TransactionDirection.Income, movements[i].Description) == CreditCardMovementType.Payment
+                            : movements[i].Direction == TransactionDirection.Expense))
+            .ToList();
+
+        if (candidates.Count == 0)
+        {
+            return;
+        }
+
+        var window = TimeSpan.FromDays(CreditCardService.PaymentMatchWindowDays);
+        var from = candidates.Min(i => movements[i].TransactionDate) - window;
+        var to = candidates.Max(i => movements[i].TransactionDate) + window;
+
+        var legs = await db.Transactions
+            .AsNoTracking()
+            .Where(t => t.UserId == userId
+                        && t.FinancialAccountId == account.Id
+                        && t.Source == TransactionSource.Manual
+                        && t.IsInternalTransfer
+                        && t.TransactionDate >= from
+                        && t.TransactionDate <= to
+                        && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending))
+            .Select(t => new { t.Id, t.Amount, t.Direction, t.TransactionDate, t.CardMovementType, t.InternalTransferLinkId })
+            .ToListAsync(cancellationToken);
+
+        if (!account.IsLiability && legs.Count > 0)
+        {
+            // On a bank account only the bank half of a CARD payment qualifies.
+            var linkedIds = legs.Where(l => l.InternalTransferLinkId is not null).Select(l => l.InternalTransferLinkId!.Value).ToArray();
+            var cardPayments = linkedIds.Length == 0
+                ? new HashSet<Guid>()
+                : (await db.Transactions
+                    .AsNoTracking()
+                    .Where(t => t.UserId == userId && t.CardMovementType == CreditCardMovementType.Payment)
+                    .WhereIdIn(t => t.Id, linkedIds)
+                    .Select(t => t.Id)
+                    .ToListAsync(cancellationToken)).ToHashSet();
+            legs = legs.Where(l => l.InternalTransferLinkId is { } link && cardPayments.Contains(link)).ToList();
+        }
+        else
+        {
+            legs = legs.Where(l => l.CardMovementType == CreditCardMovementType.Payment).ToList();
+        }
+
+        var claimed = matches.Where(m => m.Match is not null).Select(m => m.Match!.TransactionId).ToHashSet();
+        foreach (var i in candidates)
+        {
+            var movement = movements[i];
+            var leg = legs
+                .Where(l => !claimed.Contains(l.Id)
+                            && l.Direction == movement.Direction
+                            && l.Amount == movement.Amount
+                            && (l.TransactionDate - movement.TransactionDate).Duration() <= window)
+                .OrderBy(l => (l.TransactionDate - movement.TransactionDate).Duration())
+                .FirstOrDefault();
+
+            if (leg is null)
+            {
+                continue;
+            }
+
+            claimed.Add(leg.Id);
+            matches[i] = new DuplicateCheckResult(
+                DuplicateMatchType.ProbableMatch,
+                new DuplicateMatch(leg.Id, DuplicateMatchType.ProbableMatch, 0.9d, "card_payment_already_registered"));
+        }
+    }
+
+    /// <summary>
+    /// Tarjetas de crédito: statement lines like "LAPTOP CUOTA 4/12 $100" whose purchase
+    /// is already in Fino as ONE $1,200 movement with an installment plan of the same
+    /// number of installments and installment amount. Those lines are the plan's
+    /// installments, not new purchases.
+    /// </summary>
+    private async Task<Dictionary<int, (Guid PurchaseId, string Reason)>> FindInstallmentLinesCoveredByPlansAsync(
+        Guid userId,
+        FinancialAccount account,
+        IReadOnlyList<IncomingMovement> movements,
+        CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<int, (Guid, string)>();
+        var markers = Enumerable.Range(0, movements.Count)
+            .Where(i => movements[i].Direction == TransactionDirection.Expense)
+            .Select(i => (Index: i, Marker: CreditCardMovementRules.ParseInstallmentMarker(movements[i].Description)))
+            .Where(x => x.Marker is not null)
+            .ToList();
+
+        if (markers.Count == 0)
+        {
+            return result;
+        }
+
+        var card = await db.CreditCards.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.UserId == userId && c.FinancialAccountId == account.Id, cancellationToken);
+        if (card is null)
+        {
+            return result;
+        }
+
+        var plans = await db.InstallmentPlans
+            .AsNoTracking()
+            .Include(p => p.Installments)
+            .Where(p => p.UserId == userId && p.CreditCardId == card.Id)
+            .ToListAsync(cancellationToken);
+
+        foreach (var (index, marker) in markers)
+        {
+            var amount = movements[index].Amount;
+            var plan = plans.FirstOrDefault(p =>
+                p.NumberOfInstallments == marker!.Value.Count
+                && p.Installments.Any(i => i.Number == marker.Value.Number && Math.Abs(i.Amount - amount) <= 0.01m));
+            if (plan is not null)
+            {
+                result[index] = (plan.TransactionId, $"Cuota {marker!.Value.Number}/{marker.Value.Count} de una compra diferida que ya está en Fino.");
+            }
+        }
+
+        return result;
+    }
+
+    private async Task DeclareCardStatementAsync(Guid userId, FinancialAccount account, Import import, CancellationToken cancellationToken)
+    {
+        var card = await db.CreditCards
+            .FirstOrDefaultAsync(c => c.UserId == userId && c.FinancialAccountId == account.Id, cancellationToken);
+        if (card is null)
+        {
+            return;
+        }
+
+        var now = clock.UtcNow;
+        if (import.CardCreditLimit is { } limit && limit != card.CreditLimit)
+        {
+            // The bank's statement is the authority on the limit (e.g. an increase).
+            card.ChangeLimit(limit, now);
+        }
+
+        var closing = import.CardClosingDate!.Value;
+        var due = import.CardDueDate!.Value;
+        if (due <= closing)
+        {
+            return;
+        }
+
+        var minimum = import.CardMinimumPayment is { } m && m <= import.CardStatementBalance!.Value ? m : (decimal?)null;
+        await creditCards.UpsertDeclaredStatementAsync(
+            userId,
+            card,
+            closing,
+            due,
+            import.CardStatementBalance!.Value,
+            minimum,
+            import.CardPeriodStart,
+            StatementSource.Imported,
+            import.Id,
+            cancellationToken);
+
+        db.AuditLog.Add(AuditLogEntry.Record(userId, AuditActions.CreditCardStatementDeclared, "CreditCard", now, account.Id.ToString()));
+        NexoTelemetry.CreditCardEvents.Add(1, new KeyValuePair<string, object?>("action", "statement_imported"));
+    }
+
     private async Task<ImportPreviewDto> BuildPreviewAsync(
         Guid userId,
         Import import,
@@ -849,7 +1082,8 @@ public sealed class ImportService(
             r.MatchedTransactionId,
             r.SuggestedCategoryId,
             r.SuggestedCategoryId is { } id && categoryNames.TryGetValue(id, out var name) ? name : null,
-            r.Error)).ToList();
+            r.Error,
+            r.SkipReason)).ToList();
 
         return new ImportPreviewDto(
             import.Id,
@@ -872,7 +1106,15 @@ public sealed class ImportService(
             previouslyImported,
             rowDtos,
             unmappedColumns,
-            unmappedSampleRows);
+            unmappedSampleRows,
+            import.HasCardStatementSummary || import.CardCreditLimit is not null || import.CardMinimumPayment is not null
+                ? new CardStatementSummaryDto(
+                    import.CardClosingDate,
+                    import.CardDueDate,
+                    import.CardStatementBalance,
+                    import.CardMinimumPayment,
+                    import.CardCreditLimit)
+                : null);
     }
 
     internal static TabularTable ReadTable(byte[] bytes, string extension, int maxRows, int maxColumns = CsvTableReader.DefaultMaxColumns)

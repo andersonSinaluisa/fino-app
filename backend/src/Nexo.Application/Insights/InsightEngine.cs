@@ -64,6 +64,9 @@ public sealed class InsightEngine(INexoDbContext db, IClock clock) : IInsightEng
             .Where(t => t.UserId == userId
                         && t.TransactionDate >= since
                         && !t.IsInternalTransfer
+                        // Tarjetas de crédito: a card refund is neither income nor a
+                        // purchase; leaving it out keeps "ingreso del mes" honest.
+                        && t.CardMovementType != CreditCardMovementType.Refund
                         && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending));
 
         var movements = await scope

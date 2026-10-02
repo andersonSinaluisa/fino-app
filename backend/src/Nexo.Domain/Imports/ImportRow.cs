@@ -74,6 +74,12 @@ public sealed class ImportRow : Entity, IUserOwned
 
     public Guid? CreatedTransactionId { get; private set; }
 
+    /// <summary>
+    /// Tarjetas de crédito: why a row was left out on purpose (e.g. "cuota 4/12" of a
+    /// purchase Fino already has as an installment plan). Null otherwise.
+    /// </summary>
+    public string? SkipReason { get; private set; }
+
     public string? Error { get; private set; }
 
     /// <summary>Original cells, kept as JSON for troubleshooting a misparsed statement.</summary>
@@ -166,6 +172,18 @@ public sealed class ImportRow : Entity, IUserOwned
     {
         CreatedTransactionId = transactionId;
         Status = ImportRowStatus.Imported;
+        Stamp(now);
+    }
+
+    /// <summary>
+    /// "CUOTA 4/12 LAPTOP": the installment of a purchase that is already in Fino as one
+    /// $1,200 movement with its plan. Importing the line too would count the laptop twice.
+    /// </summary>
+    public void MarkCoveredByInstallmentPlan(Guid purchaseTransactionId, string reason, DateTimeOffset now)
+    {
+        MatchedTransactionId = purchaseTransactionId;
+        SkipReason = DomainException.RequireText(reason, nameof(reason), 200);
+        Status = ImportRowStatus.Skipped;
         Stamp(now);
     }
 

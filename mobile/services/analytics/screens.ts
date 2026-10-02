@@ -52,5 +52,11 @@ export function resolveScreen(pathname: string): AnalyticsScreenName | null {
     return AnalyticsScreen.BudgetDetail;
   }
 
+  // `/tarjetas/<id>` -- el detalle de una tarjeta; ni su id ni sus dígitos viajan.
+  // Los formularios (nueva, pagar, estado, diferir) son modales y no cuentan.
+  if (/^\/tarjetas\/[0-9a-f-]{36}$/i.test(pathname)) {
+    return AnalyticsScreen.CreditCardDetail;
+  }
+
   return null;
 }

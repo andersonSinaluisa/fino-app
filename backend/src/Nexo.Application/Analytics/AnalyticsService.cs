@@ -82,7 +82,7 @@ public sealed class AnalyticsService(INexoDbContext db, IClock clock) : IAnalyti
 
         var buckets = BuildBuckets(from, to, dates);
         var series = await BuildSeriesAsync(userId, accountIds, buckets, cancellationToken);
-        var balanceEvolution = await BuildBalanceEvolutionAsync(userId, accountIds, accounts, buckets, now, cancellationToken);
+        var balanceEvolution = await BuildBalanceEvolutionAsync(userId, accounts, query.AccountId is not null, buckets, now, cancellationToken);
 
         var categoryBreakdown = await BuildCategoryTrendAsync(userId, accountIds, from, to, previousFrom, previousTo, cancellationToken);
         var spotlight = PickSpotlight(categoryBreakdown);
@@ -225,15 +225,9 @@ public sealed class AnalyticsService(INexoDbContext db, IClock clock) : IAnalyti
         DateTimeOffset to,
         CancellationToken cancellationToken)
     {
-        var query = ScopedTransactions(userId, accountIds, from, to)
-            .Where(t => !t.IsInternalTransfer);
-
-        var income = await query.Where(t => t.Direction == TransactionDirection.Income)
-            .SumAsync(t => (decimal?)t.Amount, cancellationToken) ?? 0m;
-        var expense = await query.Where(t => t.Direction == TransactionDirection.Expense)
-            .SumAsync(t => (decimal?)t.Amount, cancellationToken) ?? 0m;
-
-        return (income, expense);
+        // Tarjetas de crédito: MoneyFlows -- card purchases are spending, paying the
+        // card is not, a card refund lowers spending instead of being income.
+        return await MoneyFlows.SumAsync(ScopedTransactions(userId, accountIds, from, to), cancellationToken);
     }
 
     private IQueryable<Transaction> ScopedTransactions(Guid userId, IReadOnlyCollection<Guid> accountIds, DateTimeOffset from, DateTimeOffset to) =>
@@ -289,6 +283,14 @@ public sealed class AnalyticsService(INexoDbContext db, IClock clock) : IAnalyti
             .Select(t => new { t.Merchant, t.Amount })
             .ToListAsync(cancellationToken);
 
+        // Card refunds give money back to what was spent; they come off the variable
+        // part so fijo + variable always equals the KPI's expense.
+        var refunds = await ScopedTransactions(userId, accountIds, from, to)
+            .Where(t => !t.IsInternalTransfer
+                        && t.Direction == TransactionDirection.Income
+                        && t.CardMovementType == CreditCardMovementType.Refund)
+            .SumAsync(t => (decimal?)t.Amount, cancellationToken) ?? 0m;
+
         var fixedExpense = 0m;
         var variableExpense = 0m;
         foreach (var row in rows)
@@ -304,6 +306,7 @@ public sealed class AnalyticsService(INexoDbContext db, IClock clock) : IAnalyti
             }
         }
 
+        variableExpense = Math.Max(variableExpense - refunds, 0m);
         var net = income - fixedExpense - variableExpense;
         return new MoneyFlowDto(
             MoneyMath.Round(income),
@@ -369,8 +372,8 @@ public sealed class AnalyticsService(INexoDbContext db, IClock clock) : IAnalyti
     /// </summary>
     private async Task<List<BalancePointDto>> BuildBalanceEvolutionAsync(
         Guid userId,
-        IReadOnlyCollection<Guid> accountIds,
         List<FinancialAccount> accounts,
+        bool singleAccountRequested,
         List<Bucket> buckets,
         DateTimeOffset now,
         CancellationToken cancellationToken)
@@ -380,13 +383,23 @@ public sealed class AnalyticsService(INexoDbContext db, IClock clock) : IAnalyti
             return [];
         }
 
-        var currentBalance = accounts.Sum(a => a.EstimatedBalance);
+        // "Saldo" is the person's money: card debt is a liability and is left out of
+        // the combined line -- unless the person is looking at one card on its own,
+        // in which case its (negative) balance is exactly what they asked for.
+        var balanceAccounts = singleAccountRequested ? accounts : accounts.Where(a => !a.IsLiability).ToList();
+        var balanceAccountIds = balanceAccounts.Select(a => a.Id).ToArray();
+        if (balanceAccountIds.Length == 0)
+        {
+            return buckets.Select(b => new BalancePointDto(b.To, b.Label, 0m)).ToList();
+        }
+
+        var currentBalance = balanceAccounts.Sum(a => a.EstimatedBalance);
 
         var movements = await db.Transactions.AsNoTracking()
             .Where(t => t.UserId == userId
                         && t.TransactionDate <= now
                         && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending))
-            .WhereIdIn(t => t.FinancialAccountId, accountIds)
+            .WhereIdIn(t => t.FinancialAccountId, balanceAccountIds)
             .Select(t => new { t.TransactionDate, t.Amount, t.Direction })
             .OrderByDescending(t => t.TransactionDate)
             .ToListAsync(cancellationToken);
@@ -477,17 +490,25 @@ public sealed class AnalyticsService(INexoDbContext db, IClock clock) : IAnalyti
         DateTimeOffset to,
         CancellationToken cancellationToken)
     {
-        var expenses = ScopedTransactions(userId, accountIds, from, to)
-            .Where(t => t.Direction == TransactionDirection.Expense && !t.IsInternalTransfer);
+        var spending = MoneyFlows.Spending(ScopedTransactions(userId, accountIds, from, to));
 
         // Movimientos divididos: by allocation, so a divided movement counts its
-        // parts and never itself on top of them.
-        var grouped = await CategoryAllocations.Expand(expenses, db)
+        // parts and never itself on top of them. Tarjetas de crédito: a card refund
+        // subtracts from its category.
+        var grouped = await CategoryAllocations.Expand(spending, db)
             .GroupBy(t => t.CategoryId)
-            .Select(g => new { CategoryId = g.Key, Total = g.Sum(x => x.Amount), Count = g.Count() })
+            .Select(g => new
+            {
+                CategoryId = g.Key,
+                Total = g.Sum(x => x.Direction == TransactionDirection.Expense ? x.Amount : -x.Amount),
+                Count = g.Count(),
+            })
             .ToListAsync(cancellationToken);
 
-        return grouped.Select(g => new CategoryTotal(g.CategoryId ?? Guid.Empty, g.Total, g.Count)).ToList();
+        return grouped
+            .Where(g => g.Total > 0m)
+            .Select(g => new CategoryTotal(g.CategoryId ?? Guid.Empty, g.Total, g.Count))
+            .ToList();
     }
 
     /// <summary>

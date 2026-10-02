@@ -121,6 +121,8 @@ public sealed class PulseEngine(INexoDbContext db, IClock clock) : IPulseEngine
             .Where(t => t.UserId == userId
                         && t.TransactionDate >= since
                         && !t.IsInternalTransfer
+                        // Tarjetas de crédito: a card refund is not new income.
+                        && t.CardMovementType != CreditCardMovementType.Refund
                         && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending));
 
         var movements = await scope
@@ -192,7 +194,8 @@ public sealed class PulseEngine(INexoDbContext db, IClock clock) : IPulseEngine
             await AddIfCooledDownAsync(DetectAccountOutdated(userId, account, now), AccountOutdatedCooldownDays);
         }
 
-        foreach (var account in accounts)
+        // A card's balance is debt: "el saldo bajó" means nothing for it.
+        foreach (var account in accounts.Where(a => !a.IsLiability))
         {
             await AddIfCooledDownAsync(DetectBalanceChange(userId, account, movements, now), BalanceChangeCooldownDays);
         }

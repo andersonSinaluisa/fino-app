@@ -271,6 +271,7 @@ app.MapEmailIngestionEndpoints();
 app.MapPulseEndpoints();
 app.MapOnboardingEndpoints();
 app.MapBudgetEndpoints();
+app.MapCreditCardEndpoints();
 
 app.MapHub<NexoHub>("/hubs/nexo");
 

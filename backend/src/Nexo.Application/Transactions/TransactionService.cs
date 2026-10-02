@@ -328,20 +328,17 @@ public sealed class TransactionService(
         // Entregable 13: a confirmed transfer between the person's own accounts
         // still moves each account's balance, but it is neither income nor an
         // expense -- excluded here the same way NeedsReview/Ignored already are.
+        //
+        // Tarjetas de crédito: MoneyFlows is the one rule for income vs spending -- a
+        // card purchase is spending, paying the card is not (it is flagged like a
+        // transfer), and a card refund lowers spending instead of being income.
         var monthlyQuery = db.Transactions
             .AsNoTracking()
             .Where(t => t.UserId == userId
                         && t.TransactionDate >= monthStart
-                        && !t.IsInternalTransfer
                         && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending));
 
-        var income = await monthlyQuery
-            .Where(t => t.Direction == TransactionDirection.Income)
-            .SumAsync(t => (decimal?)t.Amount, cancellationToken) ?? 0m;
-
-        var expense = await monthlyQuery
-            .Where(t => t.Direction == TransactionDirection.Expense)
-            .SumAsync(t => (decimal?)t.Amount, cancellationToken) ?? 0m;
+        var (income, expense) = await MoneyFlows.SumAsync(monthlyQuery, cancellationToken);
 
         // Entregable 15 ("Dashboard final MVP"): "comparación mensual" as a
         // guaranteed dashboard figure, computed the same way every time -- unlike
@@ -353,16 +350,9 @@ public sealed class TransactionService(
             .Where(t => t.UserId == userId
                         && t.TransactionDate >= previousMonthStart
                         && t.TransactionDate < monthStart
-                        && !t.IsInternalTransfer
                         && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending));
 
-        var previousIncome = await previousMonthQuery
-            .Where(t => t.Direction == TransactionDirection.Income)
-            .SumAsync(t => (decimal?)t.Amount, cancellationToken) ?? 0m;
-
-        var previousExpense = await previousMonthQuery
-            .Where(t => t.Direction == TransactionDirection.Expense)
-            .SumAsync(t => (decimal?)t.Amount, cancellationToken) ?? 0m;
+        var (previousIncome, previousExpense) = await MoneyFlows.SumAsync(previousMonthQuery, cancellationToken);
 
         var monthComparison = new MonthComparisonDto(
             MoneyMath.Round(previousIncome),
@@ -408,13 +398,17 @@ public sealed class TransactionService(
                 i.ValidUntil))
             .ToListAsync(cancellationToken);
 
+        // "Tu dinero": the person's money only. A card's balance is debt and its
+        // available credit is not money -- neither is ever added here.
+        var moneyAccounts = accounts.Where(a => !a.IsLiability).ToList();
+
         return new HomeSummaryDto(
             Greeting(now, user.TimeZoneId),
             user.DisplayName,
-            MoneyMath.Round(accounts.Sum(a => a.EstimatedBalance)),
+            MoneyMath.Round(moneyAccounts.Sum(a => a.EstimatedBalance)),
             user.PreferredCurrency,
             accounts.Count,
-            accounts.Any(a => a.BalanceKind == Nexo.Domain.Accounts.BalanceType.Estimated),
+            moneyAccounts.Any(a => a.BalanceKind == Nexo.Domain.Accounts.BalanceType.Estimated),
             new MonthlyTotalsDto(
                 MoneyMath.Round(income),
                 MoneyMath.Round(expense),
@@ -434,14 +428,12 @@ public sealed class TransactionService(
         CancellationToken cancellationToken,
         Guid? accountId = null)
     {
-        var query = db.Transactions
+        var query = MoneyFlows.Spending(db.Transactions
             .AsNoTracking()
             .Where(t => t.UserId == userId
-                        && t.Direction == TransactionDirection.Expense
                         && t.TransactionDate >= from
                         && t.TransactionDate <= to
-                        && !t.IsInternalTransfer
-                        && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending));
+                        && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending)));
 
         if (accountId is { } id)
         {
@@ -451,10 +443,18 @@ public sealed class TransactionService(
         // Movimientos divididos: grouped by category ALLOCATION, not by the
         // movement's own CategoryId -- a divided movement contributes its parts
         // (Esposa $70 + Comida $150), never itself (Comida $220) as well.
-        var grouped = await CategoryAllocations.Expand(query, db)
+        // Tarjetas de crédito: a card refund subtracts from its category.
+        var grouped = (await CategoryAllocations.Expand(query, db)
             .GroupBy(a => a.CategoryId)
-            .Select(g => new { CategoryId = g.Key, Total = g.Sum(x => x.Amount), Count = g.Count() })
-            .ToListAsync(cancellationToken);
+            .Select(g => new
+            {
+                CategoryId = g.Key,
+                Total = g.Sum(x => x.Direction == TransactionDirection.Expense ? x.Amount : -x.Amount),
+                Count = g.Count(),
+            })
+            .ToListAsync(cancellationToken))
+            .Where(g => g.Total > 0m)
+            .ToList();
 
         if (grouped.Count == 0)
         {
@@ -667,7 +667,8 @@ public sealed class TransactionService(
             transaction.Source.ToString(),
             transaction.IsInternalTransfer,
             transaction.IsSplit,
-            transaction.IsSplit ? MapSplits(splits[transaction.Id], categories) : []);
+            transaction.IsSplit ? MapSplits(splits[transaction.Id], categories) : [],
+            transaction.CardMovementType?.ToString());
     }
 
     internal async Task<TransactionDetailDto> MapDetailAsync(
@@ -703,6 +704,14 @@ public sealed class TransactionService(
             splitDtos = MapSplits(parts, await LoadCategoryLookupAsync(userId, cancellationToken));
         }
 
+        var installmentPlanId = transaction.CardMovementType == CreditCardMovementType.Purchase
+            ? await db.InstallmentPlans
+                .AsNoTracking()
+                .Where(p => p.UserId == userId && p.TransactionId == transaction.Id)
+                .Select(p => (Guid?)p.Id)
+                .FirstOrDefaultAsync(cancellationToken)
+            : null;
+
         return new TransactionDetailDto(
             transaction.Id,
             transaction.FinancialAccountId,
@@ -735,7 +744,10 @@ public sealed class TransactionService(
             transaction.InternalTransferLinkId,
             transaction.IsSplit,
             transaction.SplitVersion,
-            splitDtos);
+            splitDtos,
+            CardMovementType: transaction.CardMovementType?.ToString(),
+            InstallmentPlanId: installmentPlanId,
+            AccountIsCreditCard: account?.IsLiability ?? false);
     }
 
     private async Task<Dictionary<Guid, string>> LoadAccountAliasesAsync(

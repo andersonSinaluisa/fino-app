@@ -27,9 +27,9 @@ function isLiquidAccount(account: Account): boolean {
   // credit card's balance (what they OWE the bank) is excluded -- it's a
   // liability, not spendable cash. Every other account type (Checking,
   // Savings, Wallet, Other) counts. This is a real, derived aggregation over
-  // fields the backend already sends (AccountDto.accountType/balance), not a
+  // fields the backend already sends (AccountDto.isLiability/balance), not a
   // new concept invented client-side.
-  return account.accountType !== 'CreditCard' && !account.isArchived;
+  return !account.isLiability && !account.isArchived;
 }
 
 function daysInMonth(year: number, monthIndexZeroBased: number): number {

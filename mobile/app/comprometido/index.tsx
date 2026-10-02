@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,12 +8,17 @@ import { useCommittedMoney } from '../../hooks/queries';
 import { usePreferencesStore } from '../../store/preferencesStore';
 import { AnalyticsEvent, AnalyticsSource, track } from '../../services/analytics';
 import { formatCurrency, formatShortDate } from '../../utils/format';
+import { formatDueDate } from '../../utils/creditCards';
 import type { CommittedItem, CommittedSource } from '../../types/api';
 
 const SOURCE_ICON: Record<CommittedSource['type'], keyof typeof Ionicons.glyphMap> = {
   reserved_budget: 'lock-closed-outline',
   upcoming_payment: 'calendar-outline',
+  credit_card: 'card-outline',
 };
+
+/** Tarjetas: se pliega (una línea por tarjeta) y se expande al tocarla. */
+const COLLAPSIBLE: ReadonlySet<CommittedSource['type']> = new Set(['credit_card']);
 
 /**
  * "¿De dónde salió mi Comprometido?". Cada peso tiene su origen: presupuestos
@@ -27,6 +32,17 @@ export default function CommittedScreen() {
   const params = useLocalSearchParams<{ source?: string }>();
   const hidden = usePreferencesStore((state) => state.amountsHidden);
   const { data, isLoading, isError, refetch, isRefetching } = useCommittedMoney();
+  const [expanded, setExpanded] = useState<ReadonlySet<CommittedSource['type']>>(new Set());
+  const toggle = (type: CommittedSource['type']) =>
+    setExpanded((current) => {
+      const next = new Set(current);
+      if (next.has(type)) {
+        next.delete(type);
+      } else {
+        next.add(type);
+      }
+      return next;
+    });
 
   const tracked = useRef(false);
   useEffect(() => {
@@ -89,7 +105,7 @@ export default function CommittedScreen() {
             <Card style={styles.stack}>
               <Typo variant="subheading">Nada comprometido por ahora</Typo>
               <Typo variant="body" color={colors.textSecondary}>
-                Cuando reservas dinero en un presupuesto (alquiler, servicios) o Fino detecta un pago que se repite cada mes y todavía no llega, aparece aquí.
+                Cuando reservas dinero en un presupuesto (alquiler, servicios), activas «Reservar el próximo pago» en una tarjeta o Fino detecta un pago que se repite cada mes y todavía no llega, aparece aquí.
               </Typo>
               <Button
                 label="Crear un presupuesto"
@@ -99,42 +115,66 @@ export default function CommittedScreen() {
             </Card>
           ) : (
             <View style={styles.stack}>
-              {data.sources.map((source) => (
-                <Card key={source.type} style={styles.stack}>
-                  <View style={styles.rowBetween}>
-                    <View style={styles.inline}>
-                      <Ionicons name={SOURCE_ICON[source.type]} size={18} color={colors.text} />
-                      <Typo variant="subheading">{source.label}</Typo>
-                    </View>
-                    <Typo variant="subheading" tabular>
-                      {money(source.amount)}
-                    </Typo>
-                  </View>
-                  <Typo variant="caption" color={colors.textSecondary}>
-                    {source.description}
-                  </Typo>
-                  <View>
-                    {source.items.map((item, index) => (
-                      <View key={`${item.label}-${index}`}>
-                        {index > 0 ? <View style={styles.divider} /> : null}
-                        <ItemRow
-                          item={item}
-                          hidden={hidden}
-                          onPress={
-                            item.budgetId
-                              ? () =>
-                                  router.push({
-                                    pathname: '/presupuestos/[id]',
-                                    params: { id: item.budgetId!, source: AnalyticsSource.Committed },
-                                  })
-                              : undefined
-                          }
-                        />
+              {data.sources.map((source) => {
+                const collapsible = COLLAPSIBLE.has(source.type);
+                const open = !collapsible || expanded.has(source.type);
+                return (
+                  <Card key={source.type} style={styles.stack}>
+                    <Pressable
+                      disabled={!collapsible}
+                      onPress={() => toggle(source.type)}
+                      accessibilityRole={collapsible ? 'button' : undefined}
+                      accessibilityState={collapsible ? { expanded: open } : undefined}
+                      accessibilityHint={collapsible ? 'Muestra cada tarjeta y su fecha de pago' : undefined}
+                      style={styles.rowBetween}
+                    >
+                      <View style={styles.inline}>
+                        <Ionicons name={SOURCE_ICON[source.type]} size={18} color={colors.text} />
+                        <Typo variant="subheading">{source.label}</Typo>
                       </View>
-                    ))}
-                  </View>
-                </Card>
-              ))}
+                      <View style={styles.inline}>
+                        <Typo variant="subheading" tabular>
+                          {money(source.amount)}
+                        </Typo>
+                        {collapsible ? (
+                          <Ionicons name={open ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textSecondary} />
+                        ) : null}
+                      </View>
+                    </Pressable>
+                    <Typo variant="caption" color={colors.textSecondary}>
+                      {source.description}
+                    </Typo>
+                    {open ? (
+                      <View>
+                        {source.items.map((item, index) => (
+                          <View key={`${item.label}-${index}`}>
+                            {index > 0 ? <View style={styles.divider} /> : null}
+                            <ItemRow
+                              item={item}
+                              hidden={hidden}
+                              onPress={
+                                item.budgetId
+                                  ? () =>
+                                      router.push({
+                                        pathname: '/presupuestos/[id]',
+                                        params: { id: item.budgetId!, source: AnalyticsSource.Committed },
+                                      })
+                                  : item.creditCardId
+                                    ? () =>
+                                        router.push({
+                                          pathname: '/tarjetas/[id]',
+                                          params: { id: item.creditCardId!, source: AnalyticsSource.Committed },
+                                        })
+                                    : undefined
+                              }
+                            />
+                          </View>
+                        ))}
+                      </View>
+                    ) : null}
+                  </Card>
+                );
+              })}
 
               <View style={[styles.rowBetween, styles.total]}>
                 <Typo variant="bodyStrong" color={colors.onPrimary}>
@@ -166,9 +206,11 @@ function ItemRow({ item, hidden, onPress }: { item: CommittedItem; hidden: boole
     ? partlyCovered
       ? `Una parte ya está en tu presupuesto ${item.coveredByBudgetName}`
       : `Incluido en tu presupuesto ${item.coveredByBudgetName}`
-    : item.expectedDate
-      ? `Esperado cerca del ${formatShortDate(`${item.expectedDate}T12:00:00`)}`
-      : null;
+    : item.creditCardId && item.expectedDate
+      ? `Vence ${formatDueDate(item.expectedDate).toLowerCase()}`
+      : item.expectedDate
+        ? `Esperado cerca del ${formatShortDate(`${item.expectedDate}T12:00:00`)}`
+        : null;
 
   const content = (
     <View style={styles.itemRow}>
@@ -190,7 +232,7 @@ function ItemRow({ item, hidden, onPress }: { item: CommittedItem; hidden: boole
   );
 
   return onPress ? (
-    <Pressable onPress={onPress} accessibilityRole="button" accessibilityHint="Abre el presupuesto">
+    <Pressable onPress={onPress} accessibilityRole="button" accessibilityHint={item.creditCardId ? 'Abre la tarjeta' : 'Abre el presupuesto'}>
       {content}
     </Pressable>
   ) : (

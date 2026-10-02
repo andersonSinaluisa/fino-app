@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Nexo.Application.Abstractions;
 using Nexo.Application.Common;
+using Nexo.Application.CreditCards;
 using Nexo.Domain.Common;
 using Nexo.Domain.Transactions;
 
@@ -25,7 +26,7 @@ public interface IInternalTransferService
 /// enough to need anything cleverer than "an expense matched to an income of the
 /// exact same amount, on a different account, a few days apart".
 /// </summary>
-public sealed class InternalTransferService(INexoDbContext db, IClock clock) : IInternalTransferService
+public sealed class InternalTransferService(INexoDbContext db, IClock clock, ICardMovementClassifier cardMovements) : IInternalTransferService
 {
     /// <summary>How far back a candidate pair is even considered.</summary>
     private const int LookbackDays = 180;
@@ -42,7 +43,11 @@ public sealed class InternalTransferService(INexoDbContext db, IClock clock) : I
         var movements = await db.Transactions
             .AsNoTracking()
             .Where(t => t.UserId == userId
-                        && !t.IsInternalTransfer
+                        // Tarjetas de crédito: a card payment imported from the card's
+                        // statement is already neutral but has no bank leg yet -- it is
+                        // exactly the incoming half this pairing looks for.
+                        && (!t.IsInternalTransfer
+                            || (t.InternalTransferLinkId == null && t.CardMovementType == CreditCardMovementType.Payment))
                         && t.TransactionDate >= since
                         && (t.Status == TransactionStatus.Posted || t.Status == TransactionStatus.Pending))
             .OrderBy(t => t.TransactionDate)
@@ -59,7 +64,7 @@ public sealed class InternalTransferService(INexoDbContext db, IClock clock) : I
             .Select(a => new { a.Id, a.Alias })
             .ToDictionaryAsync(a => a.Id, a => a.Alias, cancellationToken);
 
-        var outgoing = movements.Where(t => t.Direction == TransactionDirection.Expense);
+        var outgoing = movements.Where(t => t.Direction == TransactionDirection.Expense && !t.IsInternalTransfer);
         var incoming = movements.Where(t => t.Direction == TransactionDirection.Income).ToList();
 
         // Greedy pairing, oldest first: once an incoming leg is claimed by one
@@ -132,7 +137,28 @@ public sealed class InternalTransferService(INexoDbContext db, IClock clock) : I
             throw new DomainException("amount_mismatch", "Both legs of a transfer must be the exact same amount and currency.");
         }
 
+        if (outgoing.InternalTransferLinkId is not null || incoming.InternalTransferLinkId is not null)
+        {
+            throw new ConflictException("Uno de los dos movimientos ya está vinculado con otra cuenta.");
+        }
+
         var now = clock.UtcNow;
+
+        // Tarjetas de crédito: money arriving at a card is a payment to it; money
+        // leaving a card for one of your accounts is a cash advance. Typed here so the
+        // card's statements and next payment see them for what they are.
+        var outgoingAccount = await db.FinancialAccounts.FirstAsync(a => a.Id == outgoing.FinancialAccountId && a.UserId == userId, cancellationToken);
+        var incomingAccount = await db.FinancialAccounts.FirstAsync(a => a.Id == incoming.FinancialAccountId && a.UserId == userId, cancellationToken);
+        if (incomingAccount.IsLiability)
+        {
+            await cardMovements.ApplyAsync(incomingAccount, incoming, CreditCardMovementType.Payment, now, cancellationToken);
+        }
+
+        if (outgoingAccount.IsLiability)
+        {
+            await cardMovements.ApplyAsync(outgoingAccount, outgoing, CreditCardMovementType.CashAdvance, now, cancellationToken);
+        }
+
         outgoing.MarkAsInternalTransfer(incoming.Id, now);
         incoming.MarkAsInternalTransfer(outgoing.Id, now);
 

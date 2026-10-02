@@ -6,6 +6,7 @@ using Nexo.Domain.Accounts;
 using Nexo.Domain.Audit;
 using Nexo.Domain.Budgets;
 using Nexo.Domain.Categories;
+using Nexo.Domain.CreditCards;
 using Nexo.Domain.Common;
 using Nexo.Domain.EmailIngestion;
 using Nexo.Domain.Imports;
@@ -78,6 +79,14 @@ public sealed class NexoDbContext : DbContext, INexoDbContext
     public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();
 
     public DbSet<Budget> Budgets => Set<Budget>();
+
+    public DbSet<CreditCard> CreditCards => Set<CreditCard>();
+
+    public DbSet<CreditCardStatement> CreditCardStatements => Set<CreditCardStatement>();
+
+    public DbSet<InstallmentPlan> InstallmentPlans => Set<InstallmentPlan>();
+
+    public DbSet<Installment> Installments => Set<Installment>();
 
     public IQueryable<T> IgnoringUserFilter<T>()
         where T : class => Set<T>().IgnoreQueryFilters();

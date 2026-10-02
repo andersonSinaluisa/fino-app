@@ -84,6 +84,7 @@ public sealed class PrivacyService(INexoDbContext db, IClock clock) : IPrivacySe
                 t.Merchant,
                 t.MerchantCorrected,
                 t.IsInternalTransfer,
+                CardMovementType = t.CardMovementType != null ? t.CardMovementType.ToString() : null,
                 t.InternalTransferLinkId,
                 t.CategoryId,
                 t.IsSplit,
@@ -181,6 +182,56 @@ public sealed class PrivacyService(INexoDbContext db, IClock clock) : IPrivacySe
             })
             .ToListAsync(cancellationToken);
 
+        // Tarjetas de crédito: the terms, the declared statements and the plans.
+        var creditCards = await db.CreditCards.AsNoTracking()
+            .Where(c => c.UserId == userId)
+            .Select(c => new
+            {
+                c.Id,
+                c.FinancialAccountId,
+                Network = c.Network.ToString(),
+                c.CreditLimit,
+                c.ClosingDay,
+                c.PaymentDueDay,
+                c.AutoReserve,
+                c.CreatedAt,
+            })
+            .ToListAsync(cancellationToken);
+
+        var creditCardStatements = await db.CreditCardStatements.AsNoTracking()
+            .Where(s => s.UserId == userId)
+            .Select(s => new
+            {
+                s.Id,
+                s.CreditCardId,
+                s.PeriodStart,
+                s.ClosingDate,
+                s.DueDate,
+                s.StatementBalance,
+                s.MinimumPayment,
+                Source = s.Source.ToString(),
+                s.CreatedAt,
+            })
+            .ToListAsync(cancellationToken);
+
+        var installmentPlans = await db.InstallmentPlans.AsNoTracking()
+            .Where(p => p.UserId == userId)
+            .Select(p => new
+            {
+                p.Id,
+                p.CreditCardId,
+                p.TransactionId,
+                p.OriginalAmount,
+                p.NumberOfInstallments,
+                p.InstallmentAmount,
+                p.InterestRate,
+                p.StartDate,
+                Status = p.Status.ToString(),
+                p.CancelledOn,
+                Installments = p.Installments.OrderBy(i => i.Number).Select(i => new { i.Number, i.Amount, i.ClosingDate, i.DueDate }).ToList(),
+            })
+            .ToListAsync(cancellationToken);
+
         var notifications = await db.Notifications.AsNoTracking()
             .Where(n => n.UserId == userId)
             .Select(n => new { n.Id, Type = n.Type.ToString(), n.Title, n.Body, IsRead = n.ReadAt != null, n.CreatedAt })
@@ -217,6 +268,9 @@ public sealed class PrivacyService(INexoDbContext db, IClock clock) : IPrivacySe
             categories,
             categorizationRules,
             budgets,
+            creditCards,
+            creditCardStatements,
+            installmentPlans,
             insights,
             notifications,
             sessions,

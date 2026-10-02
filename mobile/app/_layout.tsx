@@ -179,6 +179,14 @@ export default function RootLayout() {
           <Stack.Screen name="plan/index" options={{ presentation: 'card' }} />
           <Stack.Screen name="presupuestos/[id]" options={{ presentation: 'card' }} />
           <Stack.Screen name="comprometido/index" options={{ presentation: 'card' }} />
+          {/* Tarjetas de crédito: el detalle es una pantalla; crear, pagar, registrar
+              un estado o un movimiento y diferir en cuotas son formularios modales. */}
+          <Stack.Screen name="tarjetas/[id]" options={{ presentation: 'card' }} />
+          <Stack.Screen name="tarjetas/nueva" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="tarjetas/pagar" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="tarjetas/estado" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="tarjetas/movimiento" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="tarjetas/diferir" options={{ presentation: 'modal' }} />
           <Stack.Screen name="analisis-gastos/index" options={{ presentation: 'card' }} />
           <Stack.Screen name="transferencias/index" options={{ presentation: 'card' }} />
           <Stack.Screen name="alertas-financieras/index" options={{ presentation: 'card' }} />

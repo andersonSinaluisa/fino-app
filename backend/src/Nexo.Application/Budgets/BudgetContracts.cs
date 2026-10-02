@@ -159,7 +159,7 @@ public sealed record CommittedMoneyDto(
     decimal? DailyAvailable);
 
 public sealed record CommittedSourceDto(
-    /// <summary>"reserved_budget" | "upcoming_payment".</summary>
+    /// <summary>"reserved_budget" | "upcoming_payment" | "credit_card".</summary>
     string Type,
     string Label,
     string Description,
@@ -176,5 +176,7 @@ public sealed record CommittedItemDto(
     Guid? CategoryId,
     /// <summary>Set when (part of) this payment is already inside a reserved budget.</summary>
     string? CoveredByBudgetName,
-    /// <summary>Upcoming payments: the estimated date, one month after it was last seen.</summary>
-    DateOnly? ExpectedDate);
+    /// <summary>Upcoming payments: the estimated date, one month after it was last seen. Cards: the payment due date.</summary>
+    DateOnly? ExpectedDate,
+    /// <summary>Tarjetas de crédito: the card (account id) this payment belongs to.</summary>
+    Guid? CreditCardId = null);

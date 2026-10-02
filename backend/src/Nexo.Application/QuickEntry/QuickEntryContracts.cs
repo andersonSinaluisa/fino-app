@@ -48,7 +48,11 @@ public sealed record CreateQuickTransactionRequest(
     bool LeaveUncategorized = false,
     DateTimeOffset? OccurredAt = null,
     Guid? ClientRequestId = null,
-    string? Note = null);
+    string? Note = null,
+    // Tarjetas de crédito: only for a card account -- "Purchase", "Refund",
+    // "Interest", "Fee", "CashAdvance" or "Adjustment". Null lets Fino decide from
+    // the direction and the text. Payments go through POST /credit-cards/{id}/payments.
+    string? CardMovementType = null);
 
 /// <summary>
 /// Registro rápido de efectivo (§22, "Más detalles"): corrige un movimiento que
@@ -61,7 +65,8 @@ public sealed record UpdateQuickTransactionRequest(
     string? Description = null,
     Guid? CategoryId = null,
     bool LeaveUncategorized = false,
-    DateTimeOffset? OccurredAt = null);
+    DateTimeOffset? OccurredAt = null,
+    string? CardMovementType = null);
 
 /// <summary>
 /// §24 y §25: el saldo de efectivo declarado por la persona ("¿cuánto efectivo

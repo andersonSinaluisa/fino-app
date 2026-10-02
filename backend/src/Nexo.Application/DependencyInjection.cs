@@ -8,6 +8,7 @@ using Nexo.Application.Auth;
 using Nexo.Application.Budgets;
 using Nexo.Application.Categories;
 using Nexo.Application.Categorization;
+using Nexo.Application.CreditCards;
 using Nexo.Application.Deduplication;
 using Nexo.Application.EmailIngestion;
 using Nexo.Application.EmailIngestion.Parsers;
@@ -67,6 +68,14 @@ public static class DependencyInjection
         services.AddScoped<BudgetLedgerFactory>();
         services.AddScoped<IBudgetService, BudgetService>();
         services.AddScoped<ICommittedMoneyService, CommittedMoneyService>();
+
+        // Tarjetas de crédito. CreditCardLedger is the only producer of card figures
+        // (shared by the card screens and Comprometido); ICardMovementClassifier is the
+        // one place every write path asks "what is this card movement?".
+        services.AddScoped<CreditCardLedger>();
+        services.AddScoped<ICardMovementClassifier, CardMovementClassifier>();
+        services.AddScoped<CreditCardService>();
+        services.AddScoped<ICreditCardService>(sp => sp.GetRequiredService<CreditCardService>());
 
         // Registro rápido de efectivo. CashAccountProvisioner y
         // QuickEntrySuggestionService son colaboradores de QuickTransactionService,

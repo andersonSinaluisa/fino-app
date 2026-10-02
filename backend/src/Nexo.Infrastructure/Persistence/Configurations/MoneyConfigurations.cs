@@ -50,6 +50,7 @@ public sealed class FinancialAccountConfiguration : IEntityTypeConfiguration<Fin
         builder.Property(a => a.EstimatedBalance).HasPrecision(18, 2);
 
         builder.Ignore(a => a.BalanceKind);
+        builder.Ignore(a => a.IsLiability);
 
         builder.HasIndex(a => new { a.UserId, a.IsArchived });
         builder.HasIndex(a => a.ProviderCode);
@@ -90,6 +91,10 @@ public sealed class TransactionConfiguration : IEntityTypeConfiguration<Transact
         // (or be blocked by) historical movements (point 17, "eliminar una regla no
         // debe modificar transacciones históricas").
         builder.Property(t => t.CategorySource).HasConversion<string>().HasMaxLength(16).IsRequired();
+
+        // Tarjetas de crédito: compra / pago / devolución / interés... Null on every
+        // non-card account. Stored as text like every other enum here.
+        builder.Property(t => t.CardMovementType).HasConversion<string>().HasMaxLength(16);
 
         builder.Ignore(t => t.SignedAmount);
         builder.Ignore(t => t.CountsTowardsBalance);

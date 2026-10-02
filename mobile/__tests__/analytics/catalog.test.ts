@@ -53,6 +53,12 @@ describe('resolución de pantallas', () => {
     expect(resolveScreen('/perfil')).toBe(AnalyticsScreen.Profile);
   });
 
+  it('el detalle de una tarjeta no lleva su id y los formularios no son pantalla', () => {
+    expect(resolveScreen('/tarjetas/9a7f1c30-0000-4000-8000-000000000002')).toBe(AnalyticsScreen.CreditCardDetail);
+    expect(resolveScreen('/tarjetas/nueva')).toBeNull();
+    expect(resolveScreen('/tarjetas/pagar')).toBeNull();
+  });
+
   it('el detalle de un pulso no lleva el id en el nombre', () => {
     expect(resolveScreen('/pulso/9a7f1c30-0000-4000-8000-000000000002')).toBe(AnalyticsScreen.PulseDetail);
   });

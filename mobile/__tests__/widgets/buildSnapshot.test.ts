@@ -20,6 +20,7 @@ function account(overrides: Partial<Account> = {}): Account {
     lastTransactionAt: '2026-08-30T00:00:00Z',
     lastSyncedAt: '2026-08-30T00:00:00Z',
     isArchived: false,
+    isLiability: false,
     ...overrides,
   };
 }
@@ -36,7 +37,7 @@ function summary(overrides: Partial<HomeSummary> = {}): HomeSummary {
     monthComparison: { previousIncome: 700, previousExpense: 250, incomeChangePercent: 14, expenseChangePercent: 20 },
     accounts: [
       account(),
-      account({ id: 'acc-2', alias: 'Tarjeta', accountType: 'CreditCard', balance: 500, balanceType: 'Estimated' }),
+      account({ id: 'acc-2', alias: 'Tarjeta', accountType: 'CreditCard', isLiability: true, balance: 500, balanceType: 'Estimated' }),
     ],
     recentTransactions: [],
     categoryBreakdown: [

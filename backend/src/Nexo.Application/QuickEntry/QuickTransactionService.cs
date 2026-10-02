@@ -2,11 +2,13 @@ using Microsoft.EntityFrameworkCore;
 using Nexo.Application.Abstractions;
 using Nexo.Application.Categorization;
 using Nexo.Application.Common;
+using Nexo.Application.CreditCards;
 using Nexo.Application.Transactions;
 using Nexo.Domain.Accounts;
 using Nexo.Domain.Audit;
 using Nexo.Domain.Categories;
 using Nexo.Domain.Common;
+using Nexo.Domain.CreditCards;
 using Nexo.Domain.Transactions;
 
 namespace Nexo.Application.QuickEntry;
@@ -63,7 +65,8 @@ public sealed class QuickTransactionService(
     ICashAccountProvisioner cashAccounts,
     ICategorizationEngine categorization,
     ITransactionService transactions,
-    Nexo.Application.Accounts.IAccountService accounts) : IQuickTransactionService
+    Nexo.Application.Accounts.IAccountService accounts,
+    ICardMovementClassifier cardMovements) : IQuickTransactionService
 {
     public async Task<TransactionDetailDto> CreateAsync(
         Guid userId,
@@ -71,7 +74,7 @@ public sealed class QuickTransactionService(
         CancellationToken cancellationToken)
     {
         var amount = ValidateAmount(request.Amount);
-        var direction = ParseDirection(request.Direction);
+        var direction = ResolveDirection(request.Direction, request.CardMovementType);
         var now = clock.UtcNow;
         var occurredAt = NormalizeDate(request.OccurredAt, now);
 
@@ -95,6 +98,7 @@ public sealed class QuickTransactionService(
 
         var account = await ResolveAccountAsync(userId, request.FinancialAccountId, cancellationToken);
         var description = NormalizeDescription(request.Description, direction);
+        var cardType = ParseCardMovementType(request.CardMovementType, account);
 
         var (categoryId, categorySource, ruleId, session) = await ResolveCategoryAsync(
             userId,
@@ -151,6 +155,10 @@ public sealed class QuickTransactionService(
             transaction.SetNote(request.Note, now);
         }
 
+        // Tarjetas de crédito: a movement written on a card is a purchase, refund,
+        // interest... never an untyped one (which reports could read as income).
+        await cardMovements.ApplyAsync(account, transaction, cardType, now, cancellationToken);
+
         db.Transactions.Add(transaction);
 
         if (session is not null)
@@ -177,7 +185,7 @@ public sealed class QuickTransactionService(
         CancellationToken cancellationToken)
     {
         var amount = ValidateAmount(request.Amount);
-        var direction = ParseDirection(request.Direction);
+        var direction = ResolveDirection(request.Direction, request.CardMovementType);
         var now = clock.UtcNow;
 
         var transaction = await RequireManualAsync(userId, transactionId, cancellationToken);
@@ -185,12 +193,24 @@ public sealed class QuickTransactionService(
             .FirstOrDefaultAsync(a => a.Id == transaction.FinancialAccountId && a.UserId == userId, cancellationToken)
             ?? throw new NotFoundException("FinancialAccount", transaction.FinancialAccountId);
 
+        var cardType = ParseCardMovementType(request.CardMovementType, account);
+        if (transaction.InternalTransferLinkId is not null && (direction != transaction.Direction || amount != transaction.Amount))
+        {
+            // Both legs of one transfer (or card payment) must keep the same amount
+            // and opposite directions; editing one alone would break the pair.
+            throw new ConflictException(
+                "Este movimiento es una parte de una transferencia o de un pago de tarjeta. Desvincúlalo (o elimínalo y regístralo de nuevo) para cambiar el monto o el tipo.");
+        }
+
         transaction.UpdateManualDetails(
             amount,
             direction,
             NormalizeDescription(request.Description, direction),
             NormalizeDate(request.OccurredAt, now),
             now);
+
+        // Tarjetas de crédito: the type follows the (possibly new) direction.
+        await cardMovements.ApplyAsync(account, transaction, cardType, now, cancellationToken);
 
         // Movimientos divididos: la categoría de un movimiento dividido vive en su
         // división (PUT /transactions/{id}/splits). Editar monto/descripción/fecha
@@ -232,17 +252,36 @@ public sealed class QuickTransactionService(
 
         // Un movimiento manual puede haber sido confirmado como una pata de una
         // transferencia interna. Borrarlo dejaría a la otra pata apuntando al vacío.
+        Guid? alsoRecalculate = null;
         if (transaction.InternalTransferLinkId is { } linkedId)
         {
             var linked = await db.Transactions
                 .FirstOrDefaultAsync(t => t.Id == linkedId && t.UserId == userId, cancellationToken);
-            linked?.ClearInternalTransfer(now);
+
+            // Tarjetas de crédito: a payment registered with "Pagar tarjeta" is ONE
+            // payment written as two legs. Undoing it removes both -- otherwise the
+            // bank debit would survive alone and suddenly count as spending.
+            var isCardPayment = transaction.CardMovementType == CreditCardMovementType.Payment
+                                || linked?.CardMovementType == CreditCardMovementType.Payment;
+            if (linked is not null && isCardPayment && linked.Source == TransactionSource.Manual)
+            {
+                db.Transactions.Remove(linked);
+                alsoRecalculate = linked.FinancialAccountId;
+            }
+            else
+            {
+                linked?.ClearInternalTransfer(now);
+            }
         }
 
         db.Transactions.Remove(transaction);
         await db.SaveChangesAsync(cancellationToken);
 
         await accounts.RecalculateBalanceAsync(userId, account.Id, cancellationToken);
+        if (alsoRecalculate is { } otherAccountId && otherAccountId != account.Id)
+        {
+            await accounts.RecalculateBalanceAsync(userId, otherAccountId, cancellationToken);
+        }
     }
 
     public async Task<Nexo.Application.Accounts.AccountDto> SetCashBalanceAsync(
@@ -320,6 +359,56 @@ public sealed class QuickTransactionService(
     }
 
     // ---------------------------------------------------------------- helpers
+
+    /// <summary>
+    /// Tarjetas de crédito: a card movement's type already says whether it raises or
+    /// lowers the debt (CreditCardMovementRules.RequiredDirection), so the client may
+    /// send only the type and never re-derive that rule itself. An explicit direction
+    /// still wins (and is validated against the type later).
+    /// </summary>
+    private static TransactionDirection ResolveDirection(string? direction, string? cardMovementType)
+    {
+        if (string.IsNullOrWhiteSpace(direction)
+            && Enum.TryParse<CreditCardMovementType>(cardMovementType, ignoreCase: true, out var type)
+            && Enum.IsDefined(type)
+            && CreditCardMovementRules.RequiredDirection(type) is { } required)
+        {
+            return required;
+        }
+
+        return ParseDirection(direction);
+    }
+
+    private static CreditCardMovementType? ParseCardMovementType(string? value, FinancialAccount account)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (!account.IsLiability)
+        {
+            throw ValidationException.For(
+                nameof(CreateQuickTransactionRequest.CardMovementType),
+                "Solo los movimientos de una tarjeta de crédito tienen tipo de tarjeta.");
+        }
+
+        if (!Enum.TryParse<CreditCardMovementType>(value, ignoreCase: true, out var type) || !Enum.IsDefined(type))
+        {
+            throw ValidationException.For(nameof(CreateQuickTransactionRequest.CardMovementType), "Tipo de movimiento de tarjeta no válido.");
+        }
+
+        if (type == CreditCardMovementType.Payment)
+        {
+            // A payment has two sides (where the money came from, and the card):
+            // it is recorded with its own flow so both legs stay linked.
+            throw ValidationException.For(
+                nameof(CreateQuickTransactionRequest.CardMovementType),
+                "Registra los pagos desde la tarjeta con «Pagar tarjeta».");
+        }
+
+        return type;
+    }
 
     private static decimal ValidateAmount(decimal amount)
     {

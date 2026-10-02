@@ -137,6 +137,17 @@ export const EVENT_SCHEMA: Record<AnalyticsEventName, readonly string[]> = {
   [AnalyticsEvent.TransactionSplitUpdated]: ['parts', 'transactionType', 'hasUncategorized'],
   [AnalyticsEvent.TransactionSplitRemoved]: ['transactionType'],
 
+  // --- Tarjetas de crédito -------------------------------------------------
+  // Solo forma y uso: si reserva (bool), flujo (enum), tramo de cuotas, origen
+  // del pago (cuenta/externa, nunca cuál). JAMÁS montos, deuda, cupo, últimos
+  // 4 dígitos, banco/emisor, comercios, descripciones ni referencias.
+  [AnalyticsEvent.CreditCardCreated]: ['autoReserve', 'flow'],
+  [AnalyticsEvent.CreditCardOpened]: ['source', 'needsSetup'],
+  [AnalyticsEvent.CreditCardStatementImported]: ['fileFormat', 'hasSummary'],
+  [AnalyticsEvent.CreditCardPaymentRegistered]: ['paymentSource', 'flow'],
+  [AnalyticsEvent.CreditCardInstallmentCreated]: ['installmentsBucket'],
+  [AnalyticsEvent.CreditCardAutoReserveEnabled]: ['flow'],
+
   // --- Pulso ---------------------------------------------------------------
   // `pulseKind` es el TIPO de pulso (un enum del backend), nunca su texto.
   [AnalyticsEvent.PulseCardViewed]: ['pulseKind', 'source'],

@@ -21,6 +21,7 @@ function account(overrides: Partial<Account> = {}): Account {
     lastTransactionAt: new Date(2026, 2, 4).toISOString(),
     lastSyncedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
     isArchived: false,
+    isLiability: false,
     ...overrides,
   };
 }

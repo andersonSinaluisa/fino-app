@@ -89,6 +89,7 @@ public sealed class ReferenceDataSeeder(NexoDbContext db, IClock clock, ILogger<
             Category.Builtin(CategoryCodes.Subscriptions, "Suscripciones", "repeat", "#B6A0E8", now, false, 9),
             Category.Builtin(CategoryCodes.Transfers, "Transferencias", "arrow-left-right", "#ECE9E1", now, false, 10),
             Category.Builtin(CategoryCodes.Fees, "Comisiones e impuestos", "percent", "#A67C52", now, false, 11),
+            Category.Builtin(CategoryCodes.Interest, "Intereses", "percent", "#C98A5B", now, false, 14),
             Category.Builtin(CategoryCodes.Income, "Ingresos", "trending-up", "#4E9F73", now, true, 12),
             Category.Builtin(CategoryCodes.Other, "Otros", "circle", "#74766F", now, false, 13),
         };

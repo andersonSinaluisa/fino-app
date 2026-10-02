@@ -37,7 +37,8 @@ public sealed class EmailIngestionPipeline(
     IRealtimeNotifier realtime,
     INotificationDispatcher notifications,
     IClock clock,
-    ILogger<EmailIngestionPipeline> logger) : IEmailIngestionPipeline
+    ILogger<EmailIngestionPipeline> logger,
+    Nexo.Application.CreditCards.ICardMovementClassifier cardMovements) : IEmailIngestionPipeline
 {
     public async Task<EmailIngestionResult> ProcessAsync(
         Guid userId,
@@ -199,6 +200,9 @@ public sealed class EmailIngestionPipeline(
         {
             transaction.FlagAsPossibleDuplicate(duplicate.Match.TransactionId, now);
         }
+
+        // Tarjetas de crédito: "consumo con tu tarjeta ****4582" lands on the card as a purchase.
+        await cardMovements.ApplyAsync(account, transaction, null, now, cancellationToken);
 
         db.Transactions.Add(transaction);
 

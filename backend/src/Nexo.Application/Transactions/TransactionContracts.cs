@@ -28,7 +28,10 @@ public sealed record TransactionListItemDto(
     // Movimientos divididos: when true, CategoryId is null and Splits holds the
     // parts. Still ONE movement in every list.
     bool IsSplit,
-    IReadOnlyList<TransactionSplitDto> Splits);
+    IReadOnlyList<TransactionSplitDto> Splits,
+    // Tarjetas de crédito: "Purchase", "Payment", "Refund", "Interest", "Fee",
+    // "CashAdvance" or "Adjustment" on a card's movement; null on any other account.
+    string? CardMovementType = null);
 
 /// <summary>One part of a divided movement. Amount is a positive magnitude, like the movement's.</summary>
 public sealed record TransactionSplitDto(
@@ -104,7 +107,13 @@ public sealed record TransactionDetailDto(
     // Set only by UpdateCategoryAsync when ApplyToExistingMatches was requested:
     // how many OTHER movements were just recategorised by the same rule (point 7).
     // Null on every other read of a transaction.
-    int? RecategorizedCount = null);
+    int? RecategorizedCount = null,
+    // Tarjetas de crédito: see TransactionListItemDto.CardMovementType.
+    string? CardMovementType = null,
+    // Set when this card purchase is deferred in installments.
+    Guid? InstallmentPlanId = null,
+    // True when the movement belongs to a credit card (so the UI can offer card actions).
+    bool AccountIsCreditCard = false);
 
 /// <summary>Filters accepted by the movements screen. All optional, all combinable.</summary>
 public sealed record TransactionFilter

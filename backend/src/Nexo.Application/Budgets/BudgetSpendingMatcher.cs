@@ -13,7 +13,8 @@ public sealed record SpendingRow(
     Guid? CategoryId,
     TransactionDirection Direction,
     decimal Amount,
-    DateOnly LocalDate);
+    DateOnly LocalDate,
+    bool IsRefund = false);
 
 /// <summary>What one budget window consumed.</summary>
 public sealed record SpendingMatch(decimal Expenses, decimal Refunds, IReadOnlyList<Guid> TransactionIds);
@@ -31,9 +32,10 @@ public sealed record SpendingMatch(decimal Expenses, decimal Refunds, IReadOnlyL
 /// (spending) category is a refund/reversal and subtracts.</item>
 /// <item><b>General budget</b> (no category): every expense whose category is NOT
 /// tracked by an active category budget on that date, uncategorized included.
-/// It never takes income as a refund: without a category nothing proves an
+/// It never takes ordinary income as a refund: without a category nothing proves an
 /// incoming movement (a salary, a transfer from a relative) gives back money that
-/// was spent.</item>
+/// was spent. The one exception is a credit-card refund (<see cref="SpendingRow.IsRefund"/>):
+/// the card itself says it is money given back for a purchase.</item>
 /// </list>
 /// Combined with the backend's overlap rule (one active budget per category per
 /// date range, one active general budget per date range), every movement is
@@ -93,7 +95,7 @@ public static class BudgetSpendingMatcher
             return row.CategoryId == budgetCategory;
         }
 
-        if (row.Direction != TransactionDirection.Expense)
+        if (row.Direction != TransactionDirection.Expense && !row.IsRefund)
         {
             return false;
         }

@@ -3,6 +3,7 @@ using Nexo.Domain.Accounts;
 using Nexo.Domain.Audit;
 using Nexo.Domain.Budgets;
 using Nexo.Domain.Categories;
+using Nexo.Domain.CreditCards;
 using Nexo.Domain.EmailIngestion;
 using Nexo.Domain.Imports;
 using Nexo.Domain.Insights;
@@ -62,6 +63,17 @@ public interface INexoDbContext
 
     /// <summary>Presupuestos: only the plan. Spent/reserved/committed are always derived from Transactions.</summary>
     DbSet<Budget> Budgets { get; }
+
+    /// <summary>Tarjetas de crédito: the card's terms. The card itself is a FinancialAccount of type CreditCard.</summary>
+    DbSet<CreditCard> CreditCards { get; }
+
+    /// <summary>Only the official figures of statements (declared or imported); status and payments are derived.</summary>
+    DbSet<CreditCardStatement> CreditCardStatements { get; }
+
+    /// <summary>Compras diferidas: how a card purchase becomes payable over several statements.</summary>
+    DbSet<InstallmentPlan> InstallmentPlans { get; }
+
+    DbSet<Installment> Installments { get; }
 
     /// <summary>Escape hatch for the few queries that must see every user's rows (workers, admin jobs).</summary>
     IQueryable<T> IgnoringUserFilter<T>()

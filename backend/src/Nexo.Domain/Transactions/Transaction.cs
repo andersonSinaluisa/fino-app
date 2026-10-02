@@ -1,4 +1,5 @@
 using Nexo.Domain.Common;
+using Nexo.Domain.CreditCards;
 
 namespace Nexo.Domain.Transactions;
 
@@ -128,6 +129,13 @@ public sealed class Transaction : Entity, IUserOwned
     public int SplitVersion { get; private set; }
 
     public IReadOnlyCollection<TransactionSplit> Splits => _splits;
+
+    /// <summary>
+    /// Tarjetas de crédito: what this movement is on a card (compra, pago,
+    /// devolución, interés...). Null on every non-card account. See
+    /// <see cref="CreditCardMovementRules"/> for what each type means.
+    /// </summary>
+    public CreditCardMovementType? CardMovementType { get; private set; }
 
     /// <summary>Positive for income, negative for expense. Never persisted; derived on read.</summary>
     public decimal SignedAmount => Direction == TransactionDirection.Income ? Amount : -Amount;
@@ -356,8 +364,42 @@ public sealed class Transaction : Entity, IUserOwned
     /// <summary>Undoes a transfer confirmation, e.g. because it was matched by mistake.</summary>
     public void ClearInternalTransfer(DateTimeOffset now)
     {
-        IsInternalTransfer = false;
+        // A card payment, cash advance or adjustment stays neutral even without its
+        // other leg: paying the card is never income, whether or not the bank side
+        // of the payment is in Fino.
+        IsInternalTransfer = CardMovementType is { } type && CreditCardMovementRules.IsNeutral(type);
         InternalTransferLinkId = null;
+        Stamp(now);
+    }
+
+    /// <summary>
+    /// Tarjetas de crédito: says what this movement is on its card. The type must
+    /// agree with the direction (a purchase is a charge, a payment a credit). Neutral
+    /// types (pago, avance, ajuste) are excluded from income and spending through
+    /// <see cref="IsInternalTransfer"/> -- the same flag every report already
+    /// honours -- so no report needs a second exclusion rule.
+    /// </summary>
+    public void ClassifyAsCardMovement(CreditCardMovementType type, DateTimeOffset now)
+    {
+        CreditCardMovementRules.EnsureConsistent(type, Direction);
+
+        if (IsSplit && !CreditCardMovementRules.CanBeSplit(type))
+        {
+            throw new DomainException(
+                "transaction_split",
+                "Este movimiento está dividido en categorías. Quita la división antes de marcarlo como pago, avance o ajuste.");
+        }
+
+        var neutral = CreditCardMovementRules.IsNeutral(type);
+        if (!neutral && InternalTransferLinkId is not null)
+        {
+            throw new DomainException(
+                "card_movement_linked",
+                "Este movimiento está vinculado como pago desde otra de tus cuentas. Desvincúlalo antes de cambiar su tipo.");
+        }
+
+        CardMovementType = type;
+        IsInternalTransfer = neutral || InternalTransferLinkId is not null;
         Stamp(now);
     }
 
@@ -423,6 +465,13 @@ public sealed class Transaction : Entity, IUserOwned
     public void Split(IReadOnlyList<SplitLine> lines, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(lines);
+
+        if (!CreditCardMovementRules.CanBeSplit(CardMovementType))
+        {
+            throw new DomainException(
+                "split_not_spending",
+                "Un pago, avance o ajuste de tarjeta no es un gasto: no se puede dividir en categorías.");
+        }
 
         if (lines.Count < MinimumSplitParts)
         {

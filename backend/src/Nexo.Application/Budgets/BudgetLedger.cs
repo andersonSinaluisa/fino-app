@@ -116,7 +116,7 @@ public sealed class BudgetLedger
         var raw = await CategoryAllocations.Expand(movements, _db).ToListAsync(cancellationToken);
 
         return raw
-            .Select(t => new SpendingRow(t.TransactionId, t.CategoryId, t.Direction, t.Amount, DateOnly.FromDateTime(Dates.ToLocalDate(t.TransactionDate))))
+            .Select(t => new SpendingRow(t.TransactionId, t.CategoryId, t.Direction, t.Amount, DateOnly.FromDateTime(Dates.ToLocalDate(t.TransactionDate)), t.IsRefund))
             .ToList();
     }
 

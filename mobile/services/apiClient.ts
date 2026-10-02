@@ -50,6 +50,49 @@ let refreshTokens: TokenRefresher = async () => null;
 export function configureAuth(provider: TokenProvider, refresher: TokenRefresher): void {
   getTokens = provider;
   refreshTokens = refresher;
+  inFlightRefresh = null;
+}
+
+/**
+ * BUG ("el refresh token no funciona"): Home lanza 6-8 peticiones a la vez
+ * (summary, comprometido, presupuestos, pulsos, analytics...). Cuando el
+ * access token de 15 minutos vence, TODAS reciben 401 al mismo tiempo y cada
+ * una llamaba a refreshTokens() por su cuenta con el MISMO refresh token. El
+ * backend rota el refresh token en cada uso y trata la segunda presentación
+ * de un token ya rotado como robo (AuthService.RefreshAsync → "reuse
+ * detected"): revoca toda la familia de sesiones y responde 401, y la app
+ * cerraba la sesión. Es decir: cuanto más paralela la pantalla, más seguro
+ * el cierre de sesión al volver a la app después de un rato.
+ *
+ * Arreglo: una sola renovación en vuelo a la vez (single-flight). Todas las
+ * peticiones que reciben 401 mientras tanto esperan esa misma promesa y
+ * reintentan con el token nuevo.
+ */
+let inFlightRefresh: Promise<AuthTokens | null> | null = null;
+
+function refreshOnce(): Promise<AuthTokens | null> {
+  if (!inFlightRefresh) {
+    inFlightRefresh = refreshTokens().finally(() => {
+      inFlightRefresh = null;
+    });
+  }
+  return inFlightRefresh;
+}
+
+/**
+ * Un 401 con un access token que YA no es el actual significa que otra
+ * petición ya renovó la sesión mientras esta viajaba: basta con reintentar,
+ * sin gastar (ni quemar) otro refresh token.
+ */
+async function recoverFromUnauthorized(sentAuthorization: string | undefined): Promise<boolean> {
+  const current = getTokens();
+  const sentToken = sentAuthorization?.startsWith('Bearer ') ? sentAuthorization.slice(7) : undefined;
+
+  if (current && sentToken && current.accessToken !== sentToken) {
+    return true;
+  }
+
+  return (await refreshOnce()) !== null;
 }
 
 interface RequestOptions {
@@ -130,7 +173,7 @@ export async function request<T>(path: string, options: RequestOptions = {}): Pr
   // A 401 on an authenticated call means the short-lived access token expired:
   // rotate once, then give up so a revoked session cannot loop.
   if (response.status === 401 && authenticated && !retrying) {
-    const refreshed = await refreshTokens();
+    const refreshed = await recoverFromUnauthorized(headers.Authorization);
     if (refreshed) {
       return request<T>(path, { ...options, retrying: true });
     }
@@ -184,7 +227,7 @@ export async function requestText(path: string, options: RequestOptions = {}): P
   clearTimeout(timeout);
 
   if (response.status === 401 && authenticated && !retrying) {
-    const refreshed = await refreshTokens();
+    const refreshed = await recoverFromUnauthorized(headers.Authorization);
     if (refreshed) {
       return requestText(path, { ...options, retrying: true });
     }
@@ -265,7 +308,7 @@ async function uploadOnce<T>(path: string, file: UploadFile, retrying: boolean):
   devLog('apiClient.upload', 'upload_http_response', { status: result.status });
 
   if (result.status === 401 && !retrying) {
-    const refreshed = await refreshTokens();
+    const refreshed = await recoverFromUnauthorized(headers.Authorization);
     if (refreshed) {
       return uploadOnce<T>(path, file, true);
     }
@@ -310,7 +353,7 @@ async function uploadViaFetch<T>(
   }
 
   if (response.status === 401 && !retrying) {
-    const refreshed = await refreshTokens();
+    const refreshed = await recoverFromUnauthorized(headers.Authorization);
     if (refreshed) {
       return uploadOnce<T>(path, file, true);
     }

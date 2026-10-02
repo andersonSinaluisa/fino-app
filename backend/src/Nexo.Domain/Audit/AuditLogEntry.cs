@@ -109,4 +109,16 @@ public static class AuditActions
     public const string BudgetCreated = "budget.created";
     public const string BudgetUpdated = "budget.updated";
     public const string BudgetDeleted = "budget.deleted";
+
+    /// <summary>Tarjetas de crédito: only ids are recorded -- never amounts, digits, debt or merchants.</summary>
+    public const string CreditCardConfigured = "credit_card.configured";
+    public const string CreditCardRestored = "credit_card.restored";
+    public const string CreditCardDebtSet = "credit_card.debt_set";
+    public const string CreditCardStatementDeclared = "credit_card.statement_declared";
+    public const string CreditCardStatementRemoved = "credit_card.statement_removed";
+    public const string CreditCardPaymentRegistered = "credit_card.payment_registered";
+    public const string CreditCardPaymentLinked = "credit_card.payment_linked";
+    public const string InstallmentPlanCreated = "credit_card.installment_plan_created";
+    public const string InstallmentPlanCancelled = "credit_card.installment_plan_cancelled";
+    public const string InstallmentPlanDeleted = "credit_card.installment_plan_deleted";
 }

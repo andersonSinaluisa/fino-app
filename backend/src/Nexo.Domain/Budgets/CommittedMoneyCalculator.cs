@@ -13,6 +13,16 @@ public enum CommitmentSource
 
     /// <summary>The unspent part of a budget with ReserveFunds = true, in its current window.</summary>
     ReservedBudget,
+
+    /// <summary>
+    /// Tarjetas de crédito: the next payment of a card with auto-reserve on (the
+    /// pending part of its last statement, or the projected balance of the open
+    /// cycle). Never the whole debt: deferred installments of later statements are
+    /// not money to set aside today. Never overlaps a budget: the purchases behind
+    /// it were already SPENT (and already consumed their budget), so a budget's
+    /// reserve only covers what is still to be spent -- different money.
+    /// </summary>
+    CreditCard,
 }
 
 /// <summary>
@@ -150,6 +160,16 @@ public static class CommittedMoneyCalculator
             lines.Add(new CommitmentLine(
                 payment.Source, payment.ReferenceKey, payment.Label, payment.CategoryId,
                 payment.Amount, MoneyMath.Round(pending), payment.ReferenceId, coveredBy));
+        }
+
+        // Cards last: each one counts its own next payment, as-is (see CommitmentSource.CreditCard).
+        foreach (var card in distinct
+                     .Where(c => c.Source == CommitmentSource.CreditCard)
+                     .OrderBy(c => c.ReferenceKey, StringComparer.Ordinal))
+        {
+            lines.Add(new CommitmentLine(
+                card.Source, card.ReferenceKey, card.Label, card.CategoryId,
+                card.Amount, card.Amount, card.ReferenceId, null));
         }
 
         var committed = MoneyMath.Round(lines.Sum(l => l.CountedAmount));

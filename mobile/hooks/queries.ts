@@ -19,6 +19,12 @@ import type {
   Pulse,
   UpdateCategorizationRuleRequest,
   UpdateCategoryRequest,
+  CardMovementType,
+  CreateCreditCardRequest,
+  CreateInstallmentPlanRequest,
+  DeclareStatementRequest,
+  RegisterCardPaymentRequest,
+  UpdateCreditCardRequest,
 } from '../types/api';
 
 export const queryKeys = {
@@ -58,6 +64,13 @@ export const queryKeys = {
   budget: (id: string, date?: string) => ['summary', 'budgets', 'detail', id, date ?? 'today'] as const,
   budgetMovements: (id: string, date?: string) => ['summary', 'budgets', 'movements', id, date ?? 'today'] as const,
   budgetPreview: (request: BudgetPreviewRequest) => ['summary', 'budgets', 'preview', request] as const,
+  // Tarjetas de crédito: también debajo de ['summary'], por la misma razón --
+  // cualquier movimiento nuevo cambia la deuda, el próximo pago y Comprometido.
+  creditCards: (includeArchived = false) => ['summary', 'credit-cards', 'list', includeArchived] as const,
+  creditCard: (id: string) => ['summary', 'credit-cards', 'detail', id] as const,
+  creditCardStatements: (id: string) => ['summary', 'credit-cards', 'statements', id] as const,
+  creditCardInstallments: (id: string) => ['summary', 'credit-cards', 'installments', id] as const,
+  creditCardPaymentSuggestions: (id: string) => ['summary', 'credit-cards', 'payment-suggestions', id] as const,
 };
 
 /**
@@ -835,5 +848,164 @@ export function useDeleteBudget() {
   return useMutation({
     mutationFn: (id: string) => api.budgets.remove(id),
     onSuccess: () => invalidateBudgets(client),
+  });
+}
+
+// ---------------------------------------------------------------- Tarjetas de crédito
+
+export function useCreditCards(includeArchived = false) {
+  return useQuery({ queryKey: queryKeys.creditCards(includeArchived), queryFn: () => api.creditCards.list(includeArchived) });
+}
+
+export function useCreditCard(id: string | undefined) {
+  return useQuery({
+    queryKey: id ? queryKeys.creditCard(id) : ['summary', 'credit-cards', 'detail', 'missing'],
+    queryFn: () => api.creditCards.get(id!),
+    enabled: !!id,
+  });
+}
+
+export function useCreditCardStatements(id: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: id ? queryKeys.creditCardStatements(id) : ['summary', 'credit-cards', 'statements', 'missing'],
+    queryFn: () => api.creditCards.statements(id!),
+    enabled: !!id && enabled,
+  });
+}
+
+export function useInstallmentPlans(id: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: id ? queryKeys.creditCardInstallments(id) : ['summary', 'credit-cards', 'installments', 'missing'],
+    queryFn: () => api.creditCards.installments(id!),
+    enabled: !!id && enabled,
+  });
+}
+
+export function useCardPaymentSuggestions(id: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: id ? queryKeys.creditCardPaymentSuggestions(id) : ['summary', 'credit-cards', 'payment-suggestions', 'missing'],
+    queryFn: () => api.creditCards.paymentSuggestions(id!),
+    enabled: !!id && enabled,
+  });
+}
+
+/**
+ * Después de cualquier cambio en una tarjeta: Home/Comprometido/presupuestos y
+ * las propias tarjetas (prefijo ['summary']), las cuentas (saldo del banco que
+ * pagó) y los movimientos.
+ */
+function invalidateAfterCardChange(client: ReturnType<typeof useQueryClient>): void {
+  void client.invalidateQueries({ queryKey: queryKeys.summary });
+  void client.invalidateQueries({ queryKey: queryKeys.accounts });
+  void client.invalidateQueries({ queryKey: ['transactions'] });
+  void client.invalidateQueries({ queryKey: queryKeys.transferCandidates });
+}
+
+export function useCreateCreditCard() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (request: CreateCreditCardRequest) => api.creditCards.create(request),
+    onSuccess: () => invalidateAfterCardChange(client),
+  });
+}
+
+export function useUpdateCreditCard() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...request }: { id: string } & UpdateCreditCardRequest) => api.creditCards.update(id, request),
+    onSuccess: () => invalidateAfterCardChange(client),
+  });
+}
+
+export function useSetCreditCardDebt() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, currentDebt }: { id: string; currentDebt: number }) => api.creditCards.setDebt(id, currentDebt),
+    onSuccess: () => invalidateAfterCardChange(client),
+  });
+}
+
+export function useArchiveCreditCard() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.creditCards.archive(id),
+    onSuccess: () => invalidateAfterCardChange(client),
+  });
+}
+
+export function useRestoreCreditCard() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.creditCards.restore(id),
+    onSuccess: () => invalidateAfterCardChange(client),
+  });
+}
+
+export function useDeclareStatement() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...request }: { id: string } & DeclareStatementRequest) => api.creditCards.declareStatement(id, request),
+    onSuccess: () => invalidateAfterCardChange(client),
+  });
+}
+
+export function useRemoveDeclaredStatement() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, closingDate }: { id: string; closingDate: string }) => api.creditCards.removeStatement(id, closingDate),
+    onSuccess: () => invalidateAfterCardChange(client),
+  });
+}
+
+export function useCreateInstallmentPlan() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...request }: { id: string } & CreateInstallmentPlanRequest) => api.creditCards.createInstallmentPlan(id, request),
+    onSuccess: () => invalidateAfterCardChange(client),
+  });
+}
+
+export function useCancelInstallmentPlan() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, planId }: { id: string; planId: string }) => api.creditCards.cancelInstallmentPlan(id, planId),
+    onSuccess: () => invalidateAfterCardChange(client),
+  });
+}
+
+export function useDeleteInstallmentPlan() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, planId }: { id: string; planId: string }) => api.creditCards.deleteInstallmentPlan(id, planId),
+    onSuccess: () => invalidateAfterCardChange(client),
+  });
+}
+
+export function usePayCreditCard() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...request }: { id: string } & RegisterCardPaymentRequest) => api.creditCards.pay(id, request),
+    onSuccess: () => invalidateAfterCardChange(client),
+  });
+}
+
+export function useLinkCardPayment() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, bankTransactionId, cardTransactionId }: { id: string; bankTransactionId: string; cardTransactionId?: string | null }) =>
+      api.creditCards.linkPayment(id, bankTransactionId, cardTransactionId),
+    onSuccess: () => invalidateAfterCardChange(client),
+  });
+}
+
+export function useReclassifyCardMovement() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, transactionId, type }: { id: string; transactionId: string; type: CardMovementType }) =>
+      api.creditCards.reclassify(id, transactionId, type),
+    onSuccess: (updated) => {
+      client.setQueryData(queryKeys.transaction(updated.id), updated);
+      invalidateAfterCardChange(client);
+    },
   });
 }

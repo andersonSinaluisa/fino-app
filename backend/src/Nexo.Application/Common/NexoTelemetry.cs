@@ -56,4 +56,14 @@ public static class NexoTelemetry
         "nexo.budgets.changed",
         unit: "{budget}",
         description: "Budget definitions created, updated or deleted.");
+
+    /// <summary>
+    /// Tarjetas de crédito. Tagged by <c>action</c> only ("created", "payment_registered",
+    /// "installment_created", "statement_declared"...). Never an amount, the last four
+    /// digits, the issuer, the debt or a merchant.
+    /// </summary>
+    public static readonly Counter<long> CreditCardEvents = Meter.CreateCounter<long>(
+        "nexo.credit_cards.events",
+        unit: "{event}",
+        description: "Credit-card actions performed by people.");
 }

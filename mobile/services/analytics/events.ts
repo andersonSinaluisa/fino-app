@@ -121,6 +121,16 @@ export const AnalyticsEvent = {
   TransactionSplitUpdated: 'transaction_split_updated',
   TransactionSplitRemoved: 'transaction_split_removed',
 
+  // --- Tarjetas de crédito -------------------------------------------------
+  // Solo el USO: nunca montos, deuda, cupo, últimos 4 dígitos, banco, comercio,
+  // descripción ni referencias.
+  CreditCardCreated: 'credit_card_created',
+  CreditCardOpened: 'credit_card_opened',
+  CreditCardStatementImported: 'credit_card_statement_imported',
+  CreditCardPaymentRegistered: 'credit_card_payment_registered',
+  CreditCardInstallmentCreated: 'credit_card_installment_created',
+  CreditCardAutoReserveEnabled: 'credit_card_auto_reserve_enabled',
+
   // --- Pulso ---------------------------------------------------------------
   PulseCardViewed: 'pulse_card_viewed',
   PulseOpened: 'pulse_opened',
@@ -197,6 +207,7 @@ export const AnalyticsScreen = {
   Budgets: 'budgets',
   BudgetDetail: 'budget_detail',
   Committed: 'committed',
+  CreditCardDetail: 'credit_card_detail',
 } as const;
 
 export type AnalyticsScreenName = (typeof AnalyticsScreen)[keyof typeof AnalyticsScreen];
@@ -332,3 +343,24 @@ export const BudgetFlow = {
   Create: 'create',
   Edit: 'edit',
 } as const;
+
+/** Tarjetas: de dónde salió el dinero de un pago (nunca cuál cuenta). */
+export const CardPaymentSource = {
+  Account: 'account',
+  External: 'external',
+} as const;
+
+/** Tarjetas: cómo se registró el pago. */
+export const CardPaymentFlow = {
+  Manual: 'manual',
+  Link: 'link',
+} as const;
+
+/** Tarjetas: tramo del número de cuotas, nunca montos. */
+export function installmentsBucket(count: number): '2_6' | '7_12' | '13_plus' {
+  if (count <= 6) {
+    return '2_6';
+  }
+
+  return count <= 12 ? '7_12' : '13_plus';
+}

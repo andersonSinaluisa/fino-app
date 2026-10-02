@@ -5,7 +5,15 @@ export type TransactionSource = 'Import' | 'Email' | 'Api' | 'Webhook' | 'Manual
 export type TransactionStatus = 'Posted' | 'Pending' | 'NeedsReview' | 'Ignored';
 export type BalanceType = 'Verified' | 'Estimated';
 export type ConnectionMode = 'ManualImport' | 'Email' | 'Api' | 'Webhook';
-export type AccountType = 'Checking' | 'Savings' | 'CreditCard' | 'Wallet' | 'Other';
+export type AccountType = 'Checking' | 'Savings' | 'CreditCard' | 'Wallet' | 'Other' | 'Cash';
+
+/**
+ * Tarjetas de crédito: qué es un movimiento de una tarjeta. Solo lo tienen los
+ * movimientos de una cuenta CreditCard (null en cualquier otra). Qué cuenta
+ * como gasto o no lo decide el backend (CreditCardMovementRules); la app solo
+ * lo muestra.
+ */
+export type CardMovementType = 'Purchase' | 'Refund' | 'Payment' | 'Interest' | 'Fee' | 'CashAdvance' | 'Adjustment';
 
 /**
  * Onboarding funcional (rediseño post-login): the five independent milestones
@@ -86,6 +94,11 @@ export interface Account {
   lastTransactionAt: string | null;
   lastSyncedAt: string | null;
   isArchived: boolean;
+  /**
+   * Tarjetas de crédito: true para una tarjeta. Su `balance` es deuda (negativo
+   * cuando se debe) y nunca forma parte de "Tu dinero".
+   */
+  isLiability: boolean;
 }
 
 export interface TransactionListItem {
@@ -120,6 +133,8 @@ export interface TransactionListItem {
    */
   isSplit: boolean;
   splits: TransactionSplit[];
+  /** Tarjetas de crédito: compra, pago, devolución... null fuera de una tarjeta. */
+  cardMovementType: CardMovementType | null;
 }
 
 /**
@@ -182,6 +197,10 @@ export interface TransactionDetail extends Omit<TransactionListItem, 'brandColor
   recategorizedCount: number | null;
   /** Movimientos divididos: versión de la división, para detectar ediciones simultáneas. */
   splitVersion: number;
+  /** Tarjetas de crédito: presente cuando esta compra está diferida en cuotas. */
+  installmentPlanId: string | null;
+  /** Tarjetas de crédito: el movimiento es de una tarjeta (ofrece tipo, cuotas...). */
+  accountIsCreditCard: boolean;
 }
 
 /**
@@ -411,6 +430,17 @@ export interface ImportPreviewRow {
   suggestedCategoryId: string | null;
   suggestedCategoryName: string | null;
   error: string | null;
+  /** Tarjetas de crédito: por qué la fila se deja fuera a propósito (cuota de un diferido ya registrado). */
+  skipReason: string | null;
+}
+
+/** Tarjetas de crédito: las cifras del encabezado de un estado de tarjeta. */
+export interface CardStatementSummary {
+  closingDate: string | null;
+  dueDate: string | null;
+  statementBalance: number | null;
+  minimumPayment: number | null;
+  creditLimit: number | null;
 }
 
 export interface ImportPreview {
@@ -451,6 +481,8 @@ export interface ImportPreview {
    */
   unmappedColumns?: string[] | null;
   unmappedSampleRows?: string[][] | null;
+  /** Tarjetas de crédito: corte, fecha máxima, total, mínimo y cupo leídos del estado. */
+  cardStatement?: CardStatementSummary | null;
 }
 
 /** Elección de columnas que la persona hace a mano para un archivo no reconocido. */
@@ -728,6 +760,8 @@ export interface CreateQuickTransactionRequest {
   occurredAt?: string | null;
   clientRequestId?: string;
   note?: string | null;
+  /** Tarjetas de crédito: solo en una tarjeta. Sin valor, el backend lo decide. Los pagos van por "Pagar tarjeta". */
+  cardMovementType?: Exclude<CardMovementType, 'Payment'> | null;
 }
 
 export interface UpdateQuickTransactionRequest {
@@ -737,6 +771,7 @@ export interface UpdateQuickTransactionRequest {
   categoryId?: string | null;
   leaveUncategorized?: boolean;
   occurredAt?: string | null;
+  cardMovementType?: Exclude<CardMovementType, 'Payment'> | null;
 }
 
 /** §24-25: "Anchor" ancla el saldo; "Adjustment" registra la diferencia como movimiento. */
@@ -970,7 +1005,7 @@ export interface BudgetPreview {
   alreadySpent: number;
 }
 
-export type CommittedSourceType = 'reserved_budget' | 'upcoming_payment';
+export type CommittedSourceType = 'reserved_budget' | 'upcoming_payment' | 'credit_card';
 
 export interface CommittedItem {
   label: string;
@@ -979,7 +1014,10 @@ export interface CommittedItem {
   budgetId: string | null;
   categoryId: string | null;
   coveredByBudgetName: string | null;
+  /** Próximos pagos: fecha estimada. Tarjetas: fecha máxima de pago. */
   expectedDate: string | null;
+  /** Tarjetas: la tarjeta (id de su cuenta). */
+  creditCardId: string | null;
 }
 
 export interface CommittedSource {
@@ -1001,4 +1039,193 @@ export interface CommittedMoney {
   sources: CommittedSource[];
   daysRemainingInMonth: number;
   dailyAvailable: number | null;
+}
+
+// ---------------------------------------------------------------- Tarjetas de crédito
+// Todas las cifras salen de CreditCardCalculator en el backend; la app no
+// calcula deuda, cupo, pagado, pendiente ni lo que va a Comprometido.
+
+export type CardNetwork = 'Visa' | 'Mastercard' | 'AmericanExpress' | 'Diners' | 'Discover' | 'Other';
+export type StatementStatus = 'Open' | 'Closed' | 'PartiallyPaid' | 'Paid' | 'Overdue';
+
+export interface CreditCardNextPayment {
+  amount: number;
+  dueDate: string;
+  minimumPayment: number | null;
+  /** "statement": lo pendiente de un estado cerrado. "current_cycle": proyección del ciclo abierto. */
+  source: 'statement' | 'current_cycle';
+  isOverdue: boolean;
+  daysUntilDue: number;
+}
+
+export interface CreditCardSummary {
+  /** El id de la CUENTA de la tarjeta (el mismo que usan sus movimientos). */
+  id: string;
+  name: string;
+  providerCode: string;
+  providerName: string;
+  brandColor: string;
+  lastFour: string | null;
+  currency: string;
+  network: CardNetwork | null;
+  isArchived: boolean;
+  /** Tarjeta creada antes del módulo: falta cupo/corte/pago. */
+  needsSetup: boolean;
+  creditLimit: number | null;
+  closingDay: number | null;
+  paymentDueDay: number | null;
+  autoReserve: boolean;
+  currentDebt: number;
+  creditBalance: number;
+  /** Cupo disponible: crédito, NUNCA dinero. */
+  availableCredit: number | null;
+  utilizationPercent: number | null;
+  isOverLimit: boolean;
+  /** Deuda en cuotas de estados futuros. */
+  deferredDebt: number;
+  nextPayment: CreditCardNextPayment | null;
+  committedContribution: number;
+  balanceType: BalanceType;
+  lastSyncedAt: string | null;
+}
+
+export interface CreditCardList {
+  cards: CreditCardSummary[];
+  totalDebt: number;
+  totalNextPayments: number;
+  totalCommitted: number;
+  currency: string;
+}
+
+export interface CreditCardCycle {
+  start: string;
+  closing: string;
+  due: string;
+  projectedBalance: number;
+  charges: number;
+  credits: number;
+}
+
+export interface CreditCardStatement {
+  periodStart: string;
+  closingDate: string;
+  dueDate: string;
+  statementBalance: number;
+  minimumPayment: number | null;
+  amountPaid: number;
+  pending: number;
+  status: StatementStatus;
+  isDeclared: boolean;
+  declaredSource: 'Imported' | 'Manual' | null;
+  charges: number;
+  credits: number;
+  isCurrent: boolean;
+}
+
+export interface CreditCardActivity {
+  label: string;
+  purchases: number;
+  refunds: number;
+  payments: number;
+  interest: number;
+  fees: number;
+  cashAdvances: number;
+  adjustments: number;
+}
+
+export interface Installment {
+  number: number;
+  amount: number;
+  closingDate: string;
+  dueDate: string;
+  status: 'Upcoming' | 'Billed';
+}
+
+export interface InstallmentPlan {
+  id: string;
+  transactionId: string;
+  description: string;
+  categoryName: string | null;
+  purchaseDate: string;
+  originalAmount: number;
+  numberOfInstallments: number;
+  installmentAmount: number;
+  interestRate: number | null;
+  billedInstallments: number;
+  nextInstallmentNumber: number | null;
+  nextInstallmentAmount: number | null;
+  nextInstallmentClosingDate: string | null;
+  nextInstallmentDueDate: string | null;
+  outstandingAmount: number;
+  status: 'Active' | 'Completed' | 'Cancelled';
+  installments: Installment[];
+}
+
+export interface CreditCardDetail {
+  card: CreditCardSummary;
+  currentCycle: CreditCardCycle | null;
+  lastStatement: CreditCardStatement | null;
+  thisMonth: CreditCardActivity;
+  activeInstallments: InstallmentPlan[];
+  recentMovements: TransactionListItem[];
+}
+
+export interface CreateCreditCardRequest {
+  name: string;
+  providerCode: string;
+  lastFour: string | null;
+  creditLimit: number;
+  closingDay: number;
+  paymentDueDay: number;
+  autoReserve: boolean;
+  network?: CardNetwork | null;
+  currency?: string | null;
+  currentDebt?: number | null;
+}
+
+export interface UpdateCreditCardRequest {
+  name?: string | null;
+  lastFour?: string | null;
+  creditLimit: number;
+  closingDay: number;
+  paymentDueDay: number;
+  autoReserve: boolean;
+  network?: CardNetwork | null;
+}
+
+export interface DeclareStatementRequest {
+  closingDate: string;
+  dueDate: string;
+  statementBalance: number;
+  minimumPayment?: number | null;
+}
+
+export interface CreateInstallmentPlanRequest {
+  transactionId: string;
+  numberOfInstallments: number;
+  interestRate?: number | null;
+}
+
+export interface RegisterCardPaymentRequest {
+  amount: number;
+  sourceAccountId: string | null;
+  paidAt?: string | null;
+  clientRequestId?: string | null;
+}
+
+export interface CardPaymentResult {
+  cardTransactionId: string;
+  bankTransactionId: string | null;
+  card: CreditCardSummary;
+}
+
+export interface CardPaymentSuggestion {
+  bankTransactionId: string;
+  bankAccountId: string;
+  bankAccountAlias: string;
+  date: string;
+  amount: number;
+  description: string;
+  cardTransactionId: string | null;
+  reason: 'matches_card_payment' | 'looks_like_card_payment';
 }

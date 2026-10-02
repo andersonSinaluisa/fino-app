@@ -303,6 +303,21 @@ persona). `period`, `priority` y `level` son enums cerrados; `reserves`,
 Nunca viajan montos, categorías, notas, descripción bancaria, destinatarios ni
 referencias.
 
+## Tarjetas de crédito
+
+| Evento | Propiedades | Cuándo |
+| --- | --- | --- |
+| `credit_card_created` | `autoReserve` (bool), `flow` (`create`) | Se guardó una tarjeta nueva. |
+| `credit_card_opened` | `source`, `needsSetup` (bool) | Se abrió el detalle de una tarjeta (pantalla `credit_card_detail`, sin id). |
+| `credit_card_statement_imported` | `fileFormat`, `hasSummary` (bool) | Se confirmó la importación de un estado en una tarjeta. |
+| `credit_card_payment_registered` | `paymentSource` (`account`/`external`), `flow` (`manual`/`link`) | Se registró un pago o se vinculó un débito del banco como pago. |
+| `credit_card_installment_created` | `installmentsBucket` (`2_6`/`7_12`/`13_plus`) | Se difirió una compra en cuotas. |
+| `credit_card_auto_reserve_enabled` | `flow` (`create`/`edit`) | Se activó «Reservar próximo pago». |
+
+Nunca viajan montos, deuda, cupo, últimos 4 dígitos, banco o emisor, comercios,
+descripciones ni referencias. Ninguna clave contiene `card`/`tarjeta`/`account`
+(el patrón de claves sospechosas sigue sin excepciones nuevas).
+
 ## Cómo añadir un evento nuevo
 
 1. Añádelo a `AnalyticsEvent` en `events.ts`, en snake_case.
