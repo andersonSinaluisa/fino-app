@@ -72,6 +72,8 @@ public sealed class NexoDbContext : DbContext, INexoDbContext
 
     public DbSet<Device> Devices => Set<Device>();
 
+    public DbSet<UserConsent> UserConsents => Set<UserConsent>();
+
     public DbSet<Notification> Notifications => Set<Notification>();
 
     public DbSet<FinancialPulse> Pulses => Set<FinancialPulse>();

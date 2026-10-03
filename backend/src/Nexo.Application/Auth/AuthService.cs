@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Nexo.Application.Abstractions;
 using Nexo.Application.Common;
+using Nexo.Application.Legal;
 using Nexo.Domain.Audit;
 using Nexo.Domain.Common;
 using Nexo.Domain.Users;
@@ -65,9 +66,11 @@ public sealed class AuthService(
     IIpHasher ipHasher,
     IClock clock,
     IOptions<AuthOptions> options,
+    IOptions<LegalOptions> legalOptions,
     ILogger<AuthService> logger) : IAuthService
 {
     private readonly AuthOptions _options = options.Value;
+    private readonly LegalOptions _legal = legalOptions.Value;
 
     public async Task<AuthResult> RegisterAsync(
         RegisterRequest request,
@@ -81,6 +84,13 @@ public sealed class AuthService(
 
         ValidatePassword(request.Password);
 
+        // Antes de tocar la base: sin 18+ y aceptación explícita no hay cuenta.
+        if (!request.AcceptedTerms || !request.ConfirmedAdult)
+        {
+            throw new ValidationException(
+                "Para crear tu cuenta debes tener 18 años o más y aceptar los Términos y la Política de privacidad.");
+        }
+
         var email = User.NormalizeEmail(request.Email);
         var exists = await db.Users.AnyAsync(u => u.NormalizedEmail == email, cancellationToken);
         if (exists)
@@ -93,6 +103,7 @@ public sealed class AuthService(
         var now = clock.UtcNow;
         var user = User.Register(email, request.DisplayName, passwordHasher.Hash(request.Password), now);
         db.Users.Add(user);
+        LegalService.RecordRegistration(db, _legal, user.Id, request, now);
 
         db.AuditLog.Add(AuditLogEntry.Record(
             user.Id,

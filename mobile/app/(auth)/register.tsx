@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { colors, spacing } from '../../theme';
 import { Button, Input, Screen, Typo } from '../../components/ui';
 import { useAuthStore } from '../../store/authStore';
+import { ConsentCheckbox } from '../../components/legal/ConsentCheckbox';
 
 const MIN_PASSWORD_LENGTH = 10;
 
@@ -18,14 +19,23 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
+  // LOPDP art. 8: ninguna casilla viene marcada. La primera es obligatoria
+  // (18+ y aceptar los documentos); la de datos de uso es opcional.
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [analyticsConsent, setAnalyticsConsent] = useState(false);
 
   const passwordTooShort = password.length > 0 && password.length < MIN_PASSWORD_LENGTH;
-  const canSubmit = displayName.length > 1 && email.includes('@') && password.length >= MIN_PASSWORD_LENGTH;
+  const canSubmit =
+    displayName.length > 1 && email.includes('@') && password.length >= MIN_PASSWORD_LENGTH && acceptedTerms;
 
   const submit = async () => {
     setBusy(true);
     try {
-      await register(email, password, displayName);
+      await register(email, password, displayName, {
+        acceptedTerms,
+        confirmedAdult: acceptedTerms,
+        analyticsConsent,
+      });
       // Coming from onboarding's "¿Qué quieres conectar?" step means the
       // person already intends to connect an account -- send them straight
       // into the real add-account flow instead of an empty home screen.
@@ -38,7 +48,7 @@ export default function RegisterScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <View style={styles.flex}>
       <Screen>
         <View style={styles.header}>
           <Typo variant="title">Crea tu cuenta</Typo>
@@ -84,6 +94,30 @@ export default function RegisterScreen() {
             error={passwordTooShort ? `Usa al menos ${MIN_PASSWORD_LENGTH} caracteres.` : null}
           />
 
+          <ConsentCheckbox
+            checked={acceptedTerms}
+            onChange={setAcceptedTerms}
+            accessibilityLabel="Tengo 18 años o más y acepto los Términos y condiciones y la Política de privacidad"
+          >
+            Tengo 18 años o más y acepto los{' '}
+            <Typo variant="caption" style={styles.link} onPress={() => router.push('/legal/terminos')}>
+              Términos y condiciones
+            </Typo>{' '}
+            y la{' '}
+            <Typo variant="caption" style={styles.link} onPress={() => router.push('/legal/privacidad')}>
+              Política de privacidad
+            </Typo>
+            .
+          </ConsentCheckbox>
+
+          <ConsentCheckbox
+            checked={analyticsConsent}
+            onChange={setAnalyticsConsent}
+            accessibilityLabel="Compartir datos de uso anónimos para mejorar Fino (opcional)"
+          >
+            Compartir datos de uso anónimos para mejorar Fino. Nunca incluyen montos ni movimientos. Opcional.
+          </ConsentCheckbox>
+
           {error ? (
             <Typo variant="caption" color={colors.danger}>
               {error}
@@ -95,7 +129,7 @@ export default function RegisterScreen() {
           <Button label="Ya tengo cuenta" variant="ghost" onPress={() => router.back()} />
         </View>
       </Screen>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
@@ -108,5 +142,9 @@ const styles = StyleSheet.create({
   },
   form: {
     gap: spacing.lg,
+  },
+  link: {
+    textDecorationLine: 'underline',
+    fontWeight: '700',
   },
 });

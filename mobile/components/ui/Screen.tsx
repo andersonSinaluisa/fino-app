@@ -1,7 +1,6 @@
 import type { ReactNode } from 'react';
 import {
   Keyboard,
-  ScrollView,
   StyleSheet,
   TouchableWithoutFeedback,
   View,
@@ -10,6 +9,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, spacing } from '../../theme';
+import { KeyboardAwareScrollView } from './KeyboardAwareScrollView';
 
 interface ScreenProps {
   children: ReactNode;
@@ -55,8 +55,9 @@ export function Screen({
     return wrap(<View style={[styles.root, padding, contentStyle]}>{children}</View>);
   }
 
+  // Cualquier campo dentro de la pantalla sube por encima del teclado.
   return wrap(
-    <ScrollView
+    <KeyboardAwareScrollView
       style={styles.root}
       contentContainerStyle={[padding, contentStyle]}
       showsVerticalScrollIndicator={false}
@@ -68,7 +69,7 @@ export function Screen({
       }
     >
       {children}
-    </ScrollView>,
+    </KeyboardAwareScrollView>,
   );
 }
 

@@ -145,6 +145,95 @@ public class CategorizationPersonalizationTests(NexoApiFactory factory) : IClass
     }
 
     /// <summary>
+    /// La persona elige qué parte de la descripción usa la regla ("CELLY AZANZA"
+    /// en vez de la sugerencia "CELLY"): el preview devuelve el texto exacto con
+    /// el que se compara, la sugerencia y cuenta coincidencias con SU texto; al
+    /// guardar, la regla queda con ese texto y no con la sugerencia.
+    /// </summary>
+    [Fact]
+    public async Task A_rule_can_use_the_part_of_the_description_the_person_chooses()
+    {
+        var user = await factory.RegisterUserAsync();
+        var account = await user.CreateAccountAsync(openingBalance: null);
+
+        var items = await user.ConfirmAndListAsync(account, TwoRowStatement(
+            "05/03/2026", "CELLY AZANZA JIMMY ALEJANDRO", 37.91m,
+            "06/03/2026", "CELLY MORAN MARIA", 12m));
+        var jimmy = FindByDescription(items, "CELLY AZANZA");
+        var maria = FindByDescription(items, "CELLY MORAN");
+        var comida = await FindCategoryAsync(user, "COMIDA");
+
+        async Task<JsonElement> PreviewAsync(string? pattern) =>
+            await (await user.Client.PostAsJsonAsync("/api/v1/categorization-rules/preview", new
+            {
+                transactionId = jimmy.GetProperty("id").GetGuid(),
+                categoryId = comida.GetProperty("id").GetGuid(),
+                pattern,
+            })).Content.ReadFromJsonAsync<JsonElement>();
+
+        var suggested = await PreviewAsync(null);
+        Assert.Equal("CELLY", suggested.GetProperty("pattern").GetString());
+        Assert.Equal("CELLY", suggested.GetProperty("suggestedPattern").GetString());
+        Assert.Equal("CELLY AZANZA JIMMY ALEJANDRO", suggested.GetProperty("normalizedDescription").GetString());
+        Assert.Equal(1, suggested.GetProperty("matchedCount").GetInt32());
+
+        // Minúsculas y tildes se normalizan igual que la descripción.
+        var chosen = await PreviewAsync("celly azanza");
+        Assert.Equal("CELLY AZANZA", chosen.GetProperty("pattern").GetString());
+        Assert.Equal("CELLY", chosen.GetProperty("suggestedPattern").GetString());
+        Assert.Equal(0, chosen.GetProperty("matchedCount").GetInt32());
+
+        var notInDescription = await user.Client.PostAsJsonAsync("/api/v1/categorization-rules/preview", new
+        {
+            transactionId = jimmy.GetProperty("id").GetGuid(),
+            categoryId = comida.GetProperty("id").GetGuid(),
+            pattern = "SUPERMAXI",
+        });
+        Assert.Equal(HttpStatusCode.BadRequest, notInDescription.StatusCode);
+
+        var response = await user.Client.PutAsJsonAsync(
+            $"/api/v1/transactions/{jimmy.GetProperty("id").GetGuid()}/category",
+            new { categoryId = comida.GetProperty("id").GetGuid(), createRule = true, applyToExistingMatches = true, rulePattern = "CELLY AZANZA" });
+        await response.EnsureOkAsync();
+
+        var rules = await user.GetJsonAsync("/api/v1/categorization-rules");
+        Assert.Equal("CELLY AZANZA", Assert.Single(rules.EnumerateArray()).GetProperty("pattern").GetString());
+
+        // La otra transferencia ("CELLY MORAN") no cae en la regla más precisa.
+        var list = (await user.GetJsonAsync("/api/v1/transactions")).GetProperty("items");
+        Assert.Equal("Otros", FindByDescription(list, "CELLY MORAN").GetProperty("categoryName").GetString());
+        Assert.NotEqual(maria.GetProperty("id").GetGuid(), jimmy.GetProperty("id").GetGuid());
+    }
+
+    [Fact]
+    public async Task A_chosen_rule_text_that_is_too_generic_is_rejected_instead_of_ignored()
+    {
+        var user = await factory.RegisterUserAsync();
+        var account = await user.CreateAccountAsync(openingBalance: null);
+        var items = await user.ConfirmAndListAsync(account, OneRowStatement("05/03/2026", "TRANSFERENCIA CELLY AZANZA", 20m));
+        var tx = FindByDescription(items, "CELLY AZANZA");
+        var comida = await FindCategoryAsync(user, "COMIDA");
+
+        var preview = await (await user.Client.PostAsJsonAsync("/api/v1/categorization-rules/preview", new
+        {
+            transactionId = tx.GetProperty("id").GetGuid(),
+            categoryId = comida.GetProperty("id").GetGuid(),
+            pattern = "transferencia",
+        })).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(preview.GetProperty("isTooGeneric").GetBoolean());
+        Assert.Equal("TRANSFERENCIA", preview.GetProperty("pattern").GetString());
+
+        var response = await user.Client.PutAsJsonAsync(
+            $"/api/v1/transactions/{tx.GetProperty("id").GetGuid()}/category",
+            new { categoryId = comida.GetProperty("id").GetGuid(), createRule = true, rulePattern = "TRANSFERENCIA" });
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        // Nada se guardó: ni la regla ni el cambio de categoría.
+        Assert.Empty((await user.GetJsonAsync("/api/v1/categorization-rules")).EnumerateArray());
+        Assert.NotEqual("Comida", (await GetDetailAsync(user, tx.GetProperty("id").GetGuid())).GetProperty("categoryName").GetString());
+    }
+
+    /// <summary>
     /// Point 7/16/24b: "este, anteriores y futuros" only recategorizes history once
     /// the user explicitly confirms (here, in the same request that sets the rule),
     /// reports how many movements changed, and future movements keep matching too.

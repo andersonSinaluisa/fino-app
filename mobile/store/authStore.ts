@@ -4,7 +4,7 @@ import { configureAuth, ApiError, type AuthTokens } from '../services/apiClient'
 import { clearSession, readSession, saveSession } from '../services/secureStorage';
 import { useDeviceStore } from './deviceStore';
 import { AnalyticsEvent, ErrorReason, analytics, track } from '../services/analytics';
-import type { AuthenticatedUser, OnboardingStatus } from '../types/api';
+import type { AuthenticatedUser, OnboardingStatus, RegisterConsents } from '../types/api';
 
 interface AuthState {
   status: 'loading' | 'authenticated' | 'anonymous';
@@ -18,7 +18,8 @@ interface AuthState {
    * period, so the screen can tell the person their account is active again.
    */
   login: (email: string, password: string) => Promise<boolean>;
-  register: (email: string, password: string, displayName: string) => Promise<void>;
+  /** consents: lo que la persona marcó (18+ y términos obligatorios; datos de uso opcional). */
+  register: (email: string, password: string, displayName: string, consents: RegisterConsents) => Promise<void>;
   logout: () => Promise<void>;
   /** Entregable 19: same local cleanup as logout(), plus revokes every other device too. */
   logoutAllDevices: () => Promise<void>;
@@ -81,12 +82,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
   },
 
-  register: async (email, password, displayName) => {
+  register: async (email, password, displayName, consents) => {
     set({ error: null });
     track(AnalyticsEvent.SignupStarted);
     try {
-      const result = await api.auth.register(email.trim(), password, displayName.trim());
+      const result = await api.auth.register(email.trim(), password, displayName.trim(), consents);
       await persist(result, set);
+      // Datos de uso solo si la persona marcó la casilla (LOPDP art. 8).
+      await analytics.setConsent(consents.analyticsConsent ? 'granted' : 'denied');
 
       // §4: el dispositivo ya venía generando eventos anónimos (instalación,
       // pantalla de registro). `alias` los cose al id interno para no perder

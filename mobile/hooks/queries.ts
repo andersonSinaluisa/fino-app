@@ -1,10 +1,14 @@
+import { useEffect } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api, type TransactionQuery } from '../services/endpoints';
 import { useAuthStore } from '../store/authStore';
-import { AnalyticsEvent, track } from '../services/analytics';
+import { AnalyticsEvent, analytics, track } from '../services/analytics';
 import type {
   AnalyticsPeriodCode,
   ReplaceSplitsRequest,
+  LegalDocument,
+  LegalStatus,
+  RulePreviewRequest,
   BudgetPreviewRequest,
   CreateBudgetRequest,
   UpdateBudgetRequest,
@@ -263,11 +267,13 @@ export function useSetCategory(transactionId: string) {
       categoryId,
       createRule = true,
       applyToExistingMatches = false,
+      rulePattern = null,
     }: {
       categoryId: string;
       createRule?: boolean;
       applyToExistingMatches?: boolean;
-    }) => api.transactions.setCategory(transactionId, categoryId, createRule, applyToExistingMatches),
+      rulePattern?: string | null;
+    }) => api.transactions.setCategory(transactionId, categoryId, createRule, applyToExistingMatches, rulePattern),
     onSuccess: () => {
       // A recategorisation changes the breakdown and the insights too; when
       // history was also recategorized, other movements' cards changed too.
@@ -313,7 +319,7 @@ export function useRemoveSplits(transactionId: string) {
 
 export function useRulePreview() {
   return useMutation({
-    mutationFn: (request: { transactionId: string; categoryId: string }) => api.categorizationRules.preview(request),
+    mutationFn: (request: RulePreviewRequest) => api.categorizationRules.preview(request),
   });
 }
 
@@ -1008,4 +1014,57 @@ export function useReclassifyCardMovement() {
       invalidateAfterCardChange(client);
     },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Términos, privacidad y consentimientos (LOPDP)
+// ---------------------------------------------------------------------------
+
+export function useLegalDocument(kind: LegalDocument['kind']) {
+  return useQuery({ queryKey: ['legal', 'document', kind], queryFn: () => api.legal.document(kind), staleTime: 60 * 60 * 1000 });
+}
+
+/** Solo con sesión: qué aceptó la persona y si debe aceptar una versión nueva. */
+export function useLegalStatus(enabled = true) {
+  return useQuery({ queryKey: ['legal', 'status'], queryFn: api.legal.status, enabled, staleTime: 5 * 60 * 1000 });
+}
+
+function applyAnalyticsConsent(status: LegalStatus) {
+  if (status.analyticsConsent !== null) {
+    void analytics.setConsent(status.analyticsConsent ? 'granted' : 'denied');
+  }
+}
+
+export function useAcceptLegal() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: api.legal.accept,
+    onSuccess: (status) => {
+      client.setQueryData(['legal', 'status'], status);
+      applyAnalyticsConsent(status);
+    },
+  });
+}
+
+export function useSetAnalyticsConsent() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: api.legal.setAnalytics,
+    onSuccess: (status) => {
+      client.setQueryData(['legal', 'status'], status);
+      applyAnalyticsConsent(status);
+    },
+  });
+}
+
+/** El servidor es la fuente de verdad del consentimiento de datos de uso: lo refleja en este dispositivo. */
+export function useSyncAnalyticsConsent(status: LegalStatus | undefined) {
+  const consent = status?.analyticsConsent;
+  useEffect(() => {
+    if (consent === undefined || consent === null) {
+      return;
+    }
+
+    void analytics.setConsent(consent ? 'granted' : 'denied');
+  }, [consent]);
 }

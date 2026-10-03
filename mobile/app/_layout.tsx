@@ -197,6 +197,10 @@ export default function RootLayout() {
           <Stack.Screen name="sesiones/index" options={{ presentation: 'card' }} />
           <Stack.Screen name="actividad/index" options={{ presentation: 'card' }} />
           <Stack.Screen name="compartir" options={{ presentation: 'modal' }} />
+          {/* Términos y privacidad: se leen desde el registro y desde Perfil. Aceptar
+              una versión nueva no se puede cerrar con un gesto. */}
+          <Stack.Screen name="legal/[doc]" options={{ presentation: 'card' }} />
+          <Stack.Screen name="legal/aceptar" options={{ presentation: 'card', gestureEnabled: false }} />
           {/* Escaneo de facturas. Modal porque es un flujo con principio y fin,
               igual que importar: se entra, se resuelve y se vuelve a donde se
               estaba. */}

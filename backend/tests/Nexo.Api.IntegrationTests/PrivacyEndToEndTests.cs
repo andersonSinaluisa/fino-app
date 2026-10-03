@@ -39,6 +39,8 @@ public class PrivacyEndToEndTests(NexoApiFactory factory) : IClassFixture<NexoAp
             email,
             password = Password,
             displayName = "Usuario de prueba",
+            acceptedTerms = true,
+            confirmedAdult = true,
         });
         await register.EnsureOkAsync();
         var registerPayload = await register.Content.ReadFromJsonAsync<JsonElement>();

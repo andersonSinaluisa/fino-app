@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing, typography } from '../../theme';
-import { Button, Typo } from '../ui';
+import { Button, KeyboardAwareScrollView, KeyboardSpacer, Typo } from '../ui';
 import { CATEGORY_COLORS, CATEGORY_ICON_KEYS, iconForCategory } from '../../utils/categoryIcons';
 import type { Category } from '../../types/api';
 
@@ -64,7 +64,8 @@ export function CategoryFormSheet({
           {category ? 'Editar categoría' : 'Nueva categoría'}
         </Typo>
 
-        <ScrollView
+        <KeyboardAwareScrollView
+          keyboardSpacer={false}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.body}
           keyboardShouldPersistTaps="handled"
@@ -130,7 +131,7 @@ export function CategoryFormSheet({
               {errorMessage}
             </Typo>
           ) : null}
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         <View style={styles.submitRow}>
           <Button
@@ -142,6 +143,7 @@ export function CategoryFormSheet({
           />
         </View>
       </View>
+      <KeyboardSpacer />
     </Modal>
   );
 }
@@ -159,6 +161,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
     maxHeight: '82%',
+    flexShrink: 1,
   },
   handle: {
     alignSelf: 'center',

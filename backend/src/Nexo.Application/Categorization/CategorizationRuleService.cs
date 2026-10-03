@@ -56,6 +56,22 @@ public interface ICategorizationRuleService
         CancellationToken cancellationToken);
 
     /// <summary>
+    /// Same as above, but honouring the part of the description the person picked
+    /// in the app. <paramref name="requestedPattern"/> null/blank falls back to the
+    /// automatic suggestion. A requested pattern is normalized exactly like the
+    /// descriptions it will be compared against, must be part of THIS movement's
+    /// normalized description (400 otherwise) and is never escalated: the person
+    /// chose it on purpose. Too generic returns an empty pattern, like the
+    /// automatic path.
+    /// </summary>
+    Task<(string Pattern, CategorizationRule? ExistingRule)> ResolveRulePatternAsync(
+        Guid userId,
+        Guid categoryId,
+        string description,
+        string? requestedPattern,
+        CancellationToken cancellationToken);
+
+    /// <summary>
     /// Point 7/16: recategorizes this user's own PAST movements that match
     /// <paramref name="rule"/> (never one the person already corrected by hand,
     /// never another user's), returning how many changed. Scoped to
@@ -192,8 +208,17 @@ public sealed class CategorizationRuleService(INexoDbContext db, IClock clock) :
 
         var category = await RequireCategoryAsync(userId, request.CategoryId, cancellationToken);
 
-        var (pattern, existingRule) = await ResolveRulePatternAsync(userId, category.Id, transaction.Description, cancellationToken);
+        var (suggested, _) = await ResolveRulePatternAsync(userId, category.Id, transaction.Description, cancellationToken);
+        var (pattern, existingRule) = string.IsNullOrWhiteSpace(request.Pattern)
+            ? (suggested, await FindExistingForSuggestionAsync(userId, suggested, cancellationToken))
+            : await ResolveRulePatternAsync(userId, category.Id, transaction.Description, request.Pattern, cancellationToken);
         var isTooGeneric = pattern.Length == 0;
+        var normalizedDescription = TextNormalizer.NormalizeForMatching(transaction.Description);
+        // Lo que se le muestra a la persona cuando el texto que eligió es
+        // demasiado general: su propio texto, no un vacío.
+        var shownPattern = isTooGeneric && !string.IsNullOrWhiteSpace(request.Pattern)
+            ? TextNormalizer.NormalizeForMatching(request.Pattern)
+            : pattern;
 
         Guid? conflictingRuleId = null;
         Guid? conflictingCategoryId = null;
@@ -208,7 +233,7 @@ public sealed class CategorizationRuleService(INexoDbContext db, IClock clock) :
 
         if (isTooGeneric)
         {
-            return new RulePreviewDto(pattern, "Contains", true, 0, [], conflictingRuleId, conflictingCategoryId, conflictingCategoryName);
+            return new RulePreviewDto(shownPattern, "Contains", true, 0, [], conflictingRuleId, conflictingCategoryId, conflictingCategoryName, normalizedDescription, suggested);
         }
 
         var query = BuildPatternCandidateQuery(userId, pattern, RuleMatchKind.Contains, request.TransactionId, tracked: false);
@@ -228,7 +253,7 @@ public sealed class CategorizationRuleService(INexoDbContext db, IClock clock) :
                 t.TransactionDate))
             .ToList();
 
-        return new RulePreviewDto(pattern, "Contains", false, matchedCount, sample, conflictingRuleId, conflictingCategoryId, conflictingCategoryName);
+        return new RulePreviewDto(pattern, "Contains", false, matchedCount, sample, conflictingRuleId, conflictingCategoryId, conflictingCategoryName, normalizedDescription, suggested);
     }
 
     public async Task<(string Pattern, CategorizationRule? ExistingRule)> ResolveRulePatternAsync(
@@ -265,6 +290,37 @@ public sealed class CategorizationRuleService(INexoDbContext db, IClock clock) :
 
         return (pattern, existing);
     }
+
+    public async Task<(string Pattern, CategorizationRule? ExistingRule)> ResolveRulePatternAsync(
+        Guid userId,
+        Guid categoryId,
+        string description,
+        string? requestedPattern,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(requestedPattern))
+        {
+            return await ResolveRulePatternAsync(userId, categoryId, description, cancellationToken);
+        }
+
+        var pattern = TextNormalizer.NormalizeForMatching(requestedPattern);
+        var normalizedDescription = TextNormalizer.NormalizeForMatching(description);
+
+        if (pattern.Length == 0 || !normalizedDescription.Contains(pattern, StringComparison.Ordinal))
+        {
+            throw new ValidationException("El texto de la regla tiene que ser parte de la descripción de este movimiento.");
+        }
+
+        if (TextNormalizer.IsTooGenericRulePattern(pattern))
+        {
+            return (string.Empty, null);
+        }
+
+        return (pattern, await FindRuleByPatternAsync(userId, pattern, cancellationToken));
+    }
+
+    private async Task<CategorizationRule?> FindExistingForSuggestionAsync(Guid userId, string pattern, CancellationToken cancellationToken) =>
+        pattern.Length == 0 ? null : await FindRuleByPatternAsync(userId, pattern, cancellationToken);
 
     private Task<CategorizationRule?> FindRuleByPatternAsync(Guid userId, string pattern, CancellationToken cancellationToken) =>
         db.CategorizationRules.FirstOrDefaultAsync(

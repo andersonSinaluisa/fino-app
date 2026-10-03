@@ -8,7 +8,9 @@ import { usePreferencesStore } from '../../store/preferencesStore';
 import {
   useEmailConnections,
   useDeleteTransactions,
+  useLegalStatus,
   useRevokeEmailConnection,
+  useSetAnalyticsConsent,
 } from '../../hooks/queries';
 import { api } from '../../services/endpoints';
 import { config } from '../../services/config';
@@ -37,6 +39,25 @@ export default function ProfileScreen() {
   const { data: emailConnections } = useEmailConnections();
   const deleteTransactions = useDeleteTransactions();
   const revokeEmail = useRevokeEmailConnection();
+  const { data: legal } = useLegalStatus();
+  const setAnalyticsConsent = useSetAnalyticsConsent();
+  const contactEmail = legal?.contactEmail ?? 'info@brix-dev.com';
+  const analyticsOn = setAnalyticsConsent.isPending
+    ? Boolean(setAnalyticsConsent.variables)
+    : legal?.analyticsConsent === true;
+
+  const exportData = () => {
+    void api.privacy
+      .exportLink()
+      .then(({ path }) => Linking.openURL(`${config.apiBaseUrl}${path}`))
+      .catch(() => Alert.alert('No pudimos preparar la exportación', 'Inténtalo de nuevo en un momento.'));
+  };
+
+  const contact = () => {
+    void Linking.openURL(`mailto:${contactEmail}?subject=${encodeURIComponent('Fino: soporte o reclamo')}`).catch(() =>
+      Alert.alert('Escríbenos', `Envíanos un correo a ${contactEmail}.`),
+    );
+  };
 
   /** Toda acción destructiva pasa por aquí: mismo tono, misma salida. */
   const confirm = (title: string, body: string, action: string, onConfirm: () => void) => {
@@ -164,11 +185,24 @@ export default function ProfileScreen() {
             icon="download-outline"
             label="Exportar mis datos"
             hint="Descarga todo lo que Fino guarda de ti."
-            onPress={() => {
-              void Linking.openURL(`${config.apiBaseUrl}/api/v1/privacy/export`).catch(() =>
-                Alert.alert('No pudimos abrir la exportación', 'Intenta desde un navegador.'),
-              );
-            }}
+            onPress={exportData}
+          />
+          <Divider />
+          <Row
+            icon="analytics-outline"
+            label="Datos de uso anónimos"
+            hint="Ayudan a mejorar Fino. Nunca incluyen montos ni movimientos."
+            right={
+              <Switch
+                value={analyticsOn}
+                disabled={!legal || setAnalyticsConsent.isPending}
+                onValueChange={(value) =>
+                  setAnalyticsConsent.mutate(value, {
+                    onError: () => Alert.alert('No pudimos guardar el cambio', 'Inténtalo de nuevo en un momento.'),
+                  })
+                }
+              />
+            }
           />
           <Divider />
           <Row
@@ -206,12 +240,24 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.section}>
+        <SectionHeader title="Legal y ayuda" />
+        <Card>
+          <Row icon="document-text-outline" label="Términos y condiciones" onPress={() => router.push('/legal/terminos')} />
+          <Divider />
+          <Row icon="shield-checkmark-outline" label="Política de privacidad" onPress={() => router.push('/legal/privacidad')} />
+          <Divider />
+          <Row icon="mail-outline" label="Ayuda y reclamos" hint={contactEmail} onPress={contact} />
+        </Card>
+      </View>
+
+      <View style={styles.section}>
         <SectionHeader title="Acerca de" />
         <Card>
           <Typo variant="caption" color={colors.textSecondary}>
             Fino no es un banco ni una billetera y no mueve dinero. Centraliza tus movimientos para
             que entiendas tus finanzas en un solo lugar. Los saldos calculados se muestran siempre
-            como estimados.
+            como estimados. Fino no presta asesoría financiera: los insights son información
+            calculada con tus datos, no recomendaciones.
           </Typo>
         </Card>
       </View>

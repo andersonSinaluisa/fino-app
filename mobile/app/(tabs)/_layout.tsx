@@ -10,6 +10,7 @@ import { usePendingShare } from '../../hooks/usePendingShare';
 import { usePendingIntent } from '../../hooks/usePendingIntent';
 import { QuickEntryFab } from '../../components/quick-entry/QuickEntryFab';
 import { QuickCashEntrySheet } from '../../components/quick-entry/QuickCashEntrySheet';
+import { useLegalStatus, useSyncAnalyticsConsent } from '../../hooks/queries';
 
 /**
  * §1 y §26: el botón "+" vive AQUÍ, una sola vez, y no dentro de cada pantalla.
@@ -38,8 +39,18 @@ export default function TabsLayout() {
   // §29: abre el sheet cuando la persona llegó desde Siri o desde Atajos.
   usePendingIntent();
 
+  // LOPDP: sin aceptar la versión vigente de Términos y Privacidad no se usa
+  // la app; y el consentimiento de datos de uso del servidor manda en este
+  // dispositivo. Mientras carga, no se bloquea nada.
+  const legal = useLegalStatus(status === 'authenticated');
+  useSyncAnalyticsConsent(legal.data);
+
   if (status === 'anonymous') {
     return <Redirect href="/(auth)/login" />;
+  }
+
+  if (legal.data?.needsAcceptance) {
+    return <Redirect href="/legal/aceptar" />;
   }
 
   const fabSource = FAB_ROUTES[pathname];

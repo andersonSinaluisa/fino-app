@@ -1,6 +1,20 @@
 namespace Nexo.Application.Auth;
 
-public sealed record RegisterRequest(string Email, string Password, string DisplayName);
+/// <summary>
+/// Registro. LOPDP art. 8 / Ley de Comercio Electrónico: <paramref name="AcceptedTerms"/>
+/// y <paramref name="ConfirmedAdult"/> deben venir en true (casilla marcada por la
+/// persona, nunca por defecto); las versiones son las que la app mostró (null = la
+/// vigente). <paramref name="AnalyticsConsent"/> es opcional y por defecto no.
+/// </summary>
+public sealed record RegisterRequest(
+    string Email,
+    string Password,
+    string DisplayName,
+    bool AcceptedTerms = false,
+    bool ConfirmedAdult = false,
+    string? TermsVersion = null,
+    string? PrivacyVersion = null,
+    bool? AnalyticsConsent = null);
 
 public sealed record LoginRequest(string Email, string Password);
 

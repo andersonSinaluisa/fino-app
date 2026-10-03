@@ -237,6 +237,13 @@ public sealed class PrivacyService(INexoDbContext db, IClock clock) : IPrivacySe
             .Select(n => new { n.Id, Type = n.Type.ToString(), n.Title, n.Body, IsRead = n.ReadAt != null, n.CreatedAt })
             .ToListAsync(cancellationToken);
 
+        // Términos, privacidad, 18+ y datos de uso: qué aceptó y cuándo (LOPDP art. 13).
+        var consents = await db.UserConsents.AsNoTracking()
+            .Where(c => c.UserId == userId)
+            .OrderBy(c => c.CreatedAt)
+            .Select(c => new { Kind = c.Kind.ToString(), c.Version, c.Granted, c.Source, RecordedAt = c.CreatedAt })
+            .ToListAsync(cancellationToken);
+
         // Only the currently active sessions -- the same set the "Sesiones" screen
         // shows (Entregable 19). A rotated/revoked refresh token is internal
         // bookkeeping, not something the person would recognize as "their data",
@@ -274,6 +281,7 @@ public sealed class PrivacyService(INexoDbContext db, IClock clock) : IPrivacySe
             insights,
             notifications,
             sessions,
+            consents,
         };
 
         db.AuditLog.Add(AuditLogEntry.Record(

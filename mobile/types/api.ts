@@ -241,6 +241,8 @@ export interface UpdateCategorizationRuleRequest {
 export interface RulePreviewRequest {
   transactionId: string;
   categoryId: string;
+  /** La parte de la descripción que eligió la persona; sin ella, el backend sugiere. */
+  pattern?: string | null;
 }
 
 export interface RulePreviewTransaction {
@@ -261,6 +263,14 @@ export interface RulePreview {
   conflictingRuleId: string | null;
   conflictingCategoryId: string | null;
   conflictingCategoryName: string | null;
+  /**
+   * El texto exacto con el que se compara cada regla: la descripción en
+   * mayúsculas, sin tildes ni números de referencia. `pattern` siempre es una
+   * parte de este texto. Vacío en un backend anterior a este campo.
+   */
+  normalizedDescription?: string;
+  /** Lo que Fino elegiría solo, para "volver a la sugerencia". */
+  suggestedPattern?: string;
 }
 
 /**
@@ -1228,4 +1238,33 @@ export interface CardPaymentSuggestion {
   description: string;
   cardTransactionId: string | null;
   reason: 'matches_card_payment' | 'looks_like_card_payment';
+}
+
+/** Documentos legales (GET /legal/{terminos|privacidad}), markdown simple. */
+export interface LegalDocument {
+  kind: 'terminos' | 'privacidad';
+  title: string;
+  version: string;
+  markdown: string;
+  /** Faltan datos del responsable en la configuración del servidor. */
+  isIncomplete: boolean;
+}
+
+/** Qué aceptó la persona y si debe aceptar una versión nueva (GET /legal/status). */
+export interface LegalStatus {
+  termsVersion: string;
+  privacyVersion: string;
+  acceptedTermsVersion: string | null;
+  acceptedPrivacyVersion: string | null;
+  needsAcceptance: boolean;
+  /** null = nunca se le preguntó. */
+  analyticsConsent: boolean | null;
+  contactEmail: string;
+}
+
+/** Lo que la persona marca al registrarse (LOPDP art. 8): nunca marcado por defecto. */
+export interface RegisterConsents {
+  acceptedTerms: boolean;
+  confirmedAdult: boolean;
+  analyticsConsent: boolean;
 }

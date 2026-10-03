@@ -54,6 +54,8 @@ public static class TestClientExtensions
             email = address,
             password = "NexoIntegration2026!",
             displayName = "Usuario de prueba",
+            acceptedTerms = true,
+            confirmedAdult = true,
         });
 
         await response.EnsureOkAsync();

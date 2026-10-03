@@ -88,6 +88,8 @@ public class AccountLockoutTests(NexoApiFactory factory) : IClassFixture<NexoApi
             email,
             password = Password,
             displayName = "Usuario de prueba",
+            acceptedTerms = true,
+            confirmedAdult = true,
         });
         await response.EnsureOkAsync();
     }

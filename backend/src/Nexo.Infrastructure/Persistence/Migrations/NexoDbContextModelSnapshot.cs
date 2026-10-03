@@ -1714,6 +1714,46 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("Nexo.Domain.Users.UserConsent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Granted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Version")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "Kind", "CreatedAt");
+
+                    b.ToTable("user_consents", (string)null);
+                });
+
             modelBuilder.Entity("Nexo.Domain.Accounts.FinancialAccount", b =>
                 {
                     b.HasOne("Nexo.Domain.Users.User", null)
@@ -1921,6 +1961,15 @@ namespace Nexo.Infrastructure.Persistence.Migrations
                 });
 
             modelBuilder.Entity("Nexo.Domain.Users.RefreshToken", b =>
+                {
+                    b.HasOne("Nexo.Domain.Users.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Nexo.Domain.Users.UserConsent", b =>
                 {
                     b.HasOne("Nexo.Domain.Users.User", null)
                         .WithMany()

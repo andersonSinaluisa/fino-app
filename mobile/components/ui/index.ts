@@ -5,6 +5,8 @@ export * from './Chip';
 export * from './EdgeFade';
 export * from './EmptyState';
 export * from './Input';
+export * from './KeyboardAwareScrollView';
+export * from './KeyboardSpacer';
 export * from './ProviderAvatar';
 export * from './RingChart';
 export * from './Screen';

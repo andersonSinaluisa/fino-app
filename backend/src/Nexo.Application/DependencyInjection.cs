@@ -5,6 +5,7 @@ using Nexo.Application.Accounts;
 using Nexo.Application.Analytics;
 using Nexo.Application.Audit;
 using Nexo.Application.Auth;
+using Nexo.Application.Legal;
 using Nexo.Application.Budgets;
 using Nexo.Application.Categories;
 using Nexo.Application.Categorization;
@@ -33,10 +34,12 @@ public static class DependencyInjection
     public static IServiceCollection AddNexoApplication(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<AuthOptions>(configuration.GetSection(AuthOptions.SectionName));
+        services.Configure<LegalOptions>(configuration.GetSection(LegalOptions.SectionName));
         services.Configure<ImportOptions>(configuration.GetSection(ImportOptions.SectionName));
         services.Configure<DeduplicationOptions>(configuration.GetSection(DeduplicationOptions.SectionName));
 
         services.AddScoped<IAuthService, AuthService>();
+        services.AddScoped<ILegalService, LegalService>();
         services.AddScoped<IAuditActivityService, AuditActivityService>();
         services.AddScoped<IProviderCatalogService, ProviderCatalogService>();
         services.AddScoped<IAccountService, AccountService>();

@@ -128,6 +128,8 @@ public class AuthorizationTests(NexoApiFactory factory) : IClassFixture<NexoApiF
             email,
             password = "NexoIntegration2026!",
             displayName = "Rotación",
+            acceptedTerms = true,
+            confirmedAdult = true,
         });
         await registration.EnsureOkAsync();
 
@@ -155,7 +157,7 @@ public class AuthorizationTests(NexoApiFactory factory) : IClassFixture<NexoApiF
         var client = factory.CreateClient();
         var email = $"dup-{Guid.CreateVersion7():N}@nexo.test";
 
-        var body = new { email, password = "NexoIntegration2026!", displayName = "Duplicado" };
+        var body = new { email, password = "NexoIntegration2026!", displayName = "Duplicado", acceptedTerms = true, confirmedAdult = true };
 
         await (await client.PostAsJsonAsync("/api/v1/auth/register", body)).EnsureOkAsync();
 

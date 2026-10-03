@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   View,
 } from 'react-native';
@@ -17,6 +14,8 @@ import { colors, radius, spacing, typography } from '../../theme';
 import { Typo } from '../ui/Typo';
 import { Button } from '../ui/Button';
 import { useToast } from '../ui/Toast';
+import { KeyboardAwareScrollView } from '../ui/KeyboardAwareScrollView';
+import { KeyboardSpacer } from '../ui/KeyboardSpacer';
 import { AmountKeypad, applyKey, type KeypadKey } from './AmountKeypad';
 import { TypeToggle } from './TypeToggle';
 import { SmartEntryInput } from './SmartEntryInput';
@@ -491,14 +490,14 @@ export function QuickCashEntryContent() {
 
   return (
     <>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.sheetWrapper}
-      >
+      {/* El teclado empuja la hoja hacia arriba en iOS y en Android (edge-to-edge
+          incluido): KeyboardSpacer ocupa exactamente lo que el teclado tapa. */}
+      <View style={styles.sheetWrapper}>
         <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.lg }]}>
           <View style={styles.handle} />
 
-          <ScrollView
+          <KeyboardAwareScrollView
+            keyboardSpacer={false}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.content}
@@ -672,9 +671,10 @@ export function QuickCashEntryContent() {
                 <ActivityIndicator size="small" color={colors.textSecondary} />
               </View>
             ) : null}
-          </ScrollView>
+          </KeyboardAwareScrollView>
         </View>
-      </KeyboardAvoidingView>
+        <KeyboardSpacer />
+      </View>
 
       {/* §18: mini editor de un frecuente. */}
       <SuggestionEditorSheet
@@ -749,9 +749,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.overlay,
   },
   sheetWrapper: {
-    // Sin `flex: 1`: el KeyboardAvoidingView debe medir lo que mida el sheet, no
-    // estirarse. De estirarse, el sheet volvería a subir hasta arriba.
+    // Sin `flex: 1`: el contenedor mide lo que miden la hoja y el espacio del
+    // teclado, no se estira. De estirarse, la hoja volvería a subir hasta arriba.
     justifyContent: 'flex-end',
+    flexShrink: 1,
   },
   sheet: {
     backgroundColor: colors.background,
@@ -760,6 +761,7 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     paddingHorizontal: spacing.lg,
     maxHeight: '92%',
+    flexShrink: 1,
   },
   handle: {
     alignSelf: 'center',

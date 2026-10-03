@@ -1,10 +1,10 @@
 import { useMemo, useRef, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, radius, spacing, typography } from '../../../theme';
-import { Button, EmptyState, SelectSheet, SkeletonCard, Typo, type SelectSheetOption } from '../../../components/ui';
+import { Button, EmptyState, KeyboardAwareScrollView, SelectSheet, SkeletonCard, Typo, type SelectSheetOption } from '../../../components/ui';
 import { useCategories, useRemoveSplits, useReplaceSplits, useTransaction } from '../../../hooks/queries';
 import { ApiError } from '../../../services/apiClient';
 import { AnalyticsEvent, TransactionDirection, track } from '../../../services/analytics';
@@ -216,7 +216,7 @@ function SplitEditor({ transaction }: { transaction: TransactionDetail }) {
         ) : null}
       </View>
 
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <KeyboardAwareScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Typo variant="overline" color={colors.textSecondary}>
           {income ? 'DIVIDIR INGRESO' : 'DIVIDIR GASTO'}
         </Typo>
@@ -308,7 +308,7 @@ function SplitEditor({ transaction }: { transaction: TransactionDetail }) {
             {error}
           </Typo>
         ) : null}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       <View style={styles.footer} accessibilityLiveRegion="polite">
         <SummaryRow label="Total" value={formatCurrency(fromCents(summary.totalCents))} />

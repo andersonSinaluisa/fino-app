@@ -67,3 +67,24 @@ public sealed class AuditLogEntryConfiguration : IEntityTypeConfiguration<AuditL
         builder.HasIndex(a => a.Action);
     }
 }
+
+public sealed class UserConsentConfiguration : IEntityTypeConfiguration<UserConsent>
+{
+    public void Configure(EntityTypeBuilder<UserConsent> builder)
+    {
+        builder.ToTable("user_consents");
+        builder.HasKey(c => c.Id);
+
+        builder.Property(c => c.Kind).HasConversion<string>().HasMaxLength(24).IsRequired();
+        builder.Property(c => c.Version).HasMaxLength(32).IsRequired();
+        builder.Property(c => c.Source).HasMaxLength(24).IsRequired();
+
+        // "La decisión vigente" = la fila más reciente por usuario y tipo.
+        builder.HasIndex(c => new { c.UserId, c.Kind, c.CreatedAt });
+
+        builder.HasOne<User>()
+            .WithMany()
+            .HasForeignKey(c => c.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}

@@ -59,6 +59,9 @@ import type {
   TransactionListItem,
   UpdateCategorizationRuleRequest,
   UpdateCategoryRequest,
+  LegalDocument,
+  LegalStatus,
+  RegisterConsents,
 } from '../types/api';
 
 export interface TransactionQuery {
@@ -94,12 +97,24 @@ function toQueryString(query: Readonly<Record<string, string | number | undefine
 }
 
 export const api = {
+  // Términos, privacidad y consentimientos (LOPDP). Los documentos son
+  // públicos: se muestran antes de que exista una cuenta.
+  legal: {
+    document: (kind: LegalDocument['kind']) =>
+      request<LegalDocument>(`/api/v1/legal/${kind}`, { authenticated: false }),
+    status: () => request<LegalStatus>('/api/v1/legal/status'),
+    accept: (body: { termsVersion: string; privacyVersion: string; confirmedAdult: boolean; analyticsConsent?: boolean | null }) =>
+      request<LegalStatus>('/api/v1/legal/accept', { method: 'POST', body }),
+    setAnalytics: (granted: boolean) =>
+      request<LegalStatus>('/api/v1/legal/analytics', { method: 'PUT', body: { granted } }),
+  },
+
   auth: {
-    register: (email: string, password: string, displayName: string) =>
+    register: (email: string, password: string, displayName: string, consents: RegisterConsents) =>
       request<AuthResult>('/api/v1/auth/register', {
         method: 'POST',
         authenticated: false,
-        body: { email, password, displayName },
+        body: { email, password, displayName, ...consents },
       }),
 
     login: (email: string, password: string) =>
@@ -172,10 +187,18 @@ export const api = {
     // también a movimientos similares" (punto 5); applyToExistingMatches es
     // el paso extra "este, anteriores y futuros" (punto 7) -- nunca se activa
     // sin que la persona lo pida explícitamente.
-    setCategory: (id: string, categoryId: string, createRule = true, applyToExistingMatches = false) =>
+    // rulePattern: la parte de la descripción que la persona eligió para la
+    // regla; sin él, el backend usa su sugerencia.
+    setCategory: (
+      id: string,
+      categoryId: string,
+      createRule = true,
+      applyToExistingMatches = false,
+      rulePattern: string | null = null,
+    ) =>
       request<TransactionDetail>(`/api/v1/transactions/${id}/category`, {
         method: 'PUT',
-        body: { categoryId, createRule, applyToExistingMatches },
+        body: { categoryId, createRule, applyToExistingMatches, ...(rulePattern ? { rulePattern } : {}) },
       }),
 
     // Movimientos divididos: siempre la división completa en UNA petición; el
@@ -501,6 +524,9 @@ export const api = {
 
     requestAccountDeletion: () =>
       request<void>('/api/v1/privacy/delete-account', { method: 'POST' }),
+
+    /** Enlace de 5 minutos para descargar mis datos desde el navegador (sin token de sesión). */
+    exportLink: () => request<{ path: string; expiresAt: string }>('/api/v1/privacy/export-link', { method: 'POST' }),
   },
 };
 

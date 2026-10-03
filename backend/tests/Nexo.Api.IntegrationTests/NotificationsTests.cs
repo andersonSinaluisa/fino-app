@@ -634,6 +634,8 @@ public class NotificationsTests(NexoApiFactory factory) : IClassFixture<NexoApiF
             email = $"user-{Guid.CreateVersion7():N}@nexo.test",
             password = "NexoIntegration2026!",
             displayName = "Usuario de prueba",
+            acceptedTerms = true,
+            confirmedAdult = true,
         });
         await response.EnsureOkAsync();
 

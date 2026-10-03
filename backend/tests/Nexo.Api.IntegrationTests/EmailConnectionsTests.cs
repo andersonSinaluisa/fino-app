@@ -46,6 +46,8 @@ public class EmailConnectionsTests(NexoApiFactory factory) : IClassFixture<NexoA
             email = address,
             password = Password,
             displayName = "Usuario de prueba",
+            acceptedTerms = true,
+            confirmedAdult = true,
         });
         await response.EnsureOkAsync();
 

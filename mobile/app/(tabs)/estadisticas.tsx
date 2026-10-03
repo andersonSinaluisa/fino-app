@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, View, type LayoutChangeEvent } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing } from '../../theme';
-import { Button, Card, EmptyState, Input, Screen, SelectSheet, Skeleton, SkeletonCard, Typo } from '../../components/ui';
+import { Button, Card, EmptyState, Input, KeyboardSpacer, Screen, SelectSheet, Skeleton, SkeletonCard, Typo } from '../../components/ui';
 import { IncomeExpenseChart, type IncomeExpenseMode } from '../../components/analytics/IncomeExpenseChart';
 import { CategoryTrendList } from '../../components/analytics/CategoryTrendList';
 import { useAccounts, useAnalyticsDashboard } from '../../hooks/queries';
@@ -347,6 +347,7 @@ function CustomRangeModal({ onCancel, onApply }: { onCancel: () => void; onApply
           <Button label="Aplicar" onPress={handleApply} compact fullWidth={false} />
         </View>
       </View>
+      <KeyboardSpacer />
     </Modal>
   );
 }

@@ -38,10 +38,10 @@ export interface AnalyticsServiceOptions {
   config?: AnalyticsConfig;
   /**
    * §24: si la jurisdicción exige consentimiento previo, ponerlo en true y el
-   * estado 'unknown' deja de enviar. Hoy está en false porque FINO todavía no
-   * pide ese consentimiento en ninguna pantalla, y activarlo sin la pantalla
-   * correspondiente solo apagaría las métricas sin proteger a nadie más.
-   * La decisión está documentada en docs/analytics.md.
+   * estado 'unknown' deja de enviar. La app real lo usa en true (LOPDP art. 8):
+   * la persona lo da al registrarse, al aceptar una versión nueva de los
+   * documentos legales o en Perfil → Privacidad. El valor por defecto de la
+   * clase sigue en false solo para los tests que la construyen.
    */
   requireExplicitConsent?: boolean;
 }
@@ -374,4 +374,4 @@ function sanitizeUserProperties(properties: AnalyticsProperties | undefined): { 
 }
 
 /** Instancia única que usa la app. Los tests construyen la suya. */
-export const analytics = new AnalyticsService();
+export const analytics = new AnalyticsService({ requireExplicitConsent: true });

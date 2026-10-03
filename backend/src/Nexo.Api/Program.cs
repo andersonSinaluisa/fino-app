@@ -258,6 +258,7 @@ if (app.Configuration.GetValue("Nexo:RateLimiting:Enabled", true))
 app.UseAuthorization();
 
 app.MapAuthEndpoints();
+app.MapLegalEndpoints();
 app.MapAccountEndpoints();
 app.MapTransactionEndpoints();
 app.MapQuickEntryEndpoints();

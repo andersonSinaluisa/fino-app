@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing, typography } from '../../theme';
 import { Typo } from '../ui/Typo';
 import { Button } from '../ui/Button';
+import { KeyboardSpacer } from '../ui/KeyboardSpacer';
 import { iconForCategory } from '../../utils/categoryIcons';
 import type { Category, QuickEntrySuggestion } from '../../types/api';
 
@@ -123,6 +124,7 @@ export function SuggestionEditorSheet({
           softDisabled
         />
       </View>
+      <KeyboardSpacer />
     </Modal>
   );
 }
@@ -140,6 +142,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
     gap: spacing.lg,
+    flexShrink: 1,
   },
   handle: {
     alignSelf: 'center',

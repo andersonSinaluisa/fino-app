@@ -1,4 +1,6 @@
+using System.Security.Claims;
 using System.Text;
+using Microsoft.AspNetCore.DataProtection;
 using Nexo.Application.Abstractions;
 using Nexo.Application.EmailIngestion;
 using Nexo.Application.Notifications;
@@ -8,6 +10,9 @@ namespace Nexo.Api.Endpoints;
 
 public static class ProfileEndpoints
 {
+    private const string ExportLinkPurpose = "Nexo.Privacy.ExportLink.v1";
+    private static readonly TimeSpan ExportLinkLifetime = TimeSpan.FromMinutes(5);
+
     public static IEndpointRouteBuilder MapProfileEndpoints(this IEndpointRouteBuilder app)
     {
         var notifications = app.MapGroup("/api/v1/notifications")
@@ -105,6 +110,58 @@ public static class ProfileEndpoints
                 $"nexo-export-{DateTime.UtcNow:yyyyMMdd}.json");
         })
         .WithSummary("Exportar mis datos.");
+
+        // LOPDP arts. 13 y 17 (acceso y portabilidad): la app no puede abrir
+        // /export en el navegador con su token, así que pide un enlace de un
+        // solo propósito que vence en 5 minutos y lo abre ahí.
+        privacy.MapPost("/export-link", (
+            ICurrentUser currentUser,
+            IDataProtectionProvider protection) =>
+        {
+            // El vencimiento lo controla el reloj real del protector, no IClock.
+            var expiresAt = DateTimeOffset.UtcNow.Add(ExportLinkLifetime);
+            var token = protection.CreateProtector(ExportLinkPurpose).ToTimeLimitedDataProtector()
+                .Protect(currentUser.RequireUserId().ToString(), ExportLinkLifetime);
+            return Results.Ok(new
+            {
+                path = $"/api/v1/privacy/export/download?token={Uri.EscapeDataString(token)}",
+                expiresAt,
+            });
+        })
+        .WithSummary("Enlace temporal (5 min) para descargar mis datos desde el navegador.");
+
+        app.MapGet("/api/v1/privacy/export/download", async (
+            string token,
+            HttpContext http,
+            IDataProtectionProvider protection,
+            IPrivacyService service,
+            CancellationToken cancellationToken) =>
+        {
+            Guid userId;
+            try
+            {
+                var value = protection.CreateProtector(ExportLinkPurpose).ToTimeLimitedDataProtector().Unprotect(token);
+                if (!Guid.TryParse(value, out userId))
+                {
+                    return Results.BadRequest();
+                }
+            }
+            catch (System.Security.Cryptography.CryptographicException)
+            {
+                return Results.Content(
+                    "<!doctype html><meta charset=utf-8><p style=\"font:16px sans-serif;padding:24px\">Este enlace venció o no es válido. Vuelve a pedir la exportación desde la app.</p>",
+                    "text/html; charset=utf-8",
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            // El filtro por usuario de la base lee el usuario de la petición:
+            // aquí lo da el enlace firmado, no un token de sesión.
+            http.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, userId.ToString())], "export-link"));
+            var json = await service.ExportAsync(userId, cancellationToken);
+            return Results.File(Encoding.UTF8.GetBytes(json), "application/json", $"fino-mis-datos-{DateTime.UtcNow:yyyyMMdd}.json");
+        })
+        .AllowAnonymous()
+        .ExcludeFromDescription();
 
         privacy.MapPost("/transactions/delete", async (
             DeleteTransactionsRequest request,

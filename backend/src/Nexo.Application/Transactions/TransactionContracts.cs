@@ -154,8 +154,11 @@ public sealed record TransactionFilter
 /// futuros" step: once the rule exists, also recategorise this user's past
 /// movements that match it (never one the user already corrected by hand) in the
 /// same request, after they confirmed the count from the preview endpoint.
+/// <paramref name="RulePattern"/>: the part of the description the person chose for
+/// the rule (validated server-side to be part of this movement's normalized
+/// description and not too generic); null keeps Fino's suggestion.
 /// </summary>
-public sealed record UpdateCategoryRequest(Guid CategoryId, bool CreateRule = true, bool ApplyToExistingMatches = false);
+public sealed record UpdateCategoryRequest(Guid CategoryId, bool CreateRule = true, bool ApplyToExistingMatches = false, string? RulePattern = null);
 
 public sealed record UpdateNoteRequest(string? Note);
 

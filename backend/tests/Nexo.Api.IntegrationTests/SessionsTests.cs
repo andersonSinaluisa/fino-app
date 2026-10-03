@@ -138,6 +138,8 @@ public class SessionsTests(NexoApiFactory factory) : IClassFixture<NexoApiFactor
             email,
             password = Password,
             displayName = "Usuario de prueba",
+            acceptedTerms = true,
+            confirmedAdult = true,
         });
         await response.EnsureOkAsync();
 

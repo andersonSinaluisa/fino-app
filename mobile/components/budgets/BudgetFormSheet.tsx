@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Switch, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, radius, spacing, typography } from '../../theme';
-import { Button, Chip, SelectSheet, Typo, type SelectSheetOption } from '../ui';
+import { Button, Chip, KeyboardAwareScrollView, KeyboardSpacer, SelectSheet, Typo, type SelectSheetOption } from '../ui';
 import { useBudgetPreview, useCategories, useCreateBudget, useUpdateBudget } from '../../hooks/queries';
 import { ApiError } from '../../services/apiClient';
 import { AnalyticsEvent, BudgetFlow, BudgetPeriodValue, track } from '../../services/analytics';
@@ -189,7 +189,7 @@ function BudgetForm({ budget, initialCategoryId, hidden, onClose, onSaved }: Bud
           {isEdit ? 'Editar presupuesto' : 'Nuevo presupuesto'}
         </Typo>
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
+        <KeyboardAwareScrollView keyboardSpacer={false} showsVerticalScrollIndicator={false} contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
           <Typo variant="caption" color={colors.textSecondary} style={styles.label}>
             Categoría
           </Typo>
@@ -361,7 +361,7 @@ function BudgetForm({ budget, initialCategoryId, hidden, onClose, onSaved }: Bud
               {error}
             </Typo>
           ) : null}
-        </ScrollView>
+        </KeyboardAwareScrollView>
 
         <Button
           label={isEdit ? 'Guardar cambios' : 'Crear presupuesto'}
@@ -371,6 +371,7 @@ function BudgetForm({ budget, initialCategoryId, hidden, onClose, onSaved }: Bud
           loadingLabel="Guardando..."
         />
       </View>
+      <KeyboardSpacer />
 
       <SelectSheet
         visible={pickerOpen}
@@ -413,6 +414,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     paddingBottom: spacing.xxl,
     maxHeight: '90%',
+    // Con el teclado abierto la hoja se encoge (y su contenido se desplaza)
+    // en vez de salirse por arriba de la pantalla.
+    flexShrink: 1,
   },
   handle: {
     alignSelf: 'center',

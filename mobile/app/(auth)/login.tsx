@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Alert, KeyboardAvoidingView, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Link, useRouter } from 'expo-router';
 import { colors, radius, spacing } from '../../theme';
 import { Button, Input, Screen, Typo } from '../../components/ui';
@@ -60,7 +60,7 @@ export default function LoginScreen() {
   };
 
   return (
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <View style={styles.flex}>
       <Screen dismissKeyboardOnTap>
         <BrandHeader />
 
@@ -145,7 +145,7 @@ export default function LoginScreen() {
 
         <PrivacyHint />
       </Screen>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 

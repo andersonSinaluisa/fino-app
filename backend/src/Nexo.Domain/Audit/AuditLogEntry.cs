@@ -65,6 +65,8 @@ public sealed class AuditLogEntry : Entity
 public static class AuditActions
 {
     public const string UserRegistered = "user.registered";
+    public const string LegalDocumentsAccepted = "legal.documents_accepted";
+    public const string ConsentChanged = "legal.consent_changed";
     public const string UserLoggedIn = "user.logged_in";
     public const string UserLoginFailed = "user.login_failed";
 

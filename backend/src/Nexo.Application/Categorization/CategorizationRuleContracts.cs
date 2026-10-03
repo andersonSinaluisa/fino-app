@@ -39,9 +39,20 @@ public sealed record UpdateCategorizationRuleRequest(Guid CategoryId, bool? IsAc
 
 public sealed record RulePreviewTransactionDto(Guid Id, string Description, decimal SignedAmount, DateTimeOffset TransactionDate);
 
-/// <summary>Point 19: "si creo esta regla, ¿qué movimientos coincidirían?", asked from a specific movement + chosen category.</summary>
-public sealed record RulePreviewRequest(Guid TransactionId, Guid CategoryId);
+/// <summary>
+/// Point 19: "si creo esta regla, ¿qué movimientos coincidirían?", asked from a specific movement + chosen category.
+/// <paramref name="Pattern"/> is optional: the part of the description the person chose
+/// in the app ("CELLY AZANZA" instead of the suggested "CELLY"). It must be a piece of
+/// this movement's own normalized description; null keeps the server's suggestion.
+/// </summary>
+public sealed record RulePreviewRequest(Guid TransactionId, Guid CategoryId, string? Pattern = null);
 
+/// <summary>
+/// <see cref="NormalizedDescription"/> is the exact text every rule is compared
+/// against (upper-case, no accents, without reference numbers) so the app can show
+/// which part of it <see cref="Pattern"/> is. <see cref="SuggestedPattern"/> is
+/// what Fino would pick on its own, for "volver a la sugerencia".
+/// </summary>
 public sealed record RulePreviewDto(
     string Pattern,
     string MatchType,
@@ -50,4 +61,6 @@ public sealed record RulePreviewDto(
     IReadOnlyList<RulePreviewTransactionDto> Sample,
     Guid? ConflictingRuleId,
     Guid? ConflictingCategoryId,
-    string? ConflictingCategoryName);
+    string? ConflictingCategoryName,
+    string NormalizedDescription = "",
+    string SuggestedPattern = "");

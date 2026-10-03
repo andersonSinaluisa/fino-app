@@ -54,6 +54,9 @@ public interface INexoDbContext
 
     DbSet<Device> Devices { get; }
 
+    /// <summary>Aceptaciones de términos/privacidad y consentimientos opcionales (LOPDP).</summary>
+    DbSet<UserConsent> UserConsents { get; }
+
     DbSet<Notification> Notifications { get; }
 
     /// <summary>PULSO: proactive, explainable observations. See FinancialPulse's remarks.</summary>

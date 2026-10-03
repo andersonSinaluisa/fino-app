@@ -21,6 +21,7 @@ import {
 } from '../../hooks/queries';
 import { CategoryChipList } from '../../components/categories/CategoryChipList';
 import { CategoryFormSheet } from '../../components/categories/CategoryFormSheet';
+import { RuleScopeSheet, type RuleScopeChoice } from '../../components/categories/RuleScopeSheet';
 import { ApiError } from '../../services/apiClient';
 import { formatCurrency, formatFullDateTime, maskLabel } from '../../utils/format';
 import { MOVEMENT_TYPE_HINTS, MOVEMENT_TYPE_LABELS } from '../../utils/creditCards';
@@ -85,6 +86,9 @@ export default function TransactionDetailScreen() {
 
   const [note, setNoteValue] = useState('');
   const [editingCategory, setEditingCategory] = useState(false);
+  // "¿Aplicar a otros movimientos?": la categoría elegida y la vista previa
+  // de la regla sugerida, mientras la hoja está abierta.
+  const [ruleScope, setRuleScope] = useState<{ category: Category; preview: RulePreview } | null>(null);
   const [merchantText, setMerchantValue] = useState('');
 
   // Categorías personalizadas: crear/editar una categoría propia sin salir
@@ -166,12 +170,18 @@ export default function TransactionDetailScreen() {
     );
   };
 
-  const applyCategory = (categoryId: string, createRule: boolean, applyToExistingMatches: boolean) => {
+  const applyCategory = (
+    categoryId: string,
+    createRule: boolean,
+    applyToExistingMatches: boolean,
+    rulePattern: string | null = null,
+  ) => {
     setCategory.mutate(
-      { categoryId, createRule, applyToExistingMatches },
+      { categoryId, createRule, applyToExistingMatches, rulePattern },
       {
         onSuccess: (detail) => {
           setEditingCategory(false);
+          setRuleScope(null);
           if (applyToExistingMatches && detail.recategorizedCount) {
             Alert.alert(
               'Movimientos actualizados',
@@ -189,38 +199,21 @@ export default function TransactionDetailScreen() {
     );
   };
 
+  // Antes era un Alert con solo `"CELLY" → Comida`: no decía de qué texto
+  // salía "CELLY" ni si la regla usaba toda la descripción. La hoja muestra la
+  // descripción completa, resalta lo que usa la regla y deja ajustarlo. Si la
+  // sugerencia es demasiado genérica, la hoja se abre sin nada elegido en vez
+  // de decidir en silencio "solo este movimiento".
   const presentScopeChoice = (category: Category, preview: RulePreview) => {
-    // Punto 18: un patrón demasiado genérico nunca se ofrece como regla --
-    // solo se cambia este movimiento, sin preguntar nada más.
-    if (preview.isTooGeneric) {
-      applyCategory(category.id, false, false);
+    setRuleScope({ category, preview });
+  };
+
+  const chooseScope = (choice: RuleScopeChoice) => {
+    if (!ruleScope) {
       return;
     }
 
-    const conflictNote = preview.conflictingRuleId
-      ? ` Ya tienes una regla que categoriza "${preview.pattern}" como ${preview.conflictingCategoryName}; se actualizará para usar ${category.name}.`
-      : '';
-
-    const message =
-      (preview.matchedCount > 0
-        ? `Encontramos ${preview.matchedCount} movimiento${preview.matchedCount === 1 ? '' : 's'} similar${preview.matchedCount === 1 ? '' : 'es'}.`
-        : '¿Cómo quieres aplicar este cambio?') + conflictNote;
-
-    const buttons: { text: string; style?: 'cancel' | 'destructive'; onPress?: () => void }[] = [
-      { text: 'Solo este movimiento', onPress: () => applyCategory(category.id, false, false) },
-      { text: 'Este y futuros movimientos', onPress: () => applyCategory(category.id, true, false) },
-    ];
-
-    if (preview.matchedCount > 0) {
-      buttons.push({
-        text: `Este, anteriores y futuros (${preview.matchedCount})`,
-        onPress: () => applyCategory(category.id, true, true),
-      });
-    }
-
-    buttons.push({ text: 'Cancelar', style: 'cancel' });
-
-    Alert.alert(`Aplicar automáticamente: "${preview.pattern}" → ${category.name}`, message, buttons);
+    applyCategory(ruleScope.category.id, choice.createRule, choice.applyToExistingMatches, choice.rulePattern);
   };
 
   // Categorías personalizadas: "+ Nueva" abre la hoja en modo crear; el
@@ -566,6 +559,18 @@ export default function TransactionDetailScreen() {
         ) : null}
       </View>
     </Screen>
+
+    {ruleScope ? (
+      <RuleScopeSheet
+        transactionId={data.id}
+        description={data.description}
+        category={ruleScope.category}
+        preview={ruleScope.preview}
+        busy={setCategory.isPending}
+        onChoose={chooseScope}
+        onClose={() => setRuleScope(null)}
+      />
+    ) : null}
 
     <CategoryFormSheet
       visible={categoryFormVisible}

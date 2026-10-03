@@ -201,7 +201,15 @@ public sealed class TransactionService(
             // -- see CategorizationRuleService.ResolveRulePatternAsync. Never
             // touches another user's rules (UserId-scoped throughout).
             var (pattern, existing) = await categorizationRules.ResolveRulePatternAsync(
-                userId, category.Id, transaction.Description, cancellationToken);
+                userId, category.Id, transaction.Description, request.RulePattern, cancellationToken);
+
+            // El texto lo eligió la persona: si es demasiado general no se
+            // ignora en silencio (se le avisa), a diferencia de la sugerencia
+            // automática, que simplemente no crea regla.
+            if (pattern.Length == 0 && !string.IsNullOrWhiteSpace(request.RulePattern))
+            {
+                throw new ValidationException("Ese texto es muy corto o muy común para una regla. Elige una parte más específica.");
+            }
 
             if (pattern.Length > 0)
             {
