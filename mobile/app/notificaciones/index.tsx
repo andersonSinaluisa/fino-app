@@ -4,7 +4,8 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing } from '../../theme';
-import { Card, EmptyState, SectionHeader, SelectSheet, SkeletonCard, Typo } from '../../components/ui';
+import { Button, Card, EmptyState, SectionHeader, SelectSheet, SkeletonCard, Typo } from '../../components/ui';
+import { api } from '../../services/endpoints';
 import type { SelectSheetOption } from '../../components/ui';
 import { useDeviceStore } from '../../store/deviceStore';
 import { useMarkNotificationRead, useNotifications, useUpdateNotificationPreferences } from '../../hooks/queries';
@@ -68,6 +69,24 @@ const DEFAULT_QUIET_END = 7;
  * (NotificationDispatcher.IsWithinQuietHours).
  */
 export default function NotificationsScreen() {
+  const [sendingTest, setSendingTest] = useState(false);
+  const sendTest = () => {
+    setSendingTest(true);
+    api.notifications
+      .test()
+      .then(({ devices, sent }) => {
+        if (devices === 0) {
+          Alert.alert('Sin dispositivos', 'Activa las notificaciones push en este dispositivo y vuelve a intentarlo.');
+        } else if (sent === 0) {
+          Alert.alert('No se pudo enviar', 'El servicio de notificaciones no aceptó el envío. Revisa los permisos de notificaciones del teléfono.');
+        } else {
+          Alert.alert('Enviada', 'Debería llegarte en unos segundos. Si no llega, revisa que las notificaciones de Fino estén permitidas en los ajustes del teléfono.');
+        }
+      })
+      .catch(() => Alert.alert('No se pudo enviar', 'Inténtalo de nuevo en un momento.'))
+      .finally(() => setSendingTest(false));
+  };
+
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -178,6 +197,14 @@ export default function NotificationsScreen() {
                     onValueChange={() => togglePreference('showAmountsInPreview')}
                   />
                 </Card>
+                <View style={styles.testButton}>
+                  <Button
+                    label="Enviar notificación de prueba"
+                    variant="secondary"
+                    loading={sendingTest}
+                    onPress={sendTest}
+                  />
+                </View>
 
                 <View style={styles.section}>
                   <SectionHeader title="Qué quieres recibir" />
@@ -347,6 +374,9 @@ function NotificationRow({ item, onPress }: { item: AppNotification; onPress: ()
 }
 
 const styles = StyleSheet.create({
+  testButton: {
+    marginTop: spacing.md,
+  },
   root: {
     flex: 1,
     backgroundColor: colors.background,

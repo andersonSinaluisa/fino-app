@@ -74,17 +74,29 @@ public static class DependencyInjection
 
     private static void AddPushSender(IServiceCollection services, IConfiguration configuration)
     {
+        services.Configure<PushOptions>(configuration.GetSection(PushOptions.SectionName));
+        services.AddSingleton<ExpoReceiptQueue>();
+
         if (!configuration.GetValue("Nexo:Push:Enabled", false))
         {
             services.AddSingleton<IPushSender, NoOpPushSender>();
             return;
         }
 
-        services.AddHttpClient<IPushSender, ExpoPushSender>(client =>
+        var accessToken = configuration.GetValue<string>("Nexo:Push:ExpoAccessToken");
+        void ConfigureExpo(HttpClient client)
         {
             client.BaseAddress = new Uri("https://exp.host/");
             client.Timeout = TimeSpan.FromSeconds(15);
             client.DefaultRequestHeaders.Add("accept-encoding", "gzip, deflate");
-        });
+            if (!string.IsNullOrWhiteSpace(accessToken))
+            {
+                client.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken.Trim());
+            }
+        }
+
+        services.AddHttpClient<IPushSender, ExpoPushSender>(ConfigureExpo);
+        services.AddHttpClient<ExpoReceiptChecker>(ConfigureExpo);
     }
 }

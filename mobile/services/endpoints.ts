@@ -505,6 +505,9 @@ export const api = {
         { method: 'PUT', body: preferences },
       ),
 
+    /** Un push de prueba a mis dispositivos con notificaciones activadas. */
+    test: () => request<{ devices: number; sent: number }>('/api/v1/notifications/test', { method: 'POST' }),
+
     /** Entregable 18: stop pushing to this device -- called best-effort on logout. */
     unregisterDevice: (token: string) =>
       request<void>(`/api/v1/notifications/devices/${encodeURIComponent(token)}`, { method: 'DELETE' }),

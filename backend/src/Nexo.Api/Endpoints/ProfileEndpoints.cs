@@ -35,6 +35,14 @@ public static class ProfileEndpoints
             return Results.NoContent();
         });
 
+        notifications.MapPost("/test", async (
+            INotificationDispatcher dispatcher,
+            ICurrentUser currentUser,
+            CancellationToken cancellationToken) =>
+            Results.Ok(await dispatcher.SendTestAsync(currentUser.RequireUserId(), cancellationToken)))
+        .RequireRateLimiting(RateLimitPolicies.Authentication)
+        .WithSummary("Envía una notificación de prueba a mis dispositivos.");
+
         notifications.MapPost("/devices", async (
             RegisterDeviceRequest request,
             INotificationService service,

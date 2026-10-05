@@ -33,4 +33,15 @@ public interface IRealtimeNotifier
 public interface INotificationDispatcher
 {
     Task DispatchAsync(Notification notification, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// "Enviar notificación de prueba" (Perfil → Notificaciones): un push a cada
+    /// dispositivo de la persona con las notificaciones activadas, sin guardar
+    /// nada en su historial. Ignora categorías y horario silencioso a propósito:
+    /// lo pidió ella misma, ahora.
+    /// </summary>
+    Task<PushTestResult> SendTestAsync(Guid userId, CancellationToken cancellationToken);
 }
+
+/// <summary>Devices: dispositivos con push activado; Sent: los que Expo aceptó.</summary>
+public sealed record PushTestResult(int Devices, int Sent);

@@ -7,10 +7,12 @@ namespace Nexo.Infrastructure.Push;
 
 /// <summary>
 /// Sends through Expo's push service, which is what an Expo-managed React Native
-/// app uses on both Android and iOS. No credentials are required for the MVP;
-/// production should add the Expo access token as an Authorization header.
+/// app uses on both Android and iOS. The Expo access token (PushOptions), when
+/// configured, rides on the HttpClient as an Authorization header. Accepted
+/// tickets go to <see cref="ExpoReceiptQueue"/> so dead tokens reported only in
+/// the later receipt are retired too.
 /// </summary>
-public sealed class ExpoPushSender(HttpClient http, ILogger<ExpoPushSender> logger) : IPushSender
+public sealed class ExpoPushSender(HttpClient http, ExpoReceiptQueue receipts, ILogger<ExpoPushSender> logger) : IPushSender
 {
     private const int BatchSize = 100;
 
@@ -26,6 +28,7 @@ public sealed class ExpoPushSender(HttpClient http, ILogger<ExpoPushSender> logg
         [property: JsonPropertyName("priority")] string Priority = "high");
 
     private sealed record ExpoTicket(
+        [property: JsonPropertyName("id")] string? Id,
         [property: JsonPropertyName("status")] string Status,
         [property: JsonPropertyName("details")] ExpoTicketDetails? Details);
 
@@ -82,6 +85,10 @@ public sealed class ExpoPushSender(HttpClient http, ILogger<ExpoPushSender> logg
                 if (string.Equals(ticket.Status, "ok", StringComparison.OrdinalIgnoreCase))
                 {
                     sent++;
+                    if (!string.IsNullOrEmpty(ticket.Id))
+                    {
+                        receipts.Enqueue(ticket.Id, batch[i].ExpoPushToken, DateTimeOffset.UtcNow);
+                    }
                 }
                 else if (string.Equals(ticket.Details?.Error, DeviceNotRegistered, StringComparison.Ordinal))
                 {

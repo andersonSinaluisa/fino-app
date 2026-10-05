@@ -180,6 +180,40 @@ public sealed class NotificationDispatcher(
     IClock clock,
     ILogger<NotificationDispatcher> logger) : INotificationDispatcher
 {
+    public async Task<PushTestResult> SendTestAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var devices = await db.Devices
+            .AsNoTracking()
+            .Where(d => d.UserId == userId && d.PushEnabled)
+            .ToListAsync(cancellationToken);
+
+        if (devices.Count == 0)
+        {
+            return new PushTestResult(0, 0);
+        }
+
+        var messages = devices
+            .Select(d => new PushMessage(
+                d.ExpoPushToken,
+                "Fino",
+                "Las notificaciones funcionan en este dispositivo.",
+                new Dictionary<string, string> { ["type"] = "test" }))
+            .ToList();
+
+        var result = await push.SendAsync(messages, cancellationToken);
+
+        if (result.InvalidTokens.Count > 0)
+        {
+            var stale = await db.Devices
+                .Where(d => d.UserId == userId && result.InvalidTokens.Contains(d.ExpoPushToken))
+                .ToListAsync(cancellationToken);
+            db.Devices.RemoveRange(stale);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+
+        return new PushTestResult(devices.Count, result.SentCount);
+    }
+
     public async Task DispatchAsync(Notification notification, CancellationToken cancellationToken)
     {
         db.Notifications.Add(notification);

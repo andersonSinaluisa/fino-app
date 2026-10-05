@@ -654,6 +654,50 @@ public class NotificationsTests(NexoApiFactory factory) : IClassFixture<NexoApiF
     /// DeviceNotRegistered for it -- so tests can exercise
     /// NotificationDispatcher's cleanup without a real Expo response.
     /// </summary>
+    [Fact]
+    public async Task A_test_push_reaches_every_enabled_device_and_retires_dead_tokens_without_adding_history()
+    {
+        var spy = new SpyPushSender();
+        spy.InvalidTokensToReport.Add("ExponentPushToken[test-dead]");
+        await using var app = factory.WithWebHostBuilder(builder =>
+            builder.ConfigureServices(services =>
+            {
+                services.RemoveAll<IPushSender>();
+                services.AddSingleton<IPushSender>(spy);
+            }));
+
+        var (_, client) = await RegisterAsync(app);
+
+        // Sin dispositivos: nada que enviar.
+        var none = await (await client.PostAsync("/api/v1/notifications/test", null)).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(0, none.GetProperty("devices").GetInt32());
+
+        foreach (var token in new[] { "ExponentPushToken[test-live]", "ExponentPushToken[test-dead]" })
+        {
+            await (await client.PostAsJsonAsync("/api/v1/notifications/devices", new
+            {
+                expoPushToken = token,
+                platform = "Android",
+                deviceName = (string?)null,
+                appVersion = (string?)null,
+            })).EnsureOkAsync();
+        }
+
+        var response = await client.PostAsync("/api/v1/notifications/test", null);
+        await response.EnsureOkAsync();
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(2, result.GetProperty("devices").GetInt32());
+        Assert.Equal(1, result.GetProperty("sent").GetInt32());
+        Assert.All(spy.Sent, m => Assert.Equal("Fino", m.Title));
+
+        // El token muerto se borró; el historial de notificaciones sigue vacío.
+        spy.Sent.Clear();
+        var again = await (await client.PostAsync("/api/v1/notifications/test", null)).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(1, again.GetProperty("devices").GetInt32());
+        var history = await (await client.GetAsync("/api/v1/notifications")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Empty(history.EnumerateArray());
+    }
+
     private sealed class SpyPushSender : IPushSender
     {
         public List<PushMessage> Sent { get; } = [];

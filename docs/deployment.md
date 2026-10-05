@@ -50,6 +50,7 @@ versiona.
 | `Nexo__Database__AutoMigrate` | `true` en staging inicial | Cambiar a `false` cuando haya migraciones versionadas y el pipeline las aplique |
 | `Nexo__Seed__Demo` | `false` | Doble comprobación en el código |
 | `Nexo__Push__Enabled` | `true` para push real | Usa el servicio de Expo |
+| `Nexo__Push__ExpoAccessToken` | Si activas la seguridad reforzada de push en Expo | Token de expo.dev → Access tokens; secreto real, nunca commiteado |
 | `Nexo__Cors__AllowedOrigins__0` | Si hay web | Vacío = permisivo solo en Development; fuera de Development falla cerrado |
 | `Nexo__Workers__Enabled` | `true` | `false` si los workers corren aparte |
 | `Nexo__RateLimiting__Enabled` | `true` | Solo `false` en entornos de prueba |
