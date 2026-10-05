@@ -31,6 +31,9 @@ public sealed class WorkerOptions
 
     /// <summary>Days between "delete my account" and the irreversible erase.</summary>
     public int AccountDeletionGraceDays { get; set; } = 7;
+
+    /// <summary>Recordatorios: minutes between ReminderWorker passes (rules decide the hour; this just has to be under an hour).</summary>
+    public int ReminderIntervalMinutes { get; set; } = 30;
 }
 
 /// <summary>

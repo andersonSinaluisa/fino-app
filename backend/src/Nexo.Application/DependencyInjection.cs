@@ -80,6 +80,10 @@ public static class DependencyInjection
         services.AddScoped<CreditCardService>();
         services.AddScoped<ICreditCardService>(sp => sp.GetRequiredService<CreditCardService>());
 
+        // Recordatorios (pago de tarjeta, estado nuevo, presupuesto, cuenta
+        // desactualizada, resumen semanal), run hourly by ReminderWorker.
+        services.AddScoped<Reminders.IReminderService, Reminders.ReminderService>();
+
         // Registro rápido de efectivo. CashAccountProvisioner y
         // QuickEntrySuggestionService son colaboradores de QuickTransactionService,
         // no puntos de entrada paralelos: el único camino que ESCRIBE un movimiento

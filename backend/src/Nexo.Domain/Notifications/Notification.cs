@@ -39,6 +39,15 @@ public enum NotificationType
     /// see its docs for why financial detection and notification policy stay separate.
     /// </summary>
     PulseReady = 7,
+
+    /// <summary>Recordatorios: a credit card payment is due soon (3 days before, and on the day).</summary>
+    CardPaymentDue = 8,
+
+    /// <summary>Recordatorios: a new statement period closed and can be imported/reviewed.</summary>
+    StatementAvailable = 9,
+
+    /// <summary>Recordatorios: a budget crossed 80% or 100% of its amount.</summary>
+    BudgetThreshold = 10,
 }
 
 /// <summary>
@@ -66,13 +75,21 @@ public sealed class Notification : Entity, IUserOwned
 
     public DateTimeOffset? PushSentAt { get; private set; }
 
+    /// <summary>
+    /// Optional idempotency key for scheduled reminders ("card-due:{id}:{date}:3").
+    /// Unique per user, so a reminder can never be sent twice even if the worker
+    /// runs again or two instances overlap.
+    /// </summary>
+    public string? DedupKey { get; private set; }
+
     public static Notification Create(
         Guid userId,
         NotificationType type,
         string title,
         string body,
         DateTimeOffset now,
-        string? payload = null)
+        string? payload = null,
+        string? dedupKey = null)
     {
         var notification = new Notification
         {
@@ -81,6 +98,7 @@ public sealed class Notification : Entity, IUserOwned
             Title = DomainException.RequireText(title, nameof(title), 120),
             Body = DomainException.RequireText(body, nameof(body), 300),
             Payload = payload,
+            DedupKey = dedupKey is null ? null : DomainException.RequireText(dedupKey, nameof(dedupKey), 160),
         };
         notification.Stamp(now);
         return notification;

@@ -12,6 +12,7 @@ public static class WorkerRegistration
         services.AddHostedService<PulseEvaluationWorker>();
         services.AddHostedService<AccountDeletionWorker>();
         services.AddHostedService<PushReceiptWorker>();
+        services.AddHostedService<ReminderWorker>();
         return services;
     }
 }

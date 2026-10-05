@@ -579,6 +579,8 @@ export interface AppNotification {
   body: string;
   isRead: boolean;
   createdAt: string;
+  /** Deep-link keys (cardId, budgetId, accountId, screen, transactionId, pulseId). */
+  data?: Record<string, string> | null;
 }
 
 /**

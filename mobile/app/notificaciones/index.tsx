@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react';
-import { Alert, FlatList, Pressable, StyleSheet, Switch, View } from 'react-native';
+import { Alert, FlatList, Linking, Pressable, StyleSheet, Switch, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors, radius, spacing } from '../../theme';
 import { Button, Card, EmptyState, SectionHeader, SelectSheet, SkeletonCard, Typo } from '../../components/ui';
 import { api } from '../../services/endpoints';
+import { registerForPushAsync } from '../../hooks/usePushRegistration';
+import { AnalyticsSource } from '../../services/analytics';
 import type { SelectSheetOption } from '../../components/ui';
 import { useDeviceStore } from '../../store/deviceStore';
 import { useMarkNotificationRead, useNotifications, useUpdateNotificationPreferences } from '../../hooks/queries';
 import { formatRelativeTime } from '../../utils/format';
+import { notificationRoute } from '../../utils/notificationRoute';
 import type { AppNotification, NotificationPreferences } from '../../types/api';
 
 const CATEGORIES: Array<{
@@ -37,7 +40,7 @@ const CATEGORIES: Array<{
     key: 'notifyOnReminders',
     icon: 'alarm-outline',
     label: 'Recordatorios',
-    hint: 'Resumen periódico y cuentas desactualizadas.',
+    hint: 'Pagos de tarjeta, estados nuevos, presupuestos, cuentas desactualizadas y resumen semanal.',
   },
   {
     key: 'notifyOnPulses',
@@ -70,6 +73,40 @@ const DEFAULT_QUIET_END = 7;
  */
 export default function NotificationsScreen() {
   const [sendingTest, setSendingTest] = useState(false);
+  const setDevice = useDeviceStore((state) => state.setDevice);
+  const [enabling, setEnabling] = useState(false);
+  const [blocked, setBlocked] = useState(false);
+  const [enableMessage, setEnableMessage] = useState<string | null>(null);
+  const enable = () => {
+    if (blocked) {
+      void Linking.openSettings();
+      return;
+    }
+
+    setEnabling(true);
+    void registerForPushAsync(setDevice, AnalyticsSource.Notification)
+      .then((result) => {
+        switch (result.status) {
+          case 'registered':
+            setEnableMessage(null);
+            break;
+          case 'blocked':
+            setBlocked(true);
+            setEnableMessage('Las notificaciones de Fino están apagadas en los Ajustes del teléfono. Ábrelos, entra a Fino → Notificaciones y actívalas.');
+            break;
+          case 'denied':
+            setEnableMessage('No diste permiso. Puedes intentarlo de nuevo cuando quieras.');
+            break;
+          case 'unsupported':
+            setEnableMessage('Las notificaciones no funcionan en un simulador ni en Expo Go. Prueba en un teléfono con la app instalada desde TestFlight o Play.');
+            break;
+          case 'error':
+            setEnableMessage(`No pudimos registrar este dispositivo: ${result.message}`);
+            break;
+        }
+      })
+      .finally(() => setEnabling(false));
+  };
   const sendTest = () => {
     setSendingTest(true);
     api.notifications
@@ -269,12 +306,25 @@ export default function NotificationsScreen() {
                 </View>
               </>
             ) : (
-              <Card>
-                <Typo variant="caption" color={colors.textSecondary}>
-                  {expoPushToken
-                    ? 'Cargando tus preferencias...'
-                    : 'Activa las notificaciones para elegir qué quieres recibir. En un simulador o sin permiso concedido, esto no está disponible.'}
-                </Typo>
+              <Card style={styles.enableCard}>
+                {expoPushToken ? (
+                  <Typo variant="caption" color={colors.textSecondary}>
+                    Cargando tus preferencias...
+                  </Typo>
+                ) : (
+                  <>
+                    <Typo variant="bodyStrong">Notificaciones desactivadas</Typo>
+                    <Typo variant="caption" color={colors.textSecondary}>
+                      {enableMessage ??
+                        'Actívalas para saber cuando detectemos un gasto o un ingreso.'}
+                    </Typo>
+                    <Button
+                      label={blocked ? 'Abrir Ajustes del teléfono' : 'Activar notificaciones'}
+                      loading={enabling}
+                      onPress={enable}
+                    />
+                  </>
+                )}
               </Card>
             )}
 
@@ -283,7 +333,20 @@ export default function NotificationsScreen() {
             </View>
           </View>
         }
-        renderItem={({ item }) => <NotificationRow item={item} onPress={() => markRead.mutate(item.id)} />}
+        renderItem={({ item }) => (
+          <NotificationRow
+            item={item}
+            onPress={() => {
+              if (!item.isRead) {
+                markRead.mutate(item.id);
+              }
+              const target = notificationRoute(item.data);
+              if (target) {
+                router.push(target);
+              }
+            }}
+          />
+        )}
         ListEmptyComponent={
           isLoading ? (
             <View style={styles.loading}>
@@ -352,18 +415,37 @@ function CategoryRow({
   );
 }
 
+const TYPE_ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+  ExpenseDetected: 'cart-outline',
+  IncomeDetected: 'cash-outline',
+  ImportCompleted: 'document-text-outline',
+  InsightReady: 'bulb-outline',
+  WeeklySummary: 'stats-chart-outline',
+  AccountNeedsUpdate: 'refresh-outline',
+  SecurityAlert: 'shield-checkmark-outline',
+  PulseReady: 'pulse-outline',
+  CardPaymentDue: 'card-outline',
+  StatementAvailable: 'receipt-outline',
+  BudgetThreshold: 'pie-chart-outline',
+};
+
 function NotificationRow({ item, onPress }: { item: AppNotification; onPress: () => void }) {
+  const opensSomething = notificationRoute(item.data) !== null;
   return (
-    <Pressable onPress={item.isRead ? undefined : onPress} disabled={item.isRead}>
+    <Pressable onPress={onPress} disabled={item.isRead && !opensSomething}>
       <Card style={styles.notification}>
         <View style={styles.notificationTop}>
-          {item.isRead ? null : <View style={styles.unreadDot} />}
+          <View style={styles.typeIcon}>
+            <Ionicons name={TYPE_ICONS[item.type] ?? 'notifications-outline'} size={16} color={colors.text} />
+            {item.isRead ? null : <View style={styles.unreadBadge} />}
+          </View>
           <View style={styles.flex}>
             <Typo variant="bodyStrong">{item.title}</Typo>
             <Typo variant="caption" color={colors.textSecondary}>
               {item.body}
             </Typo>
           </View>
+          {opensSomething ? <Ionicons name="chevron-forward" size={16} color={colors.textSecondary} /> : null}
         </View>
         <Typo variant="overline" color={colors.textSecondary}>
           {formatRelativeTime(item.createdAt)}
@@ -374,6 +456,9 @@ function NotificationRow({ item, onPress }: { item: AppNotification; onPress: ()
 }
 
 const styles = StyleSheet.create({
+  enableCard: {
+    gap: spacing.md,
+  },
   testButton: {
     marginTop: spacing.md,
   },
@@ -449,11 +534,23 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: spacing.sm,
   },
-  unreadDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+  typeIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceSecondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  unreadBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
     backgroundColor: colors.accent,
-    marginTop: 6,
+    borderWidth: 2,
+    borderColor: colors.surface,
   },
 });

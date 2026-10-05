@@ -280,8 +280,12 @@ public sealed class NotificationConfiguration : IEntityTypeConfiguration<Notific
         builder.Property(n => n.Title).HasMaxLength(120).IsRequired();
         builder.Property(n => n.Body).HasMaxLength(300).IsRequired();
         builder.Property(n => n.Payload).HasMaxLength(1000);
+        builder.Property(n => n.DedupKey).HasMaxLength(160);
 
         builder.HasIndex(n => new { n.UserId, n.CreatedAt });
+        builder.HasIndex(n => new { n.UserId, n.DedupKey })
+            .IsUnique()
+            .HasFilter("\"DedupKey\" IS NOT NULL");
 
         builder.HasOne<User>()
             .WithMany()

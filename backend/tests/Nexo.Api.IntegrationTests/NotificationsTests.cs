@@ -294,7 +294,7 @@ public class NotificationsTests(NexoApiFactory factory) : IClassFixture<NexoApiF
         }
 
         Assert.Single(spy.Sent);
-        Assert.Equal("Abre Nexo para ver el detalle.", spy.Sent[0].Body);
+        Assert.Equal("Abre Fino para ver el detalle.", spy.Sent[0].Body);
 
         var inApp = await client.GetAsync("/api/v1/notifications");
         var listed = await inApp.Content.ReadFromJsonAsync<JsonElement>();

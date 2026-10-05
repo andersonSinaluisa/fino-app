@@ -14,7 +14,8 @@ public sealed record NotificationDto(
     string Title,
     string Body,
     bool IsRead,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    IReadOnlyDictionary<string, string>? Data = null);
 
 public sealed record RegisterDeviceRequest(
     string ExpoPushToken,
@@ -66,20 +67,22 @@ public interface INotificationService
 
 public sealed class NotificationService(INexoDbContext db, IClock clock) : INotificationService
 {
-    public async Task<IReadOnlyList<NotificationDto>> ListAsync(Guid userId, CancellationToken cancellationToken) =>
-        await db.Notifications
+    public async Task<IReadOnlyList<NotificationDto>> ListAsync(Guid userId, CancellationToken cancellationToken)
+    {
+        var rows = await db.Notifications
             .AsNoTracking()
             .Where(n => n.UserId == userId)
             .OrderByDescending(n => n.CreatedAt)
             .Take(50)
-            .Select(n => new NotificationDto(
-                n.Id,
-                n.Type.ToString(),
-                n.Title,
-                n.Body,
-                n.ReadAt != null,
-                n.CreatedAt))
+            .Select(n => new { n.Id, n.Type, n.Title, n.Body, IsRead = n.ReadAt != null, n.CreatedAt, n.Payload })
             .ToListAsync(cancellationToken);
+
+        // The payload carries the same deep-link keys the push does (cardId,
+        // budgetId, ...), so tapping a row in the history opens the same screen.
+        return rows
+            .Select(n => new NotificationDto(n.Id, n.Type.ToString(), n.Title, n.Body, n.IsRead, n.CreatedAt, NotificationPayload.Parse(n.Payload)))
+            .ToList();
+    }
 
     public async Task MarkReadAsync(Guid userId, Guid notificationId, CancellationToken cancellationToken)
     {
@@ -243,7 +246,7 @@ public sealed class NotificationDispatcher(
 
             var body = device.ShowAmountsInPreview
                 ? notification.Body
-                : "Abre Nexo para ver el detalle.";
+                : "Abre Fino para ver el detalle.";
 
             messages.Add(new PushMessage(device.ExpoPushToken, notification.Title, body, BuildPushData(notification)));
         }
@@ -303,25 +306,12 @@ public sealed class NotificationDispatcher(
     {
         var data = new Dictionary<string, string> { ["notificationId"] = notification.Id.ToString() };
 
-        if (string.IsNullOrWhiteSpace(notification.Payload))
+        if (NotificationPayload.Parse(notification.Payload) is { } parsed)
         {
-            return data;
-        }
-
-        try
-        {
-            var parsed = JsonSerializer.Deserialize<Dictionary<string, string>>(notification.Payload);
-            if (parsed is not null)
+            foreach (var (key, value) in parsed)
             {
-                foreach (var (key, value) in parsed)
-                {
-                    data[key] = value;
-                }
+                data[key] = value;
             }
-        }
-        catch (JsonException)
-        {
-            // Malformed payload: keep the push, drop the deep-link data.
         }
 
         return data;
@@ -343,6 +333,9 @@ public sealed class NotificationDispatcher(
         NotificationType.WeeklySummary => device.NotifyOnReminders,
         NotificationType.AccountNeedsUpdate => device.NotifyOnReminders,
         NotificationType.PulseReady => device.NotifyOnPulses,
+        NotificationType.CardPaymentDue => device.NotifyOnReminders,
+        NotificationType.StatementAvailable => device.NotifyOnReminders,
+        NotificationType.BudgetThreshold => device.NotifyOnReminders,
     };
 
     /// <summary>
@@ -383,4 +376,29 @@ public sealed class NotificationDispatcher(
             return TimeZoneInfo.CreateCustomTimeZone("nexo-ec", TimeSpan.FromHours(-5), "Ecuador", "Ecuador");
         }
     }
+}
+
+/// <summary>Deep-link payload helpers shared by push data and the history list.</summary>
+public static class NotificationPayload
+{
+    public static IReadOnlyDictionary<string, string>? Parse(string? payload)
+    {
+        if (string.IsNullOrWhiteSpace(payload))
+        {
+            return null;
+        }
+
+        try
+        {
+            // Malformed payload: keep the notification, drop the deep link.
+            return JsonSerializer.Deserialize<Dictionary<string, string>>(payload);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    public static string Build(params (string Key, string Value)[] entries) =>
+        JsonSerializer.Serialize(entries.ToDictionary(e => e.Key, e => e.Value));
 }
