@@ -82,6 +82,7 @@ public static class DependencyInjection
 
         // Recordatorios (pago de tarjeta, estado nuevo, presupuesto, cuenta
         // desactualizada, resumen semanal), run hourly by ReminderWorker.
+        services.Configure<Reminders.ReminderOptions>(configuration.GetSection(Reminders.ReminderOptions.SectionName));
         services.AddScoped<Reminders.IReminderService, Reminders.ReminderService>();
 
         // Registro rápido de efectivo. CashAccountProvisioner y

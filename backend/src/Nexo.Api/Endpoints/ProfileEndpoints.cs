@@ -1,10 +1,12 @@
 using System.Security.Claims;
 using System.Text;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Options;
 using Nexo.Application.Abstractions;
 using Nexo.Application.EmailIngestion;
 using Nexo.Application.Notifications;
 using Nexo.Application.Privacy;
+using Nexo.Application.Reminders;
 
 namespace Nexo.Api.Endpoints;
 
@@ -42,6 +44,22 @@ public static class ProfileEndpoints
             Results.Ok(await dispatcher.SendTestAsync(currentUser.RequireUserId(), cancellationToken)))
         .RequireRateLimiting(RateLimitPolicies.Authentication)
         .WithSummary("Envía una notificación de prueba a mis dispositivos.");
+
+        // Recordatorios: manual run for testing, only when Nexo__Reminders__ManualRunEnabled=true
+        // (404 otherwise). Only ever touches the caller's own reminders. ?force=true skips
+        // the hour, the daily limit, "opened today" and once-only, without blocking the
+        // real reminder later.
+        notifications.MapPost("/reminders/run", async (
+            bool? force,
+            IReminderService reminders,
+            IOptions<ReminderOptions> options,
+            ICurrentUser currentUser,
+            CancellationToken cancellationToken) =>
+            options.Value.ManualRunEnabled
+                ? Results.Ok(await reminders.RunWithReportAsync(currentUser.RequireUserId(), force ?? false, cancellationToken))
+                : Results.NotFound())
+        .RequireRateLimiting(RateLimitPolicies.Authentication)
+        .WithSummary("Evalúa mis recordatorios ahora (solo para pruebas, requiere flag).");
 
         notifications.MapPost("/devices", async (
             RegisterDeviceRequest request,

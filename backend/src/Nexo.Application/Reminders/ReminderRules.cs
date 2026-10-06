@@ -73,13 +73,14 @@ public static class ReminderRules
 
     private static readonly string[] ShortMonths = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
-    public static IReadOnlyList<ReminderCandidate> Evaluate(ReminderInputs inputs)
+    /// <param name="ignoreSchedule">Manual test run: evaluate every rule whatever the hour or weekday.</param>
+    public static IReadOnlyList<ReminderCandidate> Evaluate(ReminderInputs inputs, bool ignoreSchedule = false)
     {
         var list = new List<ReminderCandidate>();
         var hour = inputs.LocalNow.Hour;
         var today = DateOnly.FromDateTime(inputs.LocalNow.DateTime);
 
-        if (hour is >= DayStartHour and < DayEndHour)
+        if (ignoreSchedule || hour is >= DayStartHour and < DayEndHour)
         {
             foreach (var card in inputs.Cards)
             {
@@ -111,8 +112,7 @@ public static class ReminderRules
             }
         }
 
-        if (today.DayOfWeek == DayOfWeek.Sunday
-            && hour is >= WeeklyStartHour and < WeeklyEndHour
+        if ((ignoreSchedule || (today.DayOfWeek == DayOfWeek.Sunday && hour is >= WeeklyStartHour and < WeeklyEndHour))
             && inputs.Weekly is { } weekly
             && Weekly(weekly) is { } summary)
         {

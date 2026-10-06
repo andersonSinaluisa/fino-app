@@ -27,3 +27,15 @@ Política:
   esa pantalla al tocar la push o la fila del historial.
 
 Base de datos: `scripts/sql/add_notification_dedup_key.sql` (migración `AddNotificationDedupKey`).
+
+## Probar sin esperar
+
+Con `Nexo__Reminders__ManualRunEnabled=true` existe `POST /api/v1/notifications/reminders/run`
+(sin la flag responde 404). Solo evalúa los recordatorios de quien llama y devuelve, por cada
+candidato, qué pasó: `Sent`, `AlreadySent`, `DailyLimit`, `AppOpenedToday`, `NotChosen` o `Failed`.
+
+- Sin parámetros: aplica todas las reglas reales (hora, tope diario, "abrió hoy", una sola vez).
+- `?force=true`: ignora hora, tope diario, "abrió hoy" y "una sola vez", y envía todos los
+  candidatos. Lo enviado así no guarda `DedupKey`, por lo que no impide el recordatorio real.
+
+Apaga la flag cuando termines de probar.

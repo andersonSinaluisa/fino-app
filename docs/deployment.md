@@ -54,6 +54,7 @@ versiona.
 | `Nexo__Cors__AllowedOrigins__0` | Si hay web | Vacío = permisivo solo en Development; fuera de Development falla cerrado |
 | `Nexo__Workers__Enabled` | `true` | `false` si los workers corren aparte |
 | `Nexo__Workers__ReminderIntervalMinutes` | `30` (opcional) | Cada cuánto se evalúan los recordatorios; la hora de envío la deciden las reglas (ver `docs/recordatorios.md`) |
+| `Nexo__Reminders__ManualRunEnabled` | `false` | `true` solo mientras pruebas: habilita `POST /api/v1/notifications/reminders/run` |
 | `Nexo__RateLimiting__Enabled` | `true` | Solo `false` en entornos de prueba |
 | `Nexo__EmailIngestion__Gmail__ClientId` | No hasta activar Gmail | De Google Cloud Console |
 | `Nexo__EmailIngestion__Gmail__ClientSecret` | No hasta activar Gmail | Secreto real, nunca commiteado |

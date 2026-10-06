@@ -32,12 +32,12 @@ public class ReminderTests(NexoApiFactory factory) : IClassFixture<NexoApiFactor
         }
     }
 
-    private (WebApplicationFactory<Program> Host, FixedClock Clock, SpyPushSender Spy) Gated(DateTimeOffset now)
+    private (WebApplicationFactory<Program> Host, FixedClock Clock, SpyPushSender Spy) Gated(DateTimeOffset now, bool manualRun = false)
     {
         var clock = new FixedClock(now);
         var spy = new SpyPushSender();
         var host = factory.WithWebHostBuilder(builder =>
-            builder.ConfigureServices(services =>
+            builder.UseSetting("Nexo:Reminders:ManualRunEnabled", manualRun ? "true" : "false").ConfigureServices(services =>
             {
                 services.RemoveAll<IClock>();
                 services.AddSingleton<IClock>(clock);
@@ -215,5 +215,49 @@ public class ReminderTests(NexoApiFactory factory) : IClassFixture<NexoApiFactor
         Assert.Equal("Tu resumen semanal", message.Title);
         Assert.Equal("Esta semana gastaste $40.00, menos que la semana anterior.", message.Body);
         Assert.Equal("estadisticas", message.Data!["screen"]);
+    }
+
+    [Fact]
+    public async Task The_manual_run_endpoint_does_not_exist_without_the_flag()
+    {
+        var (host, _, _) = Gated(NexoApiFactory.Now);
+        await using var _host = host;
+        var user = await RegisterAsync(host);
+
+        var response = await user.Client.PostAsync("/api/v1/notifications/reminders/run?force=true", null);
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task A_manual_run_explains_each_candidate_and_a_forced_one_never_blocks_the_real_reminder()
+    {
+        // 22:00 in Ecuador: outside every window.
+        var (host, clock, spy) = Gated(new DateTimeOffset(2026, 3, 11, 3, 0, 0, TimeSpan.Zero), manualRun: true);
+        await using var _host = host;
+        var user = await RegisterAsync(host);
+        var account = await user.CreateAccountAsync();
+        await (await user.Client.PostAsJsonAsync("/api/v1/budgets", new { amount = 100m })).EnsureOkAsync();
+        await SpendAsync(user, account, 90m, "2026-03-09T15:00:00Z");
+
+        var normal = await (await user.Client.PostAsync("/api/v1/notifications/reminders/run", null)).Content.ReadFromJsonAsync<JsonElement>(Json);
+        Assert.False(normal.GetProperty("inSchedule").GetBoolean());
+        Assert.Equal(0, normal.GetProperty("sent").GetInt32());
+
+        var forced = await (await user.Client.PostAsync("/api/v1/notifications/reminders/run?force=true", null)).Content.ReadFromJsonAsync<JsonElement>(Json);
+        Assert.True(forced.GetProperty("forced").GetBoolean());
+        Assert.Contains(forced.GetProperty("candidates").EnumerateArray(), c =>
+            c.GetProperty("type").GetString() == "BudgetThreshold" && c.GetProperty("outcome").GetString() == "Sent");
+        Assert.Contains(forced.GetProperty("candidates").EnumerateArray(), c =>
+            c.GetProperty("type").GetString() == "WeeklySummary" && c.GetProperty("outcome").GetString() == "Sent");
+        var forcedCount = spy.Sent.Count;
+
+        // Next day at 11:00 the real budget reminder still goes out.
+        clock.UtcNow = new DateTimeOffset(2026, 3, 11, 16, 0, 0, TimeSpan.Zero);
+        var real = await (await user.Client.PostAsync("/api/v1/notifications/reminders/run", null)).Content.ReadFromJsonAsync<JsonElement>(Json);
+        Assert.Equal(1, real.GetProperty("sent").GetInt32());
+        Assert.Equal(forcedCount + 1, spy.Sent.Count);
+
+        var again = await (await user.Client.PostAsync("/api/v1/notifications/reminders/run", null)).Content.ReadFromJsonAsync<JsonElement>(Json);
+        Assert.Equal("AlreadySent", again.GetProperty("candidates")[0].GetProperty("outcome").GetString());
     }
 }
